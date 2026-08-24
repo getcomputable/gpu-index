@@ -1,0 +1,264 @@
+{
+  "schema_version": 1,
+  "lane_id": "raw_observatory_v1",
+  "description": "Wide-net raw GPU price snapshotting (capture ONLY — no composite, no index, no curve input; nothing consumes this lane yet). The point is historical accumulation: capture gaps can never be backfilled, so the record starts before any methodology exists. Fully separate from the basket lanes (index/b300_basket, index/b200_basket) — shared transport/slot/store machinery, disjoint keyspace, own schedule. Collectors record EVERY GPU rental price row their surface publishes that the recipe can pin — all chips, all vendors, all tiers, labeled — with canonical skus derived by the framework from config/gpu_sku_catalog.json (unmapped labels recorded honestly, never guessed). Every parameter here is operational config, not code. min_sources_to_claim is deliberately LOW relative to the source count: a thin snapshot is still raw history (nothing consumes this lane), so the gate only refuses catastrophically broken captures; scraper rot on a wide net is expected and shows up as per-source error holes, not lost days.",
+  "bucket_prefix": "index/raw_observatory",
+  "sku_catalog_path": "config/gpu_sku_catalog.json",
+  "capture_slots_utc": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+  "canonical_slot_utc": 16,
+  "per_source_timeout_seconds": 30,
+  "per_source_deadline_seconds": 180,
+  "capture_budget_seconds": 1500,
+  "min_sources_to_claim": 8,
+  "sources": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "JSON-LD offers on /pricing — all GPU rows, all tiers (on-demand, spot, serverless continuous/spot, instant-cluster) with the name-suffix <-> description double-read tier pin; leading 'Nx ' count is the only per-GPU divisor (rows without one are skipped, never assumed 1x); storage offers excluded by their own description (out of scope, silent); blank-model CPU rows and disagreeing-currency-label rows skipped into partial_errors."
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Server-rendered price table (escaped JSON) — all GPU rows, on-demand + preemptible columns; exact-header + exactly-once table pins; unpriced NVL72 contact-us rows counted in partial_errors; 'from $' floors keep the qualifier in raw_value + extra."
+    },
+    {
+      "source_id": "hyperstack",
+      "display_name": "Hyperstack (NexGen Cloud)",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "gpu-pricing page — all three tables, tiers labeled: On-Demand GPU Pricing (spec-column fence), Reservation Pricing 'Starting from' floors (Reserve-here fence, tier reserved), Spot VM Pricing (section slice, tier spot)."
+    },
+    {
+      "source_id": "scaleway",
+      "display_name": "Scaleway",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Public unauthenticated instance-catalog API — every GPU instance type in the catalog; bills EUR, recorded natively (price_usd_gpu_hr stays null)."
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod",
+      "source_type": "marketplace",
+      "first_party": true,
+      "notes": "GraphQL gpuTypes — every listed GPU; secure AND community cloud, on-demand AND spot, recorded as separate labeled observations (the basket lane records secure on-demand only)."
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "source_type": "marketplace",
+      "first_party": true,
+      "options": {
+        "gpu_names": [
+          "B200",
+          "B300",
+          "H200",
+          "H200 NVL",
+          "H100 SXM",
+          "H100 NVL",
+          "H100 PCIE",
+          "A100 SXM4",
+          "A100 PCIE",
+          "A800 PCIE",
+          "L40S",
+          "L40",
+          "L4",
+          "RTX 6000Ada",
+          "RTX PRO 6000 WS",
+          "RTX PRO 6000 S",
+          "RTX PRO 5000",
+          "RTX 5090",
+          "RTX 4090",
+          "RTX 3090",
+          "MI300X"
+        ],
+        "record_limit_per_gpu": 10
+      },
+      "notes": "bundles API, per-chip queries from options.gpu_names (grow the list = config edit; gpu_name is an exact-case string match — copy vast's own spellings verbatim, e.g. 'RTX 6000Ada' with no space, 'RTX PRO 6000 WS'/'RTX PRO 6000 S' because bare 'RTX PRO 6000' returns zero). Records the cheapest machines per chip (dedup by machine, ranked per-GPU) up to record_limit_per_gpu, with book_stats accounting for what was left out. 'MI300X' returns zero offers today — kept deliberately as a tripwire for AMD capacity appearing (costs one call, records an honest empty-book partial note). Big consumer-card books (>= 100 offers) emit persistent 'book wider than both fetch windows' partial notes — honest coverage accounting, not a fault."
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "source_type": "direct_partnered",
+      "first_party": true,
+      "notes": "Next.js RSC flight rows on /pricing — every GPU VM row with a real price cell (generic row-key regex, price window bounded at the next row key of any sku)."
+    },
+    {
+      "source_id": "latitude",
+      "display_name": "Latitude.sh",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Bare-metal plan blobs — every GPU plan, hourly + monthly-commit tiers labeled, per-region with stock_level in extra. Bills USD + BRL (separately-set list prices, not FX) — BRL recorded natively with price_usd_gpu_hr null; the catalog plausibility bands screen USD prints only, so BRL rows are recorded unscreened."
+    },
+    {
+      "source_id": "e2e",
+      "display_name": "E2E Networks",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "USD pricing table — every GPU row, hourly + monthly-commit + annual (reserved) tiers, per-row ~730x/~10.5x cross-checks; plus the page's JSON-LD offer catalog (same GPUs' INR hourly list prices, recorded natively)."
+    },
+    {
+      "source_id": "shadeform",
+      "display_name": "Shadeform",
+      "source_type": "reseller",
+      "first_party": false,
+      "notes": "Homepage JSON blobs re-publishing other clouds' capacity — every GPU type; first_party false, cloud attribution in extra is the load-bearing disclosure."
+    },
+    {
+      "source_id": "lambda",
+      "display_name": "Lambda",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Instances-pricing table — every data-plan row (all chips, all tab sizes), on-demand instance rates; committed 1-Click Cluster tiers recorded separately labeled where pinnable."
+    },
+    {
+      "source_id": "coreweave",
+      "display_name": "CoreWeave",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "On-demand GPU instance table, both regions — every row segment (incl. GB200/GB300 rack-scale parts, first-class skus here), labeled On-Demand + Spot Price spans only."
+    },
+    {
+      "source_id": "together",
+      "display_name": "Together AI",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "GPU Clusters combined table — every hardware row: ON-Demand column plus the reserved tenor columns (tier reserved, tenor in extra); em-dash cells skipped silently, 'Contact us' cells counted in partial_errors; Dedicated Inference section excluded by slice."
+    },
+    {
+      "source_id": "computepulse",
+      "display_name": "Compute Pulse (aggregator)",
+      "source_type": "aggregator",
+      "first_party": false,
+      "options": {
+        "gpus": [
+          "nvidia-b300",
+          "nvidia-b200",
+          "nvidia-h200",
+          "nvidia-h100",
+          "nvidia-a100",
+          "nvidia-l40s",
+          "nvidia-rtx-4090",
+          "nvidia-rtx-5090",
+          "amd-mi300x",
+          "amd-mi325x"
+        ],
+        "limit_per_gpu": 200
+      },
+      "notes": "Public no-auth /api/listings, per-chip queries from options.gpus (2-page cap per slug; the h100/a100 books exceed it — the cheapest ~400 are recorded with a loud partial note). LEADS, NOT PRINTS: rows are mostly verification_level 0 / human_verified false — recorded with that metadata intact in extra so consumers can screen; first_party false. amd-mi325x is a genuinely empty book today, kept as a watch slot."
+    },
+    {
+      "source_id": "deepinfra",
+      "display_name": "Deep Infra",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Server-rendered MUI table on /pricing ('Custom LLMs' dedicated-GPU section; header exactly GPU|Memory|Price is the identity pin, price cells must fullmatch '$X / GPU-hour', duplicated header-matching tables must agree) — A100/H100/H200/B200/B300 USD per GPU-hour, dedicated custom-model deployment tier (pay-for-uptime container hosting, minute-granularity billing, not a bare VM). Serverless per-token tables and tier-multiplier tables on the same page are excluded by the header pin; B200/B300 clusters are contact-only with no price rows."
+    },
+    {
+      "source_id": "oracle",
+      "display_name": "Oracle Cloud Infrastructure (OCI)",
+      "source_type": "hyperscaler",
+      "first_party": true,
+      "notes": "Public no-auth cetools price-list JSON (apexapps.oracle.com /pls/apex/cetools/api/v1/products/?currencyCode=USD, trailing slash load-bearing) — the same backend that hydrates oracle.com/cloud/compute/pricing. Single GET (~189KB). Fence metricName == 'GPU Per Hour' exactly, pin rows by partNumber (stable SKU anchor with a name-drift tripwire), take the PAY_AS_YOU_GO USD value. Excludes 'NVIDIA AI Enterprise' software-license lookalikes and Compute Cloud@Customer appliance rows (counted in book_stats); all fencing is client-side (server ignores name/serviceCategory filters). Legacy shape names that don't name a chip (GPU Standard X7/V2, GPU E3/E4) stay honestly unmapped."
+    },
+    {
+      "source_id": "civo",
+      "display_name": "Civo",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Server-rendered /pricing GPU tables (section#nvidia-gpus fence, caption-pinned per chip, 'N x NVIDIA ...' product-detail row pin) — per-instance USD hourly divided by the row's pinned GPU count; on-demand + 6/12/24/36-month commitment terms recorded as separate labeled observations (tier reserved, commitment_months in extra; B200 is commitment-only by design, never zero-filled)."
+    },
+    {
+      "source_id": "gmicloud",
+      "display_name": "GMI Cloud",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Server-rendered /en/pricing GPU cards — h3 'NVIDIA <chip>' paired with adjacent 'from $X.XX' + '/GPU-hour' spans; USD from-floor list prices (page FAQ: on-demand vs committed differ, so tier recorded as from_floor, never on-demand). Unpriced pre-order cards skipped with a partial_error; GB200/GB300 map to their own skus, never B200/B300. UA-sensitive host (the bare urllib UA is 403'd; the framework UA is what the fetch sends); the /en/ locale URL is pinned."
+    },
+    {
+      "source_id": "digitalocean",
+      "display_name": "DigitalOcean",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Docs pricing page (server-rendered) — On-Demand + Spot GPU Droplet tables sliced by h2 anchor ids; 1x per-GPU rows and (8x) full-droplet rows recorded as separate labeled observations (whole-droplet price + gpu_count_basis from the page's own (Nx) label). Contract table is unpriced by design and excluded. B300 exists only in the spot tier (public preview). UA-sensitive host (the bare urllib UA is 403'd)."
+    },
+    {
+      "source_id": "fal",
+      "display_name": "fal",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Serverless & Compute Pricing table on /pricing (server-rendered; fail-closed header pin GPU|VRAM|List Price|As low as, exactly one matching table) — USD per GPU-hour for fal's own serverless fleet; List Price recorded tier=serverless and the 'As low as' column as a separate labeled contact-sales floor (serverless_as_low_as), never as the list rate; per-output model-API tables excluded by the header pin."
+    },
+    {
+      "source_id": "hotaisle",
+      "display_name": "Hot Aisle",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Server-rendered Astro pricing cards on /pricing — MI300X only today: VM on-demand $/GPU/hr (per-minute billing, new-customer rate) + 8x bare-metal one-month-minimum rate labeled monthly-commit; grandfathered existing-customer rate recorded tier legacy while published. One of few AMD principals. UA-sensitive host (Cloudflare 403s the bare urllib UA). Unpriced parts (MI355X) never get invented rows."
+    },
+    {
+      "source_id": "sesterce",
+      "display_name": "Sesterce",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Homepage #pricing live-offers table (Next.js ISR ~5min; render timestamp in extra) — live on-demand USD 'From / GPU / hr' FLOOR prices. Pins: unique id=pricing anchor + byte-exact thead + the literal table-footer marker naming LIVE OFFERS / CLOUD.SESTERCE.COM / USD / ON-DEMAND (middle-dot separated on the page; currency+tier pin, fails closed if USD or ON-DEMAND drops out). Rows parse from the single pinned tbody only (marquee duplicates and the stale CLI-demo capacity strip are skipped + counted)."
+    },
+    {
+      "source_id": "tensorpool",
+      "display_name": "TensorPool",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Server-rendered /pricing comparison grid, TensorPool column ONLY (double pin: exact header order + the highlight class on exactly the TensorPool cell of every row; competitor columns share the same chip labels and are never recorded). On-demand USD per GPU-hour; CPU/storage rows fenced out; the mobile-card rendering is an equality tripwire, never a second set of rows."
+    },
+    {
+      "source_id": "lium",
+      "display_name": "Lium (Bittensor subnet 51, ex-Celium)",
+      "source_type": "marketplace",
+      "first_party": true,
+      "notes": "Public no-auth /api/executors JSON — the whole live machine book in one response; price_per_gpu = USD/GPU/hr (basis proven by the UI toggle), tier secure|spot mapped fail-closed to on-demand|spot, dedup by machine id, miner/validator hotkeys retained as attribution in extra. pending_price_per_hour + effective-date ride in extra as a SCHEDULED change, never recorded as current."
+    },
+    {
+      "source_id": "gpuai",
+      "display_name": "GPU.ai",
+      "source_type": "marketplace",
+      "first_party": true,
+      "notes": "Public no-auth JSON API: GET https://api.gpu.ai/v1/pricing?limit=200, follow next_cursor (hard cap 10 pages) — every offer row (gpu_type x gpu_count x region x capacity_class), on-demand + spot. price_per_hour covers the WHOLE configuration: per-GPU = price_per_hour / gpu_count. No currency field — USD pinned from the provider's own dollar prints; a future row-level currency key != USD refuses. secure AND community capacity classes recorded separately; offering_id is the stable per-offer identity. Never collect from the /gpus or /pricing HTML pages (static/client-fetched)."
+    },
+    {
+      "source_id": "crusoe",
+      "display_name": "Crusoe Cloud",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Server-rendered Webflow pricing page — 'GPU instances pricing' table, On-demand + Current spot columns (spot recorded only when numeric). Row fence = exact '$D.DD/GPU-hr' suffix inside the GPU-instances section (excludes CPU $/vCPU-hr rows, the Serverless Inference $/M-token table, and Self-Serve Deployments rows with identical chip headings). A100 SXM/PCIe disambiguated by form-factor tag; unpriced contact-sales rows (GB200/B200/MI355X) admitted automatically if numbers ever publish."
+    },
+    {
+      "source_id": "ovh",
+      "display_name": "OVHcloud",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "options": {
+        "subsidiaries": [
+          {
+            "endpoint": "https://api.ovh.com/1.0/order/catalog/public/cloud?ovhSubsidiary=FR",
+            "expected_currency": "EUR"
+          },
+          {
+            "endpoint": "https://api.us.ovhcloud.com/1.0/order/catalog/public/cloud?ovhSubsidiary=US",
+            "expected_currency": "USD"
+          }
+        ]
+      },
+      "notes": "Public no-auth order-catalog JSON, two billing subsidiaries recorded natively (FR bills EUR, full lineup; separate US entity bills USD). Rows pinned by blobs.commercial.brick=='gpu' + blobs.technical.gpu model/number (per-GPU divisor); price ints are 1e-8 currency units cross-checked per row against the cent-rounded formattedPrice, ex-VAT; tier from planCode suffix (.consumption = hourly on-demand, .monthly.postpaid = monthly-commit at 730h/month), NEVER intervalUnit (US publishes 'none' on both). Windows-license and legacy variants recorded labeled. FR body is ~97% of the 8MiB transport cap — a growth alarm rides in partial_errors on every capture."
+    },
+    {
+      "source_id": "voltagepark",
+      "display_name": "Voltage Park",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Unauthenticated dashboard API GET https://cloud-api.voltagepark.com/api/v1/bare-metal/locations (the SPA's logged-out variant) — rows keyed by specs_per_node.gpu_model with gpu_price_ethernet + gpu_price_infiniband as decimal strings, USD per GPU/hr; recorded as two on-demand observations distinguished by extra.network (networking variants, NOT an on-demand/reserved split). Availability counts can be 0 while prices stay published (metadata, never a gate); no currency field (USD pinned from provider dollar prints); fails closed on missing/renamed fields or pagination appearing."
+    }
+  ]
+}

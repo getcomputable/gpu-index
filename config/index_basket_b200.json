@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "basket_id": "b200_annex_a2_v0_3",
+  "description": "B200 index basket — per-source price capture plus the daily composite, on the same machinery as the B300 lane (shared collectors and calculator code, separate keyspace and methodology). The composite publishes under calc.methodology_id below; USD only (calc.fx_lane none). Every parameter is config, not code; see METHODOLOGY.md.",
+  "methodology_doc": "docs/annex_a2_b200_index_basket.md",
+  "target_sku": "B200",
+  "basket_role": "b200_basket",
+  "capture_slots_utc": [4, 10, 16, 22],
+  "canonical_slot_utc": 16,
+  "genesis_date": "2026-08-16",
+  "bucket_prefix": "index/b200_basket",
+  "per_source_timeout_seconds": 30,
+  "per_source_deadline_seconds": 180,
+  "capture_budget_seconds": 600,
+  "capture_screens": {
+    "description": "Capture-side data-quality screens, same semantics as the B300 lane: delta report every capture; a constituent whose lowest eligible print moves >= jump_quarantine_pct vs the previous stored snapshot is flagged implausible for that capture unless >= jump_min_corroborators other constituents moved >= jump_corroborate_pct. NOTE: B200 fell ~30% in ~3 weeks May-June 2026 as a REAL market event — the corroboration gate exists precisely so that passes.",
+    "jump_quarantine_pct": 25,
+    "jump_corroborate_pct": 10,
+    "jump_min_corroborators": 2
+  },
+  "min_basket_sources_to_claim": 5,
+  "retention_note": "life of trade + 2 years",
+  "fallback_parity_methodology_id": "annex_a2_v0_3_calc_v4",
+  "calc": {
+    "methodology_id": "annex_a2_v0_3_calc_v5",
+    "description": "Daily composite calculation parameters for methodology annex_a2_v0_3_calc_v5. Identical calculation semantics to the B300 lane's annex_a_v0_2_calc_v6 — recorded-currency outlier fence, median-of-votes aggregate, dynamic predictive weighting — as specified in METHODOLOGY.md and docs/dynamic_source_weighting.md, plus this lane's knobs: no FX lane (USD only), claim minimum 5 of 9, and the vast order-book statistic (calc.source_statistics). Every parameter here is embedded verbatim in each published artifact and pinned per methodology_id: any change touching a published day requires minting a new methodology_id (frozen predecessors keep their own keyspaces).",
+    "dynamic_weights": {
+      "scheme": "predictive_v1",
+      "lookback_horizons_hours": [6, 24, 48],
+      "forward_horizons_hours": [6, 24, 48],
+      "history_days": 90,
+      "half_life_days": 30,
+      "ridge_lambda": 1.0,
+      "gamma": 4.0,
+      "weight_min": 0.025,
+      "weight_max": 0.30,
+      "min_train_samples": 10,
+      "target_variance_floor": 1e-12,
+      "switch_min_eligible": 5,
+      "max_abs_log_return": 0.5
+    },
+    "manual_exclusions": [
+      {"date": "2026-08-16", "source_id": "vast", "reason": "capture defect: recorded print known wrong by rule; true print not captured"}
+    ],
+    "interruptible_tiers": ["spot", "preemptible"],
+    "filter_window": 20,
+    "filter_sigma": 3.0,
+    "filter_sigma_floor": 0.05,
+    "filter_terms": "recorded_currency",
+    "composite_statistic": "median_ci_votes",
+    "filter_warmup": 10,
+    "manual_verify_pct": 15,
+    "promote_tie_break": "later",
+    "fx_max_staleness_days": 7,
+    "drift_scan_days": 14,
+    "fx_lane": "none",
+    "min_sources_to_claim": 5,
+    "source_statistics": {"vast": "vast_vwm_verified_us_ca"},
+    "fallback_pool_sku": "B300",
+    "fallback_pool_sources": ["verda", "nebius", "hyperstack", "massedcompute", "runpod", "vast"]
+  },
+  "filter_note": "per-source sigma fence over trailing 20 valid observations, computed by the composite under calc above. The window/threshold began as B300 placeholders not yet B200-calibrated (the May-June 2026 -30% episode); recalibrating them requires a new methodology_id.",
+  "sources": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "role": "b200_basket",
+      "weight": 0.12,
+      "source_type": "direct_principal",
+      "skus": ["B200", "B300"]
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "role": "b200_basket",
+      "weight": 0.12,
+      "source_type": "direct_principal",
+      "skus": ["B200", "B300"]
+    },
+    {
+      "source_id": "hyperstack",
+      "display_name": "Hyperstack (NexGen Cloud)",
+      "role": "b200_basket",
+      "weight": 0.12,
+      "source_type": "direct_principal",
+      "skus": ["B200", "B300"]
+    },
+    {
+      "source_id": "lambda",
+      "display_name": "Lambda",
+      "role": "b200_basket",
+      "weight": 0.12,
+      "source_type": "direct_principal",
+      "skus": ["B200"],
+      "notes": "the on-demand INSTANCE rate, never the 1-Click Cluster committed rate. The Cloud API /instance-types endpoint needs a key; the collector reads the public pricing page."
+    },
+    {
+      "source_id": "coreweave",
+      "display_name": "CoreWeave",
+      "role": "b200_basket",
+      "weight": 0.12,
+      "source_type": "direct_principal",
+      "skus": ["B200"],
+      "notes": "per-instance pricing (8-GPU) — normalize by the GPU count stated on the provider's own page. LIVE GB200 NVL72 lookalike trap on the same surface (product-identity screen)."
+    },
+    {
+      "source_id": "together",
+      "display_name": "Together AI",
+      "role": "b200_basket",
+      "weight": 0.12,
+      "source_type": "direct_principal",
+      "skus": ["B200"],
+      "notes": "GPU Clusters rate ONLY (256-GPU minimum, disclosed) — the Dedicated Inference SKU (~$8.99) for the same silicon is NOT an eligible print."
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "role": "b200_basket",
+      "weight": 0.10,
+      "source_type": "direct_partnered",
+      "skus": ["B200", "B300"],
+      "notes": "owner-operator on its own disclosure, held at 10% pending independent verification. Per-node pricing, normalize by stated GPU count."
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod (Secure Cloud tier only)",
+      "role": "b200_basket",
+      "weight": 0.10,
+      "source_type": "direct_partnered",
+      "skus": ["B200", "B300"],
+      "notes": "Community Cloud excluded entirely — the collector must never record communityPrice"
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "role": "b200_basket",
+      "weight": 0.08,
+      "source_type": "marketplace",
+      "skus": ["B200", "B300"],
+      "notes": "8% is a measured liquidity haircut (thin book), revisited quarterly. Calc statistic: volume-weighted median of rentable on-demand asks across verified US/CA hosts (the order-book rule); capture records the deduped book with machine/host identity. Anti-manipulation: no party connected to the index may list on vast so as to influence an observation."
+    }
+  ]
+}

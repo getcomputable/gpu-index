@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "basket_id": "b300_annex_a_v0_2",
+  "description": "B300 index basket — raw per-source price-point capture. The daily composite is computed separately by the compute CLI under calc.methodology_id below. Every parameter is config, not code; see METHODOLOGY.md.",
+  "methodology_doc": "docs/annex_a_b300_index_basket.md",
+  "target_sku": "B300",
+  "capture_slots_utc": [4, 10, 16, 22],
+  "canonical_slot_utc": 16,
+  "genesis_date": "2026-08-10",
+  "bucket_prefix": "index/b300_basket",
+  "per_source_timeout_seconds": 30,
+  "per_source_deadline_seconds": 180,
+  "capture_budget_seconds": 600,
+  "capture_screens": {
+    "description": "Capture-side data-quality screens (post-collection, pre-upload, flag-only via the implausible machinery). A basket constituent whose lowest eligible print moves >= jump_quarantine_pct vs the previous stored snapshot (native terms) is quarantined for that capture unless >= jump_min_corroborators OTHER constituents moved >= jump_corroborate_pct.",
+    "jump_quarantine_pct": 25,
+    "jump_corroborate_pct": 10,
+    "jump_min_corroborators": 2
+  },
+  "min_basket_sources_to_claim": 5,
+  "retention_note": "life of trade + 2 years",
+  "fallback_parity_methodology_id": "annex_a_v0_2_calc_v5",
+  "calc": {
+    "methodology_id": "annex_a_v0_2_calc_v6",
+    "description": "Daily composite calculation parameters for methodology annex_a_v0_2_calc_v6. The calculation semantics — per-source daily print, recorded-currency outlier fence, median-of-votes aggregate, dynamic predictive weighting — are specified in METHODOLOGY.md and docs/dynamic_source_weighting.md. Every parameter here is embedded verbatim in each published artifact and pinned per methodology_id: any change touching a published day requires minting a new methodology_id (frozen predecessors keep their own keyspaces).",
+    "dynamic_weights": {
+      "scheme": "predictive_v1",
+      "lookback_horizons_hours": [6, 24, 48],
+      "forward_horizons_hours": [6, 24, 48],
+      "history_days": 90,
+      "half_life_days": 30,
+      "ridge_lambda": 1.0,
+      "gamma": 4.0,
+      "weight_min": 0.025,
+      "weight_max": 0.30,
+      "min_train_samples": 10,
+      "target_variance_floor": 1e-12,
+      "switch_min_eligible": 5,
+      "max_abs_log_return": 0.5
+    },
+    "manual_exclusions": [
+      {"date": "2026-08-11", "source_id": "vast", "reason": "capture defect: recorded print known wrong by rule; true print not captured"},
+      {"date": "2026-08-12", "source_id": "vast", "reason": "capture defect: recorded print known wrong by rule; true print not captured"},
+      {"date": "2026-08-14", "source_id": "vast", "reason": "capture defect: recorded print known wrong by rule; true print not captured"},
+      {"date": "2026-08-15", "source_id": "vast", "reason": "capture defect: recorded print known wrong by rule; true print not captured"}
+    ],
+    "interruptible_tiers": ["spot", "preemptible"],
+    "filter_window": 20,
+    "filter_sigma": 3.0,
+    "filter_sigma_floor": 0.05,
+    "filter_terms": "recorded_currency",
+    "composite_statistic": "median_ci_votes",
+    "filter_warmup": 10,
+    "manual_verify_pct": 15,
+    "promote_tie_break": "later",
+    "fx_max_staleness_days": 7,
+    "drift_scan_days": 14,
+    "fallback_pool_sku": "B200",
+    "fallback_pool_sources": ["nebius", "e2e", "shadeform", "computedesk"]
+  },
+  "filter_note": "per-source sigma fence over trailing 20 valid observations — NOT computed in this lane; recorded here so the capture cadence is sized to feed it",
+  "sources": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "role": "b300_basket",
+      "weight": 0.15,
+      "source_type": "direct_principal",
+      "skus": ["B300", "B200"]
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "role": "b300_basket",
+      "weight": 0.15,
+      "source_type": "direct_principal",
+      "skus": ["B300", "B200"],
+      "notes": "also the key basis pair — publishes both chips; SkyPilot catalog mirror is third-party and must never be the recorded observation"
+    },
+    {
+      "source_id": "hyperstack",
+      "display_name": "Hyperstack (NexGen Cloud)",
+      "role": "b300_basket",
+      "weight": 0.15,
+      "source_type": "direct_principal",
+      "skus": ["B300", "B200"]
+    },
+    {
+      "source_id": "scaleway",
+      "display_name": "Scaleway",
+      "role": "b300_basket",
+      "weight": 0.15,
+      "source_type": "direct_principal",
+      "skus": ["B300"],
+      "notes": "first-party via the PUBLIC unauthenticated instance-catalog API (api.scaleway.com instance/v1 products/servers, zone fr-par-2) — no console auth involved. CURRENCY IS EUR (bills in EUR; an aggregator's 8.54 'USD' print was almost certainly the 4-GPU EUR figure mislabeled): recorded natively, price_usd_gpu_hr=null; FX converts at calc time. Three configs (2/4/8-GPU, all 288GiB/GPU)."
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod (Secure Cloud tier only)",
+      "role": "b300_basket",
+      "weight": 0.10,
+      "source_type": "direct_partnered",
+      "skus": ["B300", "B200"],
+      "notes": "Community Cloud excluded entirely — the collector must never record communityPrice"
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "role": "b300_basket",
+      "weight": 0.10,
+      "source_type": "marketplace",
+      "skus": ["B300", "B200"],
+      "notes": "price reflects host+platform spread (disclosed)"
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "role": "b300_basket",
+      "weight": 0.10,
+      "source_type": "marketplace",
+      "skus": ["B300"]
+    },
+    {
+      "source_id": "latitude",
+      "display_name": "Latitude.sh",
+      "role": "b300_basket",
+      "weight": 0.10,
+      "source_type": "direct_partnered",
+      "skus": ["B300"],
+      "notes": "bare-metal per-node pricing — normalize per-GPU by the node's stated GPU count. True on-demand hourly is $16.00/GPU-hr ($128/node-hr, 8x); an early $8.00 scoping ballpark was the MONTHLY-COMMIT tier ($46,720/mo = exactly $8.00/GPU-hr effective). Both tiers are captured, clearly labeled; committed tiers are excluded from the underlying rate. Plan stock_level currently 'unavailable' (possibly pre-GA listing)."
+    },
+    {
+      "source_id": "e2e",
+      "display_name": "E2E Networks",
+      "role": "b200_pool",
+      "weight": null,
+      "source_type": "direct_principal",
+      "skus": ["B200"],
+      "notes": "fallback proxy pool only; USD-denominated prints only"
+    },
+    {
+      "source_id": "shadeform",
+      "display_name": "Shadeform (B200 reseller pool)",
+      "role": "b200_pool",
+      "weight": null,
+      "source_type": "reseller_pool",
+      "skus": ["B200"],
+      "notes": "EXCLUDED for B300 (its only B300 listing re-publishes Verda — would double-count); B200 rows across its listed providers feed the fallback pool"
+    },
+    {
+      "source_id": "computedesk",
+      "display_name": "Compute Desk",
+      "role": "b200_pool",
+      "weight": null,
+      "source_type": "index_provider",
+      "skus": ["B200"],
+      "notes": "fallback proxy pool only; methodology undisclosed — treated as a reference print, never a basket constituent. UNIMPLEMENTED: Compute Desk (The Compute Index, Inc., compute-desk.com) has a documented index API (data-api.compute-index.com /v1/prices/current?gpu=B200) but every data endpoint 401s — keys are issued manually by the vendor. No public print exists to record; revisit if access is granted."
+    }
+  ]
+}
