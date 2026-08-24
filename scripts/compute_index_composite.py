@@ -40,6 +40,7 @@ records an explicit basket_dark/day_missed artifact once fully closed
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -64,15 +65,21 @@ from gpu_index.index.composite import (  # noqa: E402
     select_slot_snapshot,
 )
 from gpu_index.index.config import load_basket_config  # noqa: E402
-from gpu_index.index.fx import ensure_rates  # noqa: E402
+from gpu_index.index.fx import ensure_rates, load_stored_rates  # noqa: E402
 from gpu_index.index.weights import advance_weight_state, new_weight_state  # noqa: E402
-from gpu_index.common.slots import latest_pointer_key, utc_now  # noqa: E402
+from gpu_index.common.slots import (  # noqa: E402
+    latest_pointer_key,
+    snapshot_key,
+    utc_now,
+)
 from gpu_index.common.store import (  # noqa: E402
     BucketConfig,
+    composite_key,
     get_composite,
     make_client,
     make_run_id,
     read_day_snapshots,
+    snapshot_bytes,
     upload_composite,
 )
 
@@ -315,6 +322,232 @@ def detect_drift(stored, selection, snapshots, *, day_str, params, fx_records):
     return msgs
 
 
+# ------------------------------------------------------- verify-published
+
+
+def _field_diffs(published, recomputed, path: str = "", limit: int = 40) -> list:
+    """Field-path differences between two parsed JSON documents, e.g.
+    ``sources[3].chosen.usd_per_gpu_hr: published 6.0 vs recomputed 5.0``."""
+    diffs: list = []
+
+    def walk(a, b, at):
+        if len(diffs) > limit:
+            return
+        if isinstance(a, dict) and isinstance(b, dict):
+            for key in sorted(set(a) | set(b)):
+                sub = f"{at}.{key}" if at else str(key)
+                if key not in a:
+                    diffs.append(f"{sub}: only in recomputed ({b[key]!r})")
+                elif key not in b:
+                    diffs.append(f"{sub}: only in published ({a[key]!r})")
+                else:
+                    walk(a[key], b[key], sub)
+            return
+        if isinstance(a, list) and isinstance(b, list):
+            if len(a) != len(b):
+                diffs.append(
+                    f"{at}: published has {len(a)} entries vs "
+                    f"recomputed {len(b)}"
+                )
+            for i, (ai, bi) in enumerate(zip(a, b)):
+                walk(ai, bi, f"{at}[{i}]")
+            return
+        if a != b or type(a) is not type(b):
+            diffs.append(f"{at}: published {a!r} vs recomputed {b!r}")
+
+    walk(published, recomputed, path)
+    if len(diffs) > limit:
+        return diffs[:limit] + [f"... and more (stopped at {limit} diffs)"]
+    return diffs
+
+
+def verify_published(args, config) -> int:
+    """--verify-published <date>: recompute one PUBLISHED day byte-for-byte
+    from the record and compare against the stored artifact. Reads only —
+    published days are never revised (rule R4), and this mode holds to that
+    by construction: no upload, no pointer move, no FX persist, no report.
+
+    Determinism comes from pinning everything to the record, exactly the
+    replay semantics the pipeline already defines:
+      - filter windows / currency streaks / weight state advance from the
+        PUBLISHED artifacts genesis..day-1 (never from raw, which can
+        legitimately grow after publication);
+      - the day's snapshot is the artifact's own pinned choice
+        (snapshot_run_id + substituted_from_slot fetched by exact key),
+        never re-selected from the raw store;
+      - under dynamic weights the prior day's slot prints come from the
+        artifact's pinned weight_calc.slot_prints, never re-derived;
+      - FX uses the stored append-only rate records only (no live feed):
+        rates for a published date never change, but a rate that was
+        WALKED BACK at publish time and backfilled later is the one known
+        benign mismatch cause — the diff paths name the fx fields.
+    """
+    try:
+        day = date.fromisoformat(args.verify_published)
+    except ValueError:
+        error(f"--verify-published {args.verify_published!r}: not a YYYY-MM-DD date")
+        return 1
+    day_str = day.isoformat()
+    params = calc_params(config)
+    prefix = config["bucket_prefix"]
+    canonical_hour = int(config.get("canonical_slot_utc", 16))
+    methodology_id = params["methodology_id"]
+    genesis = date.fromisoformat(config["genesis_date"])
+
+    bucket_config = BucketConfig.from_env()
+    client = make_client(bucket_config)
+    bucket = bucket_config.bucket
+
+    artifact_key = composite_key(prefix, methodology_id, day_str)
+    stored_raw = get_object_bytes(client, bucket, artifact_key)
+    if stored_raw is None:
+        error(
+            f"{day_str} is not published under {methodology_id} "
+            f"(no {artifact_key}) — derive it with --date {day_str} "
+            "--dry-run instead"
+        )
+        return 1
+    stored = json.loads(stored_raw)
+    stored_sha = hashlib.sha256(stored_raw).hexdigest()
+    index = stored.get("index") or {}
+    print(
+        f"verify-published {day_str} (methodology {methodology_id})\n"
+        f"artifact: {artifact_key}\n"
+        "published: "
+        + (
+            "BASKET_DARK"
+            if stored.get("basket_dark")
+            else f"{index.get('value_usd_gpu_hr'):.4f} $/GPU-hr "
+            f"({index.get('sources_used_count', 0)} sources)"
+        )
+        + (" [day_missed]" if stored.get("day_missed") else "")
+    )
+
+    # Rule D2 heads-up: the recompute runs under the LIVE config (the same
+    # config the pipeline extends the series with), so params drift from
+    # the artifact guarantees a byte mismatch that is config drift, not
+    # tampering — say so before the verdict.
+    live_embedded = {
+        k: (list(v) if isinstance(v, tuple) else v) for k, v in params.items()
+    }
+    stored_params = stored.get("calc_params") or {}
+    drifted = sorted(
+        k
+        for k in set(live_embedded) | set(stored_params)
+        if live_embedded.get(k) != stored_params.get(k)
+    )
+    if drifted:
+        warn(
+            f"live config calc_params drift from the artifact's on key(s) "
+            f"{drifted} — a MISMATCH below reflects config drift (rule D2: "
+            "mint a new methodology_id), not necessarily tampering"
+        )
+
+    # FX: stored append-only records only — the record, not the live feed.
+    if params.get("fx_lane", "ecb") == "none":
+        fx_records: dict = {}
+    else:
+        fx_records = load_stored_rates(client, bucket, prefix=prefix)
+
+    # Replay state advance from published artifacts, genesis..day-1 — the
+    # exact pin-to-published walk main() does, minus raw reads and writes.
+    window_history: dict = {}
+    window_currencies: dict = {}
+    pending_currencies: dict = {}
+    weight_state: dict = new_weight_state()
+    prior = genesis
+    while prior < day:
+        prior_stored = get_composite(
+            client,
+            bucket,
+            prefix=prefix,
+            methodology_id=methodology_id,
+            day=prior.isoformat(),
+        )
+        if prior_stored is None:
+            warn(
+                f"{prior.isoformat()} is unpublished below the target day — "
+                "the series publishes in order, so replay state may be "
+                "incomplete (expect MISMATCH until the gap is explained)"
+            )
+        else:
+            advance_windows_from_published(
+                prior_stored, window_history, window_currencies,
+                pending_currencies,
+            )
+            advance_weight_state_from_published(prior_stored, weight_state)
+        prior += timedelta(days=1)
+
+    # The day's snapshot: the artifact's own pinned choice, by exact key.
+    substituted = stored.get("substituted_from_slot")
+    if stored.get("day_missed"):
+        snapshot = None
+    else:
+        run_id = stored.get("snapshot_run_id")
+        slot_hour = canonical_hour if substituted is None else int(substituted)
+        pinned_key = snapshot_key(prefix, day, slot_hour, run_id)
+        snapshot_raw = get_object_bytes(client, bucket, pinned_key)
+        if snapshot_raw is None:
+            error(
+                f"MISMATCH {day_str}: the artifact's pinned snapshot "
+                f"{pinned_key} is MISSING from the raw store — cannot "
+                "recompute; the raw evidence for this published day is gone "
+                "(the drift tripwire case)"
+            )
+            return 1
+        snapshot = json.loads(snapshot_raw)
+
+    # Dynamic weights: the prior day's slot prints are pinned in the
+    # artifact (R-slots) — replay never re-derives them from raw.
+    prior_slot_prints = None
+    if "dynamic_weights" in params:
+        weight_calc = stored.get("weight_calc") or {}
+        slot_block = weight_calc.get("slot_prints") or {}
+        prior_slot_prints = dict(slot_block.get("slots") or {})
+
+    payload = compute_day(
+        config=config,
+        day=day_str,
+        snapshot=snapshot,
+        substituted_from=substituted,
+        window_history=window_history,
+        fx_records=fx_records,
+        window_currencies=window_currencies,
+        pending_currencies=pending_currencies,
+        weight_state=weight_state,
+        prior_slot_prints=prior_slot_prints,
+    )
+    recomputed_raw = snapshot_bytes(payload)
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    if recomputed_raw == stored_raw:
+        print(f"MATCH sha256={stored_sha}")
+        return 0
+
+    recomputed_sha = hashlib.sha256(recomputed_raw).hexdigest()
+    diffs = _field_diffs(stored, payload)
+    print(
+        f"MISMATCH {day_str}: published sha256={stored_sha} vs "
+        f"recomputed sha256={recomputed_sha}"
+    )
+    if diffs:
+        for diff in diffs:
+            print(f"  {_log_clean(diff)}")
+        if any(".fx_" in d or "fx_as_of" in d for d in diffs):
+            notice(
+                "diff paths touch fx fields — a rate walked back at publish "
+                "time and backfilled later (rule R2) is the known benign "
+                "cause; the artifact's recorded rate stands"
+            )
+    else:
+        print(
+            "  JSON content is identical; the stored bytes are not the "
+            "canonical serialization (sorted keys, 2-space indent, trailing "
+            "newline) — the artifact bytes were rewritten"
+        )
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Compute daily B300 index composites from stored snapshots."
@@ -330,14 +563,35 @@ def main() -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="Compute and print; write nothing"
     )
+    parser.add_argument(
+        "--verify-published",
+        metavar="DATE",
+        help=(
+            "Recompute one PUBLISHED day byte-for-byte from the record "
+            "(prior artifacts + that day's pinned snapshot) and compare "
+            "against the stored artifact — MATCH exits 0, MISMATCH exits 1. "
+            "Reads only; writes nothing."
+        ),
+    )
     parser.add_argument("--json", action="store_true", help="Print full payload JSON")
     parser.add_argument("--config", type=Path, help="Override config/index_basket.json")
     args = parser.parse_args()
 
-    if not (args.sync or args.date or (args.from_date and args.to_date)):
-        parser.error("pick a mode: --sync, --date, or --from/--to")
+    if args.verify_published:
+        if args.sync or args.date or args.from_date or args.to_date:
+            parser.error(
+                "--verify-published is its own mode — do not combine it "
+                "with --sync/--date/--from/--to"
+            )
+    elif not (args.sync or args.date or (args.from_date and args.to_date)):
+        parser.error(
+            "pick a mode: --sync, --date, --from/--to, or --verify-published"
+        )
 
     config = load_basket_config(args.config)
+
+    if args.verify_published:
+        return verify_published(args, config)
     params = calc_params(config)
     prefix = config["bucket_prefix"]
     slots = config["capture_slots_utc"]

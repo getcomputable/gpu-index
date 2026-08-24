@@ -12,10 +12,11 @@
 # published days advance the filter/weight state from their own artifacts —
 # then derives and prints the requested day's value. Nothing is written.
 #
-# For a day that IS already published in the local record, the compute CLI
-# deliberately treats the artifact as pinned (published days are never
-# re-derived), so a byte-for-byte single-day recompute entrypoint does not
-# exist yet; this script prints the published value and says so.
+# For a day that IS already published in the local record, this invokes the
+# compute CLI's --verify-published mode instead: a byte-for-byte recompute
+# of that day from the record (prior artifacts + the day's pinned snapshot),
+# compared against the stored artifact — MATCH exits 0, MISMATCH exits 1.
+# Published days are never revised; nothing is written either way.
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
@@ -41,22 +42,9 @@ METHODOLOGY=${META#* }
 
 PUBLISHED="$DATA_DIR/$PREFIX/composites/$METHODOLOGY/$DATE.json"
 if [ -f "$PUBLISHED" ]; then
-  echo "published record: $PUBLISHED"
-  "$PY" -c "
-import json, sys
-c = json.load(open(sys.argv[1]))
-idx = c.get('index') or {}
-v = idx.get('value_usd_gpu_hr')
-line = 'BASKET_DARK' if c.get('basket_dark') else f\"{v:.4f} \$/GPU-hr ({idx.get('sources_used_count', 0)} sources)\"
-print(f\"{c['date']}: {line}  [methodology {c['methodology_id']}]\")
-" "$PUBLISHED"
-  echo ""
-  echo "not wired yet: byte-for-byte RECOMPUTE of an already-published day."
-  echo "The compute CLI pins published days (they advance replay state but are"
-  echo "never re-derived; the drift scanner compares raw against them instead)."
-  echo "Intended invocation once a replay-published mode exists:"
-  echo "  $PY scripts/compute_index_composite.py --config $CONFIG --date $DATE --dry-run"
-  exit 3
+  echo "published record: $PUBLISHED — verifying a byte-for-byte recompute"
+  exec "$PY" "$ROOT/scripts/compute_index_composite.py" \
+    --config "$ROOT/$CONFIG" --verify-published "$DATE"
 fi
 
 exec "$PY" "$ROOT/scripts/compute_index_composite.py" \
