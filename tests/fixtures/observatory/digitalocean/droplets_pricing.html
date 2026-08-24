@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+    
+<script>
+var pdocsTheme = new URLSearchParams(window.location.search).get('theme');
+if (pdocsTheme === 'light' || pdocsTheme === 'dark') {
+    document.documentElement.dataset.theme = pdocsTheme;
+} else if (localStorage.pdocsTheme) {
+    document.documentElement.dataset.theme = localStorage.pdocsTheme;
+}
+</script><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark"><meta name="description" content="Billing and pricing information for CPU and GPU Droplets, including bandwidth charges.">
+
+<meta name="generator" content="Hugo 0.161.1">
+
+<meta name="google-site-verification" content="CAYPZwe7daX8KlYYZfB4VMjfT4g8Tqrrc4Q3g_wMvI8">
+
+<meta name="og:site_name" content="DigitalOcean">
+<meta name="og:type" content="article">
+
+<meta name="twitter:site" content="DigitalOcean">
+<meta name="twitter:creator" content="@DigitalOcean">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://docs.digitalocean.com/products/droplets/details/pricing/">
+
+<link rel="canonical" href="https://docs.digitalocean.com/products/droplets/details/pricing/">
+<meta name="keywords" content="DigitalOcean, cloud computing">
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "about": {
+    "@type": "Thing",
+    "name": "droplets"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "DigitalOcean",
+    "url": "https://www.digitalocean.com"
+  },
+  "dateModified": "2026-08-18",
+  "datePublished": "2018-06-19",
+  "description": "Billing and pricing information for CPU and GPU Droplets, including bandwidth charges.",
+  "headline": "Droplet Pricing",
+  "image": "https://www.digitalocean.com/_next/static/media/intro-to-cloud.d49bc5f7.jpeg",
+  "inLanguage": "en",
+  "keywords": "DigitalOcean, cloud computing",
+  "mainEntityOfPage": {
+    "@id": "https://docs.digitalocean.com/products/droplets/details/pricing/",
+    "@type": "WebPage"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://www.digitalocean.com/_next/static/media/logo.b31e883e.svg"
+    },
+    "name": "DigitalOcean"
+  }
+}
+</script>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+<link rel="stylesheet" href="/css/bundle.min.ec7914ebfa9c57404e146a6eb9538e476e159ee270cb6cf9e7ae642ac375143ea0683c58f2b1e3c537a5daf28061920fbd733a7297616b64919a7a329ae4cc8d.css" integrity="sha512-7HkU6/qcV0BOFGpuuVOOR24VnuJwy2z5565kKsN1FD6gaDxY8rHjxTel2vKAYZIPvXM6cpdha2SRmnoymuTMjQ=="><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+<title>Droplet Pricing | DigitalOcean Documentation</title>
+
+</head>
+
+<body>
+
+    
+    <script>
+    if (window.top !== window.self) {
+        document.body.classList.add('in-iframe');
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('a').forEach(function(a) {
+                a.target = '_blank';
+                a.rel = 'noopener';
+            });
+        });
+    }
+    </script>
+
+    
+    
+
+
+
+
+    
+
+
+
+    
+
+
+
+    
+    <header id="top-nav" class="pico container-fluid"><nav>
+    
+    <button id="mobile-menu" class="mobile-nav" aria-label="Menu" aria-expanded="false" aria-controls="section-links">
+        <i class="fa-solid fa-bars"></i>
+    </button>
+
+    
+    <ul>
+        <li id="top-nav-title-logo">
+            <a href="https://docs.digitalocean.com/"><div id="logo"><svg viewBox="0 0 156 27" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Logo">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M13.2947 27V21.7718C18.7578 21.7718 22.9578 16.287 20.8736 10.4494C20.1157 8.30044 18.4105 6.5684 16.2947 5.79861C10.5473 3.68168 5.14736 7.97969 5.14736 13.4965H0C0 4.676 8.39998 -2.22007 17.4947 0.666657C21.4736 1.91757 24.6315 5.15712 25.8947 9.19853C28.7368 18.4681 21.9789 27 13.2947 27Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M13.2937 21.8041H8.17792V16.608H13.2937V21.8041Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M8.17732 25.815H4.22996V21.8057H8.17732V25.815Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M4.23308 21.806H0.917302V18.4702H4.2015V21.806H4.23308Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M46.8249 7.82554C45.3246 6.78287 43.4493 6.24573 41.2614 6.24573H36.5106V21.5383H41.2614C43.4493 21.5383 45.3246 20.9696 46.8249 19.8637C47.6375 19.2634 48.2939 18.4419 48.7314 17.3992C49.169 16.3565 49.4191 15.1559 49.4191 13.7972C49.4191 12.4386 49.2003 11.2379 48.7314 10.2269C48.2939 9.18418 47.6688 8.36268 46.8249 7.82554ZM39.2949 8.80664H40.7951C42.4517 8.80664 43.8269 9.1226 44.8583 9.78613C46.0148 10.4812 46.6087 11.8399 46.6087 13.7673C46.6087 15.7578 46.0148 17.1481 44.8583 17.9064C43.8582 18.5699 42.5142 18.9175 40.8264 18.9175H39.3261V8.80664H39.2949Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M52.7629 6.0249C52.2941 6.0249 51.919 6.18288 51.6064 6.49885C51.2939 6.81481 51.1064 7.19397 51.1064 7.66791C51.1064 8.14185 51.2626 8.52101 51.5752 8.86857C51.8877 9.18453 52.2941 9.34251 52.7629 9.34251C53.2317 9.34251 53.6068 9.18453 53.9506 8.86857C54.2632 8.55261 54.4194 8.14185 54.4194 7.66791C54.4194 7.19397 54.2632 6.81481 53.9506 6.49885C53.6068 6.21448 53.2005 6.0249 52.7629 6.0249Z" fill="currentColor"/>
+<path d="M51.3883 10.7314H54.0763V21.5057H51.3883V10.7314Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M63.7931 11.6481C62.9805 10.9214 62.0741 10.5106 61.1052 10.5106C59.6361 10.5106 58.3859 11.0162 57.4483 12.0588C56.4793 13.0699 56.0105 14.3654 56.0105 15.9136C56.0105 17.4302 56.4793 18.7257 57.417 19.7683C58.3547 20.7794 59.6049 21.285 61.0739 21.285C62.1053 21.285 62.9805 21.0006 63.7306 20.4319V20.6846C63.7306 21.5693 63.4806 22.2644 63.043 22.7384C62.5742 23.2123 61.9178 23.4651 61.1364 23.4651C59.8862 23.4651 59.1361 22.9596 58.1671 21.6957L56.3543 23.4651L56.4168 23.5283C56.8232 24.097 57.417 24.6342 58.1984 25.1397C58.9798 25.6452 60.0112 25.9296 61.1677 25.9296C62.7617 25.9296 64.0432 25.4241 64.9808 24.4446C65.9185 23.4651 66.4186 22.1381 66.4186 20.5266V10.7318H63.7931V11.6481ZM63.0745 17.9998C62.6057 18.5369 62.0118 18.7897 61.2304 18.7897C60.4491 18.7897 59.8552 18.5369 59.4176 17.9998C58.9488 17.4626 58.73 16.7675 58.73 15.8828C58.73 14.9981 58.9488 14.303 59.4176 13.7659C59.8865 13.2287 60.4803 12.976 61.2304 12.976C62.0118 12.976 62.6057 13.2287 63.0745 13.7659C63.5433 14.303 63.7621 15.0297 63.7621 15.8828C63.7934 16.7675 63.5433 17.4626 63.0745 17.9998Z" fill="currentColor"/>
+<path d="M68.7036 10.7314H71.3916V21.5058H68.7036V10.7314Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M70.0782 6.0249C69.6093 6.0249 69.2343 6.18288 68.9217 6.49885C68.6092 6.81481 68.4216 7.19397 68.4216 7.66791C68.4216 8.14185 68.5779 8.52101 68.8905 8.86857C69.203 9.18453 69.6093 9.34251 70.0782 9.34251C70.547 9.34251 70.9221 9.18453 71.2659 8.86857C71.5784 8.55261 71.7347 8.14185 71.7347 7.66791C71.7347 7.19397 71.5784 6.81481 71.2659 6.49885C70.9221 6.21448 70.547 6.0249 70.0782 6.0249Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M77.2656 7.82446H74.6402V10.7313H73.1086V13.1958H74.6402V17.6509C74.6402 19.0411 74.9214 20.0522 75.4528 20.621C76.0154 21.1897 76.9843 21.5057 78.3283 21.5057C78.7659 21.5057 79.2034 21.5057 79.641 21.4741H79.766V19.0095L78.8596 19.0727C78.2345 19.0727 77.7969 18.9464 77.5782 18.7252C77.3594 18.504 77.2656 18.0301 77.2656 17.3033V13.2274H79.766V10.7629H77.2656V7.82446Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M92.3331 6.21277H95.021V21.5054H92.3331V6.21277Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M122.056 17.6514C121.587 18.1885 121.087 18.6625 120.712 18.9152C120.337 19.168 119.868 19.2628 119.337 19.2628C118.555 19.2628 117.899 18.9784 117.399 18.3781C116.899 17.7778 116.617 17.0195 116.617 16.1032C116.617 15.1869 116.867 14.4286 117.367 13.8282C117.868 13.2279 118.524 12.9435 119.305 12.9435C120.18 12.9435 121.087 13.4807 121.868 14.4286L123.65 12.7224C122.493 11.2057 121.024 10.5106 119.274 10.5106C117.805 10.5106 116.524 11.0478 115.492 12.122C114.461 13.1963 113.929 14.5233 113.929 16.1348C113.929 17.7462 114.461 19.1048 115.492 20.1475C116.524 21.2218 117.805 21.7589 119.274 21.7589C121.212 21.7589 122.775 20.9058 123.837 19.3576L122.056 17.6514Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M133.058 12.2504C132.683 11.7132 132.152 11.2709 131.527 10.9549C130.902 10.6389 130.152 10.481 129.308 10.481C127.808 10.481 126.589 11.0497 125.682 12.124C124.776 13.2298 124.338 14.5885 124.338 16.1683C124.338 17.8113 124.838 19.1383 125.807 20.181C126.776 21.1921 128.089 21.7292 129.683 21.7292C131.496 21.7292 132.965 21.0025 134.09 19.5491L134.152 19.4859L132.402 17.7797C132.246 17.9693 131.996 18.1905 131.808 18.4116C131.558 18.6644 131.308 18.854 131.027 18.9804C130.62 19.1699 130.183 19.2963 129.683 19.2963C128.933 19.2963 128.339 19.0751 127.87 18.6328C127.432 18.222 127.182 17.6849 127.12 16.9898H134.215L134.246 16.0103C134.246 15.3152 134.152 14.6517 133.965 14.0197C133.715 13.3562 133.433 12.7875 133.058 12.2504ZM127.213 14.7769C127.338 14.2714 127.588 13.8291 127.901 13.5131C128.276 13.1655 128.745 12.976 129.307 12.976C129.964 12.976 130.464 13.1655 130.808 13.5447C131.12 13.8922 131.308 14.303 131.339 14.8085H127.213V14.7769Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M143.343 11.5533C142.531 10.8582 141.405 10.5106 139.999 10.5106C139.093 10.5106 138.28 10.7002 137.53 11.0794C136.842 11.4269 136.154 12.0272 135.717 12.8171L135.748 12.8487L137.467 14.5233C138.186 13.3859 138.967 12.9751 139.999 12.9751C140.562 12.9751 141.03 13.1331 141.374 13.4175C141.718 13.7018 141.905 14.081 141.905 14.5865V15.1237C141.249 14.9341 140.593 14.8077 139.936 14.8077C138.592 14.8077 137.53 15.1237 136.717 15.7556C135.904 16.3875 135.498 17.3038 135.498 18.4413C135.498 19.4524 135.842 20.2739 136.53 20.8742C137.217 21.4745 138.092 21.7589 139.124 21.7589C140.155 21.7589 141.093 21.3481 141.968 20.6214V21.5061H144.593V14.5865C144.562 13.2595 144.156 12.2484 143.343 11.5533ZM138.59 17.3986C138.903 17.1774 139.309 17.0826 139.872 17.0826C140.528 17.0826 141.216 17.209 141.903 17.4618V18.5045C141.31 19.0416 140.528 19.326 139.591 19.326C139.122 19.326 138.778 19.2312 138.528 19.01C138.278 18.8204 138.153 18.5677 138.153 18.2201C138.153 17.8725 138.278 17.5882 138.59 17.3986Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M154.875 11.7415C154.125 10.8884 153.093 10.4777 151.749 10.4777C150.687 10.4777 149.811 10.7936 149.186 11.394V10.7304H146.561V21.5048H149.249V15.5647C149.249 14.7432 149.436 14.1112 149.811 13.6373C150.186 13.1633 150.718 12.9422 151.405 12.9422C151.999 12.9422 152.468 13.1317 152.812 13.5425C153.156 13.9533 153.312 14.522 153.312 15.2487V21.4732H156V15.2487C156 13.7637 155.625 12.5946 154.875 11.7415Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M88.9599 11.5533C88.1472 10.8582 87.022 10.5106 85.6155 10.5106C84.7091 10.5106 83.8965 10.7002 83.1464 11.0794C82.4587 11.4269 81.7711 12.0272 81.3336 12.8171L81.3648 12.8487L83.0839 14.5233C83.8027 13.3859 84.5841 12.9751 85.6155 12.9751C86.1781 12.9751 86.647 13.1331 86.9908 13.4175C87.3346 13.7018 87.5221 14.081 87.5221 14.5865V15.1237C86.8658 14.9341 86.2094 14.8077 85.553 14.8077C84.2091 14.8077 83.1464 15.1237 82.3337 15.7556C81.5211 16.3875 81.1148 17.3038 81.1148 18.4413C81.1148 19.4524 81.4586 20.2739 82.1462 20.8742C82.8338 21.4745 83.709 21.7589 84.7404 21.7589C85.7718 21.7589 86.7095 21.3481 87.5846 20.6214V21.5061H90.2101V14.5865C90.1788 13.2595 89.7725 12.2484 88.9599 11.5533ZM84.207 17.3986C84.5196 17.1774 84.9259 17.0826 85.4885 17.0826C86.1448 17.0826 86.8325 17.209 87.5201 17.4618V18.5045C86.9262 19.0416 86.1448 19.326 85.2072 19.326C84.7384 19.326 84.3945 19.2312 84.1445 19.01C83.8945 18.8204 83.7694 18.5677 83.7694 18.2201C83.7694 17.8725 83.8945 17.5882 84.207 17.3986Z" fill="currentColor"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M104.71 21.7269C100.428 21.7269 96.9269 18.1881 96.9269 13.8594C96.9269 9.53073 100.428 5.99194 104.71 5.99194C108.992 5.99194 112.492 9.53073 112.492 13.8594C112.492 18.1881 109.023 21.7269 104.71 21.7269ZM104.708 8.74072C101.926 8.74072 99.6756 11.0157 99.6756 13.8277C99.6756 16.6398 101.926 18.9147 104.708 18.9147C107.489 18.9147 109.74 16.6398 109.74 13.8277C109.74 11.0157 107.489 8.74072 104.708 8.74072Z" fill="currentColor"/>
+</g>
+</svg>
+</div><span class="nav-divider" aria-hidden="true"></span>
+                <span class="nav-docs-label">Docs</span>
+            </a>
+        </li>
+    </ul>
+
+    
+    <ul id="section-links"><li class="top-nav-section-links">
+            <a href="https://docs.digitalocean.com/platform/">Platform</a>
+        </li><li class="top-nav-section-links active">
+            <a href="https://docs.digitalocean.com/products/" class="active" aria-current="page">Products</a>
+        </li><li class="top-nav-section-links">
+            <a href="https://docs.digitalocean.com/reference/">Reference</a>
+        </li><li class="top-nav-section-links">
+            <a href="https://docs.digitalocean.com/support/">Support</a>
+        </li>
+    </ul>
+
+    
+    <ul>
+        <li class="nav-search-wrapper">
+            <div class="nav-search-box">
+                <i class="fa-solid fa-magnifying-glass nav-search-icon" aria-hidden="true"></i>
+                
+                <input id="top-nav-search" type="search" name="search" placeholder="Search Docs..." aria-label="Search" autocomplete="off"/>
+                <kbd class="nav-search-shortcut" aria-hidden="true"></kbd>
+            </div>
+        </li>
+        <li id="sign-up" class="not-mobile-nav">
+            <a href="https://cloud.digitalocean.com/registrations/new"><button>Sign Up</button></a>
+        </li>
+        <li>
+            <button id="light-dark-toggle" class="outline not-mobile-nav" type="button" aria-label="Toggle light or dark theme">
+                <span class="theme-icon theme-icon-sun" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <g fill="currentColor" transform="translate(12 12)">
+    <circle r="3.2"/>
+    <g transform="rotate(0)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+    <g transform="rotate(45)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+    <g transform="rotate(90)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+    <g transform="rotate(135)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+    <g transform="rotate(180)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+    <g transform="rotate(225)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+    <g transform="rotate(270)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+    <g transform="rotate(315)">
+      <rect x="-1.1" y="-7.5" width="2.2" height="3.3" rx="1.1"/>
+    </g>
+  </g>
+</svg>
+</span>
+                <span class="theme-icon theme-icon-moon" aria-hidden="true">
+                    <i class="fa-regular fa-moon"></i>
+                </span>
+            </button>
+        </li>
+    </ul>
+</nav>
+
+    </header>
+    
+
+    <div class="main-grid">
+        <aside id="left-nav" class="pico"><nav id="left-menu" data-menu="droplets">
+    <div class="mobile-nav section-list"></div><ul>
+    <li class="menu-back-link">
+            <a href="https://docs.digitalocean.com/products/" class="contrast">
+                <span class="menuText">Product Home</span>
+            </a>
+        </li><li data-menu-key="/products/droplets/|Droplets"><a href="/products/droplets/" class="contrast menu-link">
+    <span class="menu-label"><img src="/images/icons/droplets.f4877fc574e6b07f8fb9608e252be4160ebecd65569acea11775a046b9370c6f.svg" integrity="sha256-9Id/xXTmsH&#43;PuWCOJSvkFg6&#43;zWVWms6hF3WgRrk3DG8="><span class="menuText">Droplets</span>
+    </span></a>
+</li>
+
+<li class="has-submenu" data-menu-key="/products/droplets/getting-started/|Getting Started"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/getting-started/" class="contrast menu-link"><span class="menuText">Getting Started</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="true" aria-controls="submenu-3838252677" aria-label="Toggle Getting Started section"></button>
+</div><ul class="menu-children" id="submenu-3838252677">
+    <li data-menu-key="/products/droplets/getting-started/quickstart/|Quickstart"><a href="/products/droplets/getting-started/quickstart/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Quickstart</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/getting-started/recommended-droplet-setup/|Recommended Droplet Setup"><a href="/products/droplets/getting-started/recommended-droplet-setup/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Recommended Droplet Setup</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/getting-started/recommended-gpu-setup/|Recommended GPU Setup"><a href="/products/droplets/getting-started/recommended-gpu-setup/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Recommended GPU Setup</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li class="has-submenu" data-menu-key="/products/droplets/how-to/|How-Tos"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/how-to/" class="contrast menu-link"><span class="menuText">How-Tos</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="true" aria-controls="submenu-3556308715" aria-label="Toggle How-Tos section"></button>
+</div><ul class="menu-children" id="submenu-3556308715">
+    <li data-menu-key="/products/droplets/how-to/create/|Create Droplets"><a href="/products/droplets/how-to/create/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Create Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/create-private-droplet/|Create Private Droplets"><a href="/products/droplets/how-to/create-private-droplet/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Create Private Droplets</span>
+    </span></a>
+</li>
+
+
+        <li class="has-submenu is-collapsed" data-menu-key="/products/droplets/how-to/gpu/|Use GPU Droplets"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/how-to/gpu/" class="contrast menu-link"><span class="menuText">Use GPU Droplets</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="false" aria-controls="submenu-2117088891" aria-label="Toggle Use GPU Droplets section"></button>
+</div><ul class="menu-children" id="submenu-2117088891">
+    <li data-menu-key="/products/droplets/how-to/gpu/create/|Create GPU Droplets"><a href="/products/droplets/how-to/gpu/create/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Create GPU Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/gpu/use-scratch-disk/|Use the Scratch Disk"><a href="/products/droplets/how-to/gpu/use-scratch-disk/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Use the Scratch Disk</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/gpu/enable-metrics/|Enable GPU Metrics"><a href="/products/droplets/how-to/gpu/enable-metrics/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Enable GPU Metrics</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/gpu/tune-networking/|Tune Network Performance"><a href="/products/droplets/how-to/gpu/tune-networking/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Tune Network Performance</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="https://www.digitalocean.com/community/tutorials/how-to-use-nvidia-container-tools-with-gpu-droplets|Use Container Tools"><a href="https://www.digitalocean.com/community/tutorials/how-to-use-nvidia-container-tools-with-gpu-droplets" class="contrast menu-link has-fa" data-pdocs-menu-post="&#xf35d">
+    <span class="menu-label"><span class="menuText">Use Container Tools</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/gpu/configure-multi-node/|Configure Multi-Node Setups"><a href="/products/droplets/how-to/gpu/configure-multi-node/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Configure Multi-Node Setups</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/provide-user-data/|Provide User Data"><a href="/products/droplets/how-to/provide-user-data/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Provide User Data</span>
+    </span></a>
+</li>
+
+
+        <li class="has-submenu is-collapsed" data-menu-key="/products/droplets/how-to/connect-with-ssh/|Connect with SSH"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/how-to/connect-with-ssh/" class="contrast menu-link"><span class="menuText">Connect with SSH</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="false" aria-controls="submenu-2929342979" aria-label="Toggle Connect with SSH section"></button>
+</div><ul class="menu-children" id="submenu-2929342979">
+    <li data-menu-key="/products/droplets/how-to/connect-with-ssh/openssh/|Connect with OpenSSH"><a href="/products/droplets/how-to/connect-with-ssh/openssh/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Connect with OpenSSH</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/connect-with-ssh/putty/|Connect with PuTTY"><a href="/products/droplets/how-to/connect-with-ssh/putty/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Connect with PuTTY</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li class="has-submenu is-collapsed" data-menu-key="/products/droplets/how-to/add-ssh-keys/|Add SSH Keys to Droplets"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/how-to/add-ssh-keys/" class="contrast menu-link"><span class="menuText">Add SSH Keys to Droplets</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="false" aria-controls="submenu-142681389" aria-label="Toggle Add SSH Keys to Droplets section"></button>
+</div><ul class="menu-children" id="submenu-142681389">
+    <li data-menu-key="/products/droplets/how-to/add-ssh-keys/create-with-openssh/|Create Keys with OpenSSH"><a href="/products/droplets/how-to/add-ssh-keys/create-with-openssh/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Create Keys with OpenSSH</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/add-ssh-keys/create-with-putty/|Create Keys with PuTTY"><a href="/products/droplets/how-to/add-ssh-keys/create-with-putty/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Create Keys with PuTTY</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/platform/teams/how-to/upload-ssh-keys/|Manage SSH Keys on Teams"><a href="/platform/teams/how-to/upload-ssh-keys/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Manage SSH Keys on Teams</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/add-ssh-keys/to-existing-droplet/|Add Keys to Existing Droplets"><a href="/products/droplets/how-to/add-ssh-keys/to-existing-droplet/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Add Keys to Existing Droplets</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/connect-private-droplet/|Connect to a Private Droplet"><a href="/products/droplets/how-to/connect-private-droplet/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Connect to a Private Droplet</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/connect-with-console/|Connect with the Droplet Console"><a href="/products/droplets/how-to/connect-with-console/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Connect with the Droplet Console</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/transfer-files/|Transfer Files with FileZilla"><a href="/products/droplets/how-to/transfer-files/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Transfer Files with FileZilla</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/tag/|Tag Droplets"><a href="/products/droplets/how-to/tag/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Tag Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/track-performance/|Track Performance"><a href="/products/droplets/how-to/track-performance/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Track Performance</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/resize/|Resize Droplets"><a href="/products/droplets/how-to/resize/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Resize Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/use-autoscale-pools/|Use Autoscale Pools"><a href="/products/droplets/how-to/use-autoscale-pools/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Use Autoscale Pools</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/access-metadata/|Access Metadata"><a href="/products/droplets/how-to/access-metadata/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Access Metadata</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/rebuild/|Rebuild Droplets"><a href="/products/droplets/how-to/rebuild/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Rebuild Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/manage-agent/|Manage the Droplet Agent"><a href="/products/droplets/how-to/manage-agent/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Manage the Droplet Agent</span>
+    </span></a>
+</li>
+
+
+        <li class="has-submenu is-collapsed" data-menu-key="/products/droplets/how-to/kernel/|Manage the Kernel"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/how-to/kernel/" class="contrast menu-link"><span class="menuText">Manage the Kernel</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="false" aria-controls="submenu-3792529293" aria-label="Toggle Manage the Kernel section"></button>
+</div><ul class="menu-children" id="submenu-3792529293">
+    <li data-menu-key="/products/droplets/how-to/kernel/grubloader/|Switch to an Internal Kernel"><a href="/products/droplets/how-to/kernel/grubloader/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Switch to an Internal Kernel</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/kernel/upgrade/|Upgrade to the Latest Kernel"><a href="/products/droplets/how-to/kernel/upgrade/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Upgrade to the Latest Kernel</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/kernel/use-non-default/|Boot into a Specific Kernel"><a href="/products/droplets/how-to/kernel/use-non-default/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Boot into a Specific Kernel</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li class="has-submenu is-collapsed" data-menu-key="/products/droplets/how-to/recovery/|Recover Access or Data"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/how-to/recovery/" class="contrast menu-link"><span class="menuText">Recover Access or Data</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="false" aria-controls="submenu-4284159539" aria-label="Toggle Recover Access or Data section"></button>
+</div><ul class="menu-children" id="submenu-4284159539">
+    <li data-menu-key="/products/droplets/how-to/recovery/recovery-iso/|Boot from Recovery ISO"><a href="/products/droplets/how-to/recovery/recovery-iso/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Boot from Recovery ISO</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/recovery/recovery-console/|Connect with Recovery Console"><a href="/products/droplets/how-to/recovery/recovery-console/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Connect with Recovery Console</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li data-menu-key="/products/droplets/how-to/destroy/|Destroy Droplets"><a href="/products/droplets/how-to/destroy/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Destroy Droplets</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li class="has-submenu" data-menu-key="/products/droplets/reference/|Reference"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/reference/" class="contrast menu-link"><span class="menuText">Reference</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="true" aria-controls="submenu-4111923050" aria-label="Toggle Reference section"></button>
+</div><ul class="menu-children" id="submenu-4111923050">
+    <li class="has-submenu is-collapsed" data-menu-key="/products/droplets/reference/api/|API Reference"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/reference/api/" class="contrast menu-link"><span class="menuText">API Reference</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="false" aria-controls="submenu-2439928143" aria-label="Toggle API Reference section"></button>
+</div><ul class="menu-children" id="submenu-2439928143">
+    <li data-menu-key="/products/droplets/reference/api/droplets/|Droplets"><a href="/products/droplets/reference/api/droplets/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/reference/api/droplet-actions/|Droplet Actions"><a href="/products/droplets/reference/api/droplet-actions/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Droplet Actions</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/reference/api/images/|Images"><a href="/products/droplets/reference/api/images/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Images</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/reference/api/image-actions/|Image Actions"><a href="/products/droplets/reference/api/image-actions/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Image Actions</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/reference/api/droplet-autoscale-pools/|Droplet Autoscale Pools"><a href="/products/droplets/reference/api/droplet-autoscale-pools/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Droplet Autoscale Pools</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li data-menu-key="/reference/doctl/reference/compute/droplet/|CLI Reference"><a href="/reference/doctl/reference/compute/droplet/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">CLI Reference</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/reference/mcp/|MCP Reference"><a href="/reference/mcp/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">MCP Reference</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li class="has-submenu" data-menu-key="/products/droplets/concepts/|Concepts"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/concepts/" class="contrast menu-link"><span class="menuText">Concepts</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="true" aria-controls="submenu-4268597126" aria-label="Toggle Concepts section"></button>
+</div><ul class="menu-children" id="submenu-4268597126">
+    <li data-menu-key="/products/droplets/concepts/choosing-a-plan/|Choosing a Plan"><a href="/products/droplets/concepts/choosing-a-plan/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Choosing a Plan</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/concepts/spot-vs-on-demand/|Compare Spot and On-Demand GPU Droplets"><a href="/products/droplets/concepts/spot-vs-on-demand/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Compare Spot and On-Demand GPU Droplets</span>
+    </span>
+        <span class="pill pill-public">public</span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/concepts/downsizing-considerations/|Tips on Downsizing Droplets"><a href="/products/droplets/concepts/downsizing-considerations/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Tips on Downsizing Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/concepts/autoscale-pools/|Autoscale Pools"><a href="/products/droplets/concepts/autoscale-pools/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Autoscale Pools</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/glossary/droplets/|Glossary"><a href="/glossary/droplets/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Glossary</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+
+        <li class="has-submenu" data-menu-key="/products/droplets/details/|Details"><div class="menu-row">
+<span class="menu-label">
+<a href="/products/droplets/details/" class="contrast menu-link"><span class="menuText">Details</span>
+</a>
+</span><button type="button" class="menu-toggle" aria-expanded="true" aria-controls="submenu-908732816" aria-label="Toggle Details section"></button>
+</div><ul class="menu-children" id="submenu-908732816">
+    <li data-menu-key="/products/droplets/details/features/|Features"><a href="/products/droplets/details/features/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Features</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/pricing/|Pricing"><a href="/products/droplets/details/pricing/" class="primary active menu-link">
+    <span class="menu-label"><span class="menuText">Pricing</span>
+    </span></a>
+</li>
+
+<li data-menu-key="/products/droplets/details/availability/|Availability"><a href="/products/droplets/details/availability/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Availability</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/gpu-availability/|GPU Availability"><a href="/products/droplets/details/gpu-availability/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">GPU Availability</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/images/|Images"><a href="/products/droplets/details/images/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Images</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/limits/|Limits"><a href="/products/droplets/details/limits/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Limits</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/private-droplets/|Private Droplets"><a href="/products/droplets/details/private-droplets/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Private Droplets</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/image-deprecation/|Image Deprecation Policy"><a href="/products/droplets/details/image-deprecation/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Image Deprecation Policy</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/mirrors/|Package Mirrors"><a href="/products/droplets/details/mirrors/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Package Mirrors</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/policies/|Droplet Policies"><a href="/products/droplets/details/policies/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Droplet Policies</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/droplets/details/live-migration/|Live Migrations"><a href="/products/droplets/details/live-migration/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Live Migrations</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="https://www.digitalocean.com/sla/cpu-droplets|CPU Droplet SLA"><a href="https://www.digitalocean.com/sla/cpu-droplets" class="contrast menu-link has-fa" data-pdocs-menu-post="&#xf35d">
+    <span class="menu-label"><span class="menuText">CPU Droplet SLA</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="https://www.digitalocean.com/sla/gpu-droplets|GPU Droplet SLA"><a href="https://www.digitalocean.com/sla/gpu-droplets" class="contrast menu-link has-fa" data-pdocs-menu-post="&#xf35d">
+    <span class="menu-label"><span class="menuText">GPU Droplet SLA</span>
+    </span></a>
+</li>
+
+
+        <li data-menu-key="/products/gpu-droplets/|GPU Droplets"><a href="/products/gpu-droplets/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">GPU Droplets</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</li>
+
+<li data-menu-key="/products/droplets/support/|Support"><a href="/products/droplets/support/" class="contrast menu-link">
+    <span class="menu-label"><span class="menuText">Support</span>
+    </span></a>
+</li>
+
+
+        </ul>
+</nav>
+<script>
+
+
+(function() {
+    var menu = document.getElementById('left-menu');
+    if (!menu) return;
+
+    var menuName = menu.dataset.menu || '';
+    var scrollKey = 'pdocs-left-menu-scroll-' + menuName;
+    var stateKey = 'pdocs-left-menu-state-' + menuName;
+
+    var saved = sessionStorage.getItem(scrollKey);
+    if (saved) {
+        menu.scrollTop = parseInt(saved, 10);
+    }
+
+    var rawState = sessionStorage.getItem(stateKey);
+    if (rawState) {
+        try {
+            var state = JSON.parse(rawState);
+            menu.querySelectorAll('li[data-menu-key]').forEach(function(li) {
+                var key = li.getAttribute('data-menu-key');
+                if (!key || !(key in state)) return;
+                var toggle = li.querySelector('.menu-toggle');
+                if (state[key] === 'closed') {
+                    li.classList.add('is-collapsed');
+                    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+                } else if (state[key] === 'open') {
+                    li.classList.remove('is-collapsed');
+                    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+                }
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    var active = menu.querySelector('a.active');
+    if (active) {
+        var state = {};
+        try {
+            var rawState = sessionStorage.getItem(stateKey);
+            if (rawState) state = JSON.parse(rawState);
+        } catch (e) {
+            console.error(e);
+        }
+        var node = active.closest('li');
+        while (node && menu.contains(node)) {
+            node.classList.remove('is-collapsed');
+            var toggle = node.querySelector('.menu-toggle');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+            var menuKey = node.getAttribute('data-menu-key');
+            if (menuKey) state[menuKey] = 'open';
+            var parentUl = node.parentElement;
+            if (!parentUl || parentUl.tagName !== 'UL') break;
+            node = parentUl.closest('li');
+        }
+        sessionStorage.setItem(stateKey, JSON.stringify(state));
+
+        var mr = menu.getBoundingClientRect();
+        var ar = active.getBoundingClientRect();
+        if (ar.top < mr.top || ar.bottom > mr.bottom) {
+            active.scrollIntoView({ block: 'center' });
+        }
+    }
+})();
+</script>
+</aside>
+
+        <main id="content">
+            <div class="pico before-content">
+
+<nav id="breadcrumbs" aria-label="breadcrumb">
+<ul itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem"><a itemscope itemtype="https://schema.org/WebPage" itemprop="item" 
+            href="/products/droplets/details/" itemid="/products/droplets/details/"
+        >
+            <span itemprop="name">Details</span>
+        </a><meta itemprop="position" content="1" />
+    </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem"><span itemprop="name">Pricing</span><meta itemprop="position" content="2" />
+</li>
+</ul>
+</nav>
+<div class="feedback">
+    <span>
+        <button onclick="thumbRatingClicked(this, 'Page Rating','2026-08-18 00:00:00 \u002b0000 UTC', 1);">
+            <i class="fa-solid fa-thumbs-up" ></i>
+        </button>
+        <button onclick="thumbRatingClicked(this, 'Page Rating','2026-08-18 00:00:00 \u002b0000 UTC', 0);">
+            <i class="fa-solid fa-thumbs-down" ></i>
+        </button>
+    </span>
+    <span><a href="https://ideas.digitalocean.com/documentation">Give Feedback</a>
+    </span>
+</div>
+</div>
+
+            <section><blockquote class="agent-docs-directive" style="display:none">
+  <p><strong>For AI agents:</strong> The documentation index is at <a href="https://docs.digitalocean.com/llms.txt">https://docs.digitalocean.com/llms.txt</a>. Markdown versions of pages use the same URL with <code>index.html.md</code> in place of the HTML page (for example, append <code>index.html.md</code> to the directory path instead of opening the HTML document).</p>
+</blockquote>
+
+                <hgroup id="content-header">
+                    <h1>Droplet Pricing</h1><p>Last verified 18 Aug 2026</p><p id="product-summary">DigitalOcean Droplets are Linux-based virtual machines (VMs) that run on top of virtualized hardware. Each Droplet you create is a new server you can use, either standalone or as part of a larger, cloud-based infrastructure.</p></hgroup>
+
+                <div class="md-tools">
+    <a href="#" class="page-tool copy-text has-fa" data-copy-url="/products/droplets/details/pricing/index.html.md" aria-label="Copy page as Markdown">
+        <i class="fa-regular fa-clipboard"></i> Copy page as Markdown
+    </a>
+    <a href="/products/droplets/details/pricing/index.html.md" class="page-tool view-markdown has-fa" target="_blank" rel="noopener" aria-label="View page as Markdown">
+        <i class="fa-regular fa-file-lines"></i> View page as Markdown <i class="fa-solid fa-arrow-up-right-from-square"></i>
+    </a>
+</div>
+<p>Droplet pricing depends on the plan type. CPU and GPU Droplets use different plan catalogs and rates. The sections below describe billing and list prices for each plan type.</p>
+<p><a href="/products/droplets/details/private-droplets/">Private Droplets</a> do not have additional costs beyond standard Droplet pricing.</p>
+<h2 id="cpu-droplet-pricing">CPU Droplet Pricing
+    <a href="#cpu-droplet-pricing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#cpu-droplet-pricing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h2>
+<p>You can view a full list of the CPU Droplet plans we offer and their prices on the CPU Droplets pricing page:</p>
+<article class="card">
+    <a href="https://www.digitalocean.com/pricing/droplets" class="card-primary-action" target="_blank"></a>
+    <header>
+        <span class="card-icon">
+            <img src="/images/icons/digitalocean-logomark.fbe7ea61f6bde3a4d8848d2e3d241a26db3d79d7adc9c651104c68bd1d212c82.svg" alt="" width="24" height="24" decoding="async"></span>
+        <div class="card-title">DigitalOcean CPU Droplet Pricing</div>
+    </header><p>Hourly and monthly pricing for DigitalOcean Droplets, including all plans and CPU options.</p>
+<footer>
+        <small>
+        <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>digitalocean.com</small>
+    </footer></article>
+
+<p>You can retrieve a list of available Droplet plans using the API endpoint <a href="/reference/api/reference/sizes/#sizes_list"><code>/v2/sizes</code></a> or the CLI command <a href="/reference/doctl/reference/compute/size/"><code>doctl compute size list</code></a>.</p>
+<h3 id="cpu-droplet-billing">CPU Droplet Billing
+    <a href="#cpu-droplet-billing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#cpu-droplet-billing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h3>
+<p>CPU Droplets are billed per second with a minimum charge of 60 seconds or $0.01, whichever is higher. If you create a CPU Droplet and destroy it in less than 60 seconds, you are still charged the minimum.</p>
+<p>Billing begins when you create the Droplet and ends when you <a href="/products/droplets/how-to/destroy/">destroy it</a>. You are still billed for CPU Droplets that are powered off because the compute resources stay reserved on the hypervisor. To end billing, <a href="/products/droplets/how-to/destroy/">destroy the Droplet</a>.</p>
+<h2 id="on-demand-gpu-droplet-pricing">On-Demand GPU Droplet Pricing
+    <a href="#on-demand-gpu-droplet-pricing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#on-demand-gpu-droplet-pricing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h2>
+<p>On-demand GPU Droplet plans are billed at the following hourly rates:</p>
+<div class="overflow-auto">
+<table>
+  <thead>
+      <tr>
+          <th>GPU</th>
+          <th>Price</th>
+      </tr>
+  </thead>
+  <tbody><tr>
+          <td>AMD MI300X</td>
+          <td>$2.59 per hour</td>
+      </tr><tr>
+          <td>AMD MI300X (8x)</td>
+          <td>$20.72 per hour</td>
+      </tr><tr>
+          <td>AMD MI325X</td>
+          <td>$3.80 per hour</td>
+      </tr><tr>
+          <td>AMD MI325X (8x)</td>
+          <td>$30.40 per hour</td>
+      </tr><tr>
+          <td>NVIDIA H100</td>
+          <td>$4.41 per hour</td>
+      </tr><tr>
+          <td>NVIDIA H100 (8x)</td>
+          <td>$35.28 per hour</td>
+      </tr><tr>
+          <td>NVIDIA L40s</td>
+          <td>$1.57 per hour</td>
+      </tr><tr>
+          <td>NVIDIA RTX 4000</td>
+          <td>$0.76 per hour</td>
+      </tr><tr>
+          <td>NVIDIA RTX 6000</td>
+          <td>$1.57 per hour</td>
+      </tr><tr>
+          <td>NVIDIA H200</td>
+          <td>$4.47 per hour</td>
+      </tr><tr>
+          <td>NVIDIA H200 (8x)</td>
+          <td>$35.76 per hour</td>
+      </tr>
+  </tbody>
+</table>
+</div>
+<p>If you are a newer DigitalOcean customer, we may charge your team&rsquo;s primary payment method partway through the monthly billing cycle when you create GPU Droplets, but your total cost is not increased. This is a precautionary measure to prevent abuse of our platform.</p>
+<h3 id="on-demand-gpu-droplet-billing">On-Demand GPU Droplet Billing
+    <a href="#on-demand-gpu-droplet-billing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#on-demand-gpu-droplet-billing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h3>
+<p>GPU Droplets follow the same billing model as CPU Droplets. They are billed per second with a minimum charge of 60 seconds or $0.01, whichever is higher.</p>
+<p>Billing begins when you create the GPU Droplet and ends when you <a href="/products/droplets/how-to/destroy/">destroy it</a>. You are still billed for GPU Droplets that are powered off. The GPU and other compute resources stay reserved on the hypervisor even when the Droplet is not running. Powering off a GPU Droplet does not stop billing. To end billing, <a href="/products/droplets/how-to/destroy/">destroy the GPU Droplet</a>.</p>
+<h2 id="spot-gpu-droplet-pricing">Spot GPU Droplet Pricing
+        <span class="pill pill-in-header pill-public">public</span>
+    
+    <a href="#spot-gpu-droplet-pricing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#spot-gpu-droplet-pricing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h2>
+<article class="notice notice-note">
+    <header>
+        <span class="notice-icon" aria-hidden="true"></span>
+        <span class="notice-title">Note</span>
+    </header>
+    <div class="notice-body"><p>Spot GPU Droplets are in <a href="/platform/product-lifecycle/#public-preview">public preview</a>. Spot GPU Droplet pricing is separate from on-demand pricing and may change daily based on available idle GPU capacity.</p>
+</div>
+</article>
+
+<p>Spot GPU Droplets provide supported GPU configurations at a variable rate based on available capacity. The Spot GPU Droplet price is always equal to or less than the on-demand price for the same configuration. Spot GPU Droplet prices may change daily.</p>
+<div class="overflow-auto">
+<table>
+  <thead>
+      <tr>
+          <th style="text-align: left">GPU</th>
+          <th style="text-align: left">Price</th>
+      </tr>
+  </thead>
+  <tbody><tr>
+          <td style="text-align: left">AMD MI350X</td>
+          <td style="text-align: left">$4.00 per hour</td>
+      </tr><tr>
+          <td style="text-align: left">AMD MI350X (8x)</td>
+          <td style="text-align: left">$32.00 per hour</td>
+      </tr><tr>
+          <td style="text-align: left">AMD MI355X</td>
+          <td style="text-align: left">$4.50 per hour</td>
+      </tr><tr>
+          <td style="text-align: left">AMD MI355X (8x)</td>
+          <td style="text-align: left">$36.00 per hour</td>
+      </tr><tr>
+          <td style="text-align: left">NVIDIA B300, air-cooled</td>
+          <td style="text-align: left">$11.19 per hour</td>
+      </tr><tr>
+          <td style="text-align: left">NVIDIA B300, air-cooled (8x)</td>
+          <td style="text-align: left">$89.52 per hour</td>
+      </tr><tr>
+          <td style="text-align: left">NVIDIA B300, liquid-cooled</td>
+          <td style="text-align: left">$11.19 per hour</td>
+      </tr><tr>
+          <td style="text-align: left">NVIDIA B300, liquid-cooled (8x)</td>
+          <td style="text-align: left">$89.52 per hour</td>
+      </tr>
+  </tbody>
+</table>
+</div>
+<h3 id="spot-gpu-droplet-billing">Spot GPU Droplet Billing
+        <span class="pill pill-in-header pill-public">public</span>
+    
+    <a href="#spot-gpu-droplet-billing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#spot-gpu-droplet-billing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h3>
+<p>Spot GPU Droplets use the same per-second billing model as on-demand GPU Droplets, with a minimum charge of 60 seconds or $0.01, whichever is higher.</p>
+<p>Billing begins when you create the Spot GPU Droplet and ends when you destroy it or DigitalOcean reclaims it. DigitalOcean may reclaim Spot GPU Droplets with at least two hours&rsquo; notice.</p>
+<h2 id="contract-gpu-droplet-pricing">Contract GPU Droplet Pricing
+    <a href="#contract-gpu-droplet-pricing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#contract-gpu-droplet-pricing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h2>
+<p>Per-contract GPU plans use size slugs that do not appear in the self-service <a href="/reference/api/reference/sizes/#sizes_list"><code>GET /v2/sizes</code></a> response. Provision them through your sales agreement.</p>
+<div class="overflow-auto">
+<table>
+  <thead>
+      <tr>
+          <th>GPU</th>
+          <th>Price</th>
+      </tr>
+  </thead>
+  <tbody><tr>
+          <td>AMD MI350X</td>
+          <td>Per contract after <a href="https://www.digitalocean.com/company/contact/sales">contacting sales</a></td>
+      </tr><tr>
+          <td>AMD MI350X (8x)</td>
+          <td>Per contract after <a href="https://www.digitalocean.com/company/contact/sales">contacting sales</a></td>
+      </tr><tr>
+          <td>NVIDIA B300</td>
+          <td>Per contract after <a href="https://www.digitalocean.com/company/contact/sales">contacting sales</a></td>
+      </tr><tr>
+          <td>NVIDIA B300 (8x)</td>
+          <td>Per contract after <a href="https://www.digitalocean.com/company/contact/sales">contacting sales</a></td>
+      </tr>
+  </tbody>
+</table>
+</div>
+<h3 id="contract-gpu-droplet-billing">Contract GPU Droplet Billing
+    <a href="#contract-gpu-droplet-billing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#contract-gpu-droplet-billing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h3>
+<p>GPU Droplets follow the same billing model as CPU Droplets. They are billed per second with a minimum charge of 60 seconds or $0.01, whichever is higher.</p>
+<p>Billing begins when you create the GPU Droplet and ends when you <a href="/products/droplets/how-to/destroy/">destroy it</a>. You are still billed for GPU Droplets that are powered off. The GPU and other compute resources stay reserved on the hypervisor even when the Droplet is not running. Powering off a GPU Droplet does not stop billing. To end billing, <a href="/products/droplets/how-to/destroy/">destroy the GPU Droplet</a>.</p>
+<h2 id="bandwidth-billing">Bandwidth Billing
+    <a href="#bandwidth-billing" class="anchor has-fa"
+        onclick="navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#bandwidth-billing');"
+    >
+        <i class="fa-solid fa-link"></i>
+    </a>
+</h2>
+<p>Each Droplet plan includes an amount of free outbound data transfer. Additional outbound transfer is billed at $0.01 per GiB. Inbound transfer to Droplets is free.</p>
+<p>Transfer allowance and usage is pooled cumulatively across all Droplets at the team level, not individually per Droplet. Accrued transfer does not roll over between months and cannot be transferred between teams.</p>
+<p>Any data transfer sent by a Droplet using a public network interface counts against the transfer pool for that Droplet&rsquo;s team. All IPv6 traffic uses the public interface. Data transfer between Droplets over the <a href="/products/networking/vpc/">VPC network</a> uses a private network interface. We do not bill for outbound data transfer that we determine is dropped by a DigitalOcean firewall rule.</p>
+<p>In the <strong>Droplet Transfer (Bandwidth) Overview</strong> section of the <a href="https://cloud.digitalocean.com/account/billing">team billing page</a>, you can view usage data and projections about your team&rsquo;s transfer pool, updated daily. We base projections on the assumption that your team maintains the same daily averages for both quantity of active Droplets and bandwidth usage through the end of the billing cycle.</p>
+<p>You can calculate bandwidth costs using our <a href="https://www.digitalocean.com/community/tools/bandwidth">Droplet bandwidth calculator</a>.</p>
+<p>For more details and examples of bandwidth billing for Droplets, see the <a href="/platform/billing/bandwidth/#details-and-examples">bandwidth billing page</a>.</p>
+</section>
+        </main>
+
+        <aside id="right-nav"><div id="right-menu">
+                <p>In this article...</p><nav id="TableOfContents">
+  <ul>
+    <li><a href="#cpu-droplet-pricing">CPU Droplet Pricing</a>
+      <ul>
+        <li><a href="#cpu-droplet-billing">CPU Droplet Billing</a></li>
+      </ul>
+    </li>
+    <li><a href="#on-demand-gpu-droplet-pricing">On-Demand GPU Droplet Pricing</a>
+      <ul>
+        <li><a href="#on-demand-gpu-droplet-billing">On-Demand GPU Droplet Billing</a></li>
+      </ul>
+    </li>
+    <li><a href="#spot-gpu-droplet-pricing">Spot GPU Droplet Pricing</a>
+      <ul>
+        <li><a href="#spot-gpu-droplet-billing">Spot GPU Droplet Billing</a></li>
+      </ul>
+    </li>
+    <li><a href="#contract-gpu-droplet-pricing">Contract GPU Droplet Pricing</a>
+      <ul>
+        <li><a href="#contract-gpu-droplet-billing">Contract GPU Droplet Billing</a></li>
+      </ul>
+    </li>
+    <li><a href="#bandwidth-billing">Bandwidth Billing</a></li>
+  </ul>
+</nav>
+            </div></aside>
+
+        <footer id="footer" class="pico">
+            <div id="footer-top" class="footer-section"><div>
+        <h5>Company</h5>
+        <ul><li><a href="https://www.digitalocean.com/about">About</a></li><li><a href="https://www.digitalocean.com/careers">Careers</a></li><li><a href="https://www.digitalocean.com/blog">Blog</a></li></ul>
+    </div><div>
+        <h5>Docs</h5>
+        <ul><li><a href="https://docs.digitalocean.com">Docs Home</a></li><li><a href="https://docs.digitalocean.com/reference/api">API Reference</a></li><li><a href="https://docs.digitalocean.com/reference/doctl">CLI Reference</a></li><li><a href="https://docs.digitalocean.com/release-notes">Release Notes</a></li><li><a href="https://docs.digitalocean.com/llms.txt">llms.txt</a></li><li><a href="https://www.digitalocean.com/trust">Trust Platform</a></li></ul>
+    </div><div>
+        <h5>Community</h5>
+        <ul><li><a href="https://www.digitalocean.com/community/tutorials">Tutorials</a></li><li><a href="https://www.digitalocean.com/community/questions">Q&amp;A</a></li><li><a href="https://www.digitalocean.com/community/pages/write-for-digitalocean">Write for DOnations</a></li><li><a href="https://www.digitalocean.com/currents">Currents Research</a></li><li><a href="https://www.digitalocean.com/legal">Legal</a></li><li><a href="https://www.digitalocean.com/community/pages/code-of-conduct">Code of Conduct</a></li></ul>
+    </div><div>
+        <h5>Support</h5>
+        <ul><li><a href="/support">Support Center</a></li><li><a href="https://www.digitalocean.com/company/contact/abuse">Report Abuse</a></li></ul>
+    </div></div>
+
+<hr>
+
+<div id="footer-bottom" class="footer-section">
+    <div class="footer-branding"><span class="footer-logo"><svg viewBox="0 0 27 27" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M13.2947 27V21.7718C18.7578 21.7718 22.9578 16.287 20.8736 10.4494C20.1157 8.30044 18.4105 6.5684 16.2947 5.79861C10.5473 3.68168 5.14736 7.97969 5.14736 13.4965H0C0 4.676 8.39998 -2.22007 17.4947 0.666657C21.4736 1.91757 24.6315 5.15712 25.8947 9.19853C28.7368 18.4681 21.9789 27 13.2947 27Z" fill="#0080FF"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M13.2937 21.8041H8.17792V16.608H13.2937V21.8041Z" fill="#0080FF"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M8.17732 25.815H4.22996V21.8057H8.17732V25.815Z" fill="#0080FF"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M4.23308 21.806H0.917302V18.4702H4.2015V21.806H4.23308Z" fill="#0080FF"/>
+</svg>
+</span><small class="copyright">© 2026 DigitalOcean, LLC. All rights reserved</small>
+        <div id="teconsent-mount" class="footer-cookie-consent"></div>
+    </div>
+
+    <div class="footer-socials"><a href="https://x.com/digitalocean" class="social" aria-label="X (Twitter)">
+            <i class="fa-brands fa-x-twitter"></i>
+        </a><a href="https://www.instagram.com/thedigitalocean" class="social" aria-label="Instagram">
+            <i class="fa-brands fa-instagram"></i>
+        </a><a href="https://www.facebook.com/DigitalOceanCloudHosting" class="social" aria-label="Facebook">
+            <i class="fa-brands fa-facebook"></i>
+        </a><a href="https://discord.gg/digitalocean" class="social" aria-label="Discord">
+            <i class="fa-brands fa-discord"></i>
+        </a><a href="https://www.youtube.com/DigitalOcean" class="social" aria-label="YouTube">
+            <i class="fa-brands fa-youtube"></i>
+        </a><a href="https://www.linkedin.com/company/digitalocean" class="social" aria-label="LinkedIn">
+            <i class="fa-brands fa-linkedin"></i>
+        </a><a href="https://github.com/digitalocean" class="social" aria-label="GitHub">
+            <i class="fa-brands fa-github"></i>
+        </a></div>
+</div>
+
+<div class="footer-flourishes" aria-hidden="true">
+    <div class="flourish-group flourish-left">
+        <img src="/flourish-7.svg" class="flourish" alt="">
+        <img src="/flourish-frame.svg" class="flourish" alt="">
+        <img src="/flourish-2.svg" class="flourish" alt="">
+        <img src="/flourish-1.svg" class="flourish" alt="">
+    </div>
+    <div class="flourish-group flourish-center">
+        <img src="/flourish-9.svg" class="flourish" alt="">
+        <img src="/flourish-6.svg" class="flourish" alt="">
+        <img src="/flourish-4.svg" class="flourish" alt="">
+        <img src="/flourish-3.svg" class="flourish" alt="">
+    </div>
+    <div class="flourish-group flourish-right">
+        <img src="/flourish-5.svg" class="flourish" alt="">
+        <img src="/flourish-8.svg" class="flourish" alt="">
+    </div>
+</div>
+
+        </footer>
+    </div>
+
+    
+    
+    
+
+
+<script src="https://docs.digitalocean.com/js/bundle.min.d1d07685a7d243b0a1025dd23a72875bc820d655d298e7c5fe16d65c324436e24882cd9b9493a0a38e725ebfdc6388827594eace5726c762a63e5d741be7af21.js" integrity="sha512-0dB2hafSQ7ChAl3SOnKHW8gg1lXSmOfF/hbWXDJENuJIgs2blJOgo45yXr/cY4iCdZTqzlcmx2KmPl10G&#43;evIQ=="></script>
+<script src="https://assets.digitalocean.com/labs/search.js.gz" defer onload="init_algolia()"></script>
+<div id="algolia_empty_state">
+    <h3>We can&#39;t find any results for your search.</h3>
+    <p>Try using different keywords or simplifying your search terms.</p>
+</div>
+
+
+<script async src="https://yxt72quk3m7tpemhea54qobd.agents.do-ai.run/static/chatbot/widget.js"
+    data-agent-id="2d2d7649-d6e0-11f0-b074-4e013e2ddde4"
+    data-chatbot-id="vJdL-kXYvZQL1Zc9inmdPyPavYK6vjeL"
+    data-name="DigitalOcean Docs Agent"
+    data-primary-color="#0069ff"
+    data-secondary-color="#E5E8ED"
+    data-button-background-color="#0061EB"
+    data-starting-message="This is the DigitalOcean Docs AI, built with OpenAI GPT-4o. You can ask it questions such as `How do I create a Droplet?` or `How do I set up a domain?`
+
+Responses may not always be accurate, but we’re continuously working to improve the experience. This AI does not connect to DigitalOcean’s support team. For support, visit our support page: https://do.co/support.
+
+We’d also like to hear your feedback about your experience: https://do.co/ask-docs-feedback"
+    data-logo="https://product-docs.nyc3.cdn.digitaloceanspaces.com/ai-agent-icon.svg"
+></script>
+
+    
+    
+</body>
+</html>

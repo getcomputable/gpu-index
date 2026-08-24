@@ -1,0 +1,914 @@
+{
+ "servers": {
+  "B300-SXM-2-288G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 56,
+   "ram": 1030792151040,
+   "gpu": 2,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "B300-SXM",
+    "gpu_memory": 309237645312
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 6000000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 13840.8,
+   "hourly_price": 18.96,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 4
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  },
+  "B300-SXM-4-288G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 112,
+   "ram": 2061584302080,
+   "gpu": 4,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "B300-SXM",
+    "gpu_memory": 309237645312
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 12000000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 24878.4,
+   "hourly_price": 34.08,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 8
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  },
+  "B300-SXM-8-288G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 224,
+   "ram": 4123168604160,
+   "gpu": 8,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "B300-SXM",
+    "gpu_memory": 309237645312
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 24000000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 43800.0,
+   "hourly_price": 60.0,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 16
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  },
+  "BASIC2-A2C-4G": {
+   "alt_names": [],
+   "arch": "arm64",
+   "ncpus": 2,
+   "ram": 4294967296,
+   "gpu": 0,
+   "gpu_info": null,
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 16.79,
+   "hourly_price": 0.023,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 0
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 200000000,
+    "sum_internet_bandwidth": 200000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 200000000,
+      "internet_bandwidth": 200000000
+     }
+    ]
+   },
+   "block_bandwidth": 83886080,
+   "end_of_service": false
+  },
+  "BASIC3-X2C-4G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 2,
+   "ram": 4294967296,
+   "gpu": 0,
+   "gpu_info": null,
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 28.79777,
+   "hourly_price": 0.039449,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 1
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 350000000,
+    "sum_internet_bandwidth": 350000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 350000000,
+      "internet_bandwidth": 350000000
+     }
+    ]
+   },
+   "block_bandwidth": 131072000,
+   "end_of_service": false
+  },
+  "H100-1-80G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 24,
+   "ram": 257698037760,
+   "gpu": 1,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "H100-PCIe",
+    "gpu_memory": 85899345920
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 3000000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 2092.545,
+   "hourly_price": 2.8665,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 2
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 10000000000,
+    "sum_internet_bandwidth": 10000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 10000000000,
+      "internet_bandwidth": 10000000000
+     }
+    ]
+   },
+   "block_bandwidth": 2097152000,
+   "end_of_service": false
+  },
+  "H100-2-80G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 48,
+   "ram": 515396075520,
+   "gpu": 2,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "H100-PCIe",
+    "gpu_memory": 85899345920
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 6000000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 4185.09,
+   "hourly_price": 5.733,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 4
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 4194304000,
+   "end_of_service": false
+  },
+  "H100-SXM-2-80G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 32,
+   "ram": 257698037760,
+   "gpu": 2,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "H100-SXM",
+    "gpu_memory": 85899345920
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 3200000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 4832.454,
+   "hourly_price": 6.6198,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 4
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  },
+  "H100-SXM-4-80G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 64,
+   "ram": 515396075520,
+   "gpu": 4,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "H100-SXM",
+    "gpu_memory": 85899345920
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 6400000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 9322.83,
+   "hourly_price": 12.771,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 8
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  },
+  "H100-SXM-8-80G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 128,
+   "ram": 1030792151040,
+   "gpu": 8,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "H100-SXM",
+    "gpu_memory": 85899345920
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 12800000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 18491.484,
+   "hourly_price": 25.3308,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 16
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  },
+  "L4-1-24G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 8,
+   "ram": 51539607552,
+   "gpu": 1,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L4",
+    "gpu_memory": 25769803776
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 574.875,
+   "hourly_price": 0.7875,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 2
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 2500000000,
+    "sum_internet_bandwidth": 2500000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 2500000000,
+      "internet_bandwidth": 2500000000
+     }
+    ]
+   },
+   "block_bandwidth": 1048576000,
+   "end_of_service": false
+  },
+  "L4-2-24G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 16,
+   "ram": 103079215104,
+   "gpu": 2,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L4",
+    "gpu_memory": 25769803776
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 1149.75,
+   "hourly_price": 1.575,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 4
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 5000000000,
+    "sum_internet_bandwidth": 5000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 5000000000,
+      "internet_bandwidth": 5000000000
+     }
+    ]
+   },
+   "block_bandwidth": 1572864000,
+   "end_of_service": false
+  },
+  "L4-4-24G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 32,
+   "ram": 206158430208,
+   "gpu": 4,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L4",
+    "gpu_memory": 25769803776
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 2299.5,
+   "hourly_price": 3.15,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 8
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 10000000000,
+    "sum_internet_bandwidth": 10000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 10000000000,
+      "internet_bandwidth": 10000000000
+     }
+    ]
+   },
+   "block_bandwidth": 2621440000,
+   "end_of_service": false
+  },
+  "L4-8-24G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 64,
+   "ram": 412316860416,
+   "gpu": 8,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L4",
+    "gpu_memory": 25769803776
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 4599.0,
+   "hourly_price": 6.3,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 16
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  },
+  "L40S-1-48G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 8,
+   "ram": 103079215104,
+   "gpu": 1,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L40S",
+    "gpu_memory": 51539607552
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 1600000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 1073.03868,
+   "hourly_price": 1.469916,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 2
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 2500000000,
+    "sum_internet_bandwidth": 2500000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 2500000000,
+      "internet_bandwidth": 2500000000
+     }
+    ]
+   },
+   "block_bandwidth": 1048576000,
+   "end_of_service": false
+  },
+  "L40S-2-48G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 16,
+   "ram": 206158430208,
+   "gpu": 2,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L40S",
+    "gpu_memory": 51539607552
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 3200000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 2146.07736,
+   "hourly_price": 2.939832,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 4
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 5000000000,
+    "sum_internet_bandwidth": 5000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 5000000000,
+      "internet_bandwidth": 5000000000
+     }
+    ]
+   },
+   "block_bandwidth": 1572864000,
+   "end_of_service": false
+  },
+  "L40S-4-48G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 32,
+   "ram": 412316860416,
+   "gpu": 4,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L40S",
+    "gpu_memory": 51539607552
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 6400000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 4292.15472,
+   "hourly_price": 5.879664,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 8
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 10000000000,
+    "sum_internet_bandwidth": 10000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 10000000000,
+      "internet_bandwidth": 10000000000
+     }
+    ]
+   },
+   "block_bandwidth": 2621440000,
+   "end_of_service": false
+  },
+  "L40S-8-48G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 64,
+   "ram": 824633720832,
+   "gpu": 8,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "L40S",
+    "gpu_memory": 51539607552
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 12800000000000,
+   "scratch_storage_max_volumes_count": 1,
+   "monthly_price": 8584.30944,
+   "hourly_price": 11.759328,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 16
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 20000000000,
+    "sum_internet_bandwidth": 20000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 20000000000,
+      "internet_bandwidth": 20000000000
+     }
+    ]
+   },
+   "block_bandwidth": 5242880000,
+   "end_of_service": false
+  }
+ }
+}
