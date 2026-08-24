@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Computable
+#
+# Reproduce one day's index value for a lane against the LOCAL published
+# record (the local-directory store: GPU_INDEX_DATA_DIR, default ./data).
+#
+#   ./reproduce <b300|b200> <YYYY-MM-DD>
+#
+# For a day that is NOT yet in the local record, this invokes the compute
+# CLI's replay path (--date --dry-run): it replays the series from genesis —
+# published days advance the filter/weight state from their own artifacts —
+# then derives and prints the requested day's value. Nothing is written.
+#
+# For a day that IS already published in the local record, the compute CLI
+# deliberately treats the artifact as pinned (published days are never
+# re-derived), so a byte-for-byte single-day recompute entrypoint does not
+# exist yet; this script prints the published value and says so.
+set -euo pipefail
+
+if [ $# -ne 2 ]; then
+  echo "usage: $0 <b300|b200> <YYYY-MM-DD>" >&2
+  exit 2
+fi
+
+SKU=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+DATE=$2
+case "$SKU" in
+  b300) CONFIG="config/index_basket.json" ;;
+  b200) CONFIG="config/index_basket_b200.json" ;;
+  *) echo "unknown sku '$1' (expected b300 or b200)" >&2; exit 2 ;;
+esac
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+PY=${PYTHON:-python3}
+DATA_DIR=${GPU_INDEX_DATA_DIR:-data}
+
+META=$("$PY" -c "import json,sys; c=json.load(open(sys.argv[1])); print(c['bucket_prefix'], c['calc']['methodology_id'])" "$ROOT/$CONFIG")
+PREFIX=${META% *}
+METHODOLOGY=${META#* }
+
+PUBLISHED="$DATA_DIR/$PREFIX/composites/$METHODOLOGY/$DATE.json"
+if [ -f "$PUBLISHED" ]; then
+  echo "published record: $PUBLISHED"
+  "$PY" -c "
+import json, sys
+c = json.load(open(sys.argv[1]))
+idx = c.get('index') or {}
+v = idx.get('value_usd_gpu_hr')
+line = 'BASKET_DARK' if c.get('basket_dark') else f\"{v:.4f} \$/GPU-hr ({idx.get('sources_used_count', 0)} sources)\"
+print(f\"{c['date']}: {line}  [methodology {c['methodology_id']}]\")
+" "$PUBLISHED"
+  echo ""
+  echo "not wired yet: byte-for-byte RECOMPUTE of an already-published day."
+  echo "The compute CLI pins published days (they advance replay state but are"
+  echo "never re-derived; the drift scanner compares raw against them instead)."
+  echo "Intended invocation once a replay-published mode exists:"
+  echo "  $PY scripts/compute_index_composite.py --config $CONFIG --date $DATE --dry-run"
+  exit 3
+fi
+
+exec "$PY" "$ROOT/scripts/compute_index_composite.py" \
+  --config "$ROOT/$CONFIG" --date "$DATE" --dry-run
