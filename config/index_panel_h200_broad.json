@@ -1,0 +1,287 @@
+{
+  "schema_version": 1,
+  "panel_id": "h200_broad",
+  "description": "H200-BROAD hourly panel (METHODOLOGY.md). Underlying: a BLENDED rate across H200-class capacity as each provider chooses to sell it (SXM and NVL mixed) -- composition is the instrument, so NO identity screen and NO variant rules exist here; the sku set is the screen. 18 members, weight floor 1.25%, claim floor 7. Selection over the raw-observatory record; captures nothing.",
+  "methodology_doc": "METHODOLOGY.md",
+  "design_doc": "METHODOLOGY.md",
+  "bucket_prefix": "index/h200_broad",
+  "genesis_date": "2026-08-23",
+  "drift_scan_observations": 48,
+  "record_sources": [
+    {
+      "kind": "observatory",
+      "prefix": "index/raw_observatory",
+      "from_date": "2026-08-23"
+    }
+  ],
+  "slot_grids": [
+    {
+      "from_date": "2026-08-23",
+      "slot_hours_utc": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    }
+  ],
+  "calc": {
+    "methodology_id": "h200_broad_v1_calc_v1",
+    "description": "calc_v1 (panel genesis mint; METHODOLOGY.md is the binding methodology document -- this text is the summary). The index and its weights recompute at EVERY hourly observation (rule A1); the fallback->dynamic switch adopts the 50% attendance floor (rule A2). RECORD: raw-observatory hourly snapshots from the 2026-08-23 genesis -- no basket era, no stitching. SKU SET: {H200, H200_NVL}; the lowest-eligible rule runs across the set, so each seat prints its cheapest form factor (the composition effect is the instrument; Massed Compute's NVL-only H200 line is admissible here where the SXM panel excludes it). MEMBERSHIP DELTA vs the draft seat list (probe 2026-08-23): Lambda is OFF -- no live H200 price surface exists anywhere on Lambda's site (0 rows, two pages checked); re-seat when it lists. 18 members, not the draft's 19. MARKETPLACE STATISTICS (METHODOLOGY.md section 7): vast via vast_vwm_verified_us_ca_floor over the UNION of its eligible rows across the sku set (accounting gate + >= 5 machines / >= 3 hosts floors; probe: H200 1/1 + H200 NVL 3/2 -- below floors today); lium via lium_vwm_book_floor (>= 5 machines / >= 3 miners; probe: 2 machines). NO parity leg: no predecessor series exists for this instrument. TIER SCREEN: eligibility is the ALLOW-LIST calc.eligible_tiers, on-demand only -- methodology section 5 as written, replacing the exclusion-list interruptible_tiers screen (which had grown 'serverless' for verda's serverless-SPOT rows: tier 'serverless' priced 45% under its on-demand rate at probe; the allow-list screens those and every other non-on-demand tier mechanically -- a serverless GPU-second is also a different underlying, the recorded fal-exclusion rationale). This mint RECONCILES the methodology section 15 committed-tier limitation: hyperstack's reserved 'Starting from' floors and together's reserved tenors never print here, and gmicloud's from_floor and fal's serverless rows remain out by tier (the frozen daily B300/B200 series kept committed/reserved eligible; this panel has no daily predecessor). MEMBER EXTRA SCREEN: runpod's record carries Secure AND Community rows under one structured label, distinguished only by the collector's extra.cloud field -- the seat's extra_require admits cloud 'secure' only (the membership rule excludes Community; basket-era rows carry no extra dict and pass, that era being secure-only by construction). OPEN METHODOLOGY CALLS (recorded): lium population definition and both marketplace floor values; sesterce 'From'-floor prints; shadeform conditional admission not built (its disclosed-upstream 'excesssupply' H200 rows are the one uncollected source); window/warm-up/confirm counts span hours. Any param change touching a published calc_v1 observation mints calc_v2. AMENDED INTO THIS MINT BEFORE ANY OBSERVATION PUBLISHED (perf review 2026-08-23): (a) drift_scan_observations moved out of calc to a TOP-LEVEL operational key -- the drift-scan bound gates an ops sweep, never the series bytes (the fallback_parity_methodology_id precedent), so it no longer rides calc_params under the D2 fence, and the scan runs on the 16:00Z firing (or --drift-scan) instead of every firing; (b) replay is BOUNDED: state rebuilds from the trailing state window (dw history + max forward horizon + prune margin -- the weight-state prune bound, inside which every consulted state fully rebuilds) behind the publish frontier, seeded by the latest pre-window artifact for the weight-mode latch and the D2 baseline, and the manual-exclusion pin check covers published artifacts inside that window only (older artifacts are immutable; their pins were enforced when the frontier passed them); (c) the ECB feed is fetched only when an unpublished observation day cannot resolve a stored rate after walk-back (stored FX reads bounded to the window plus the staleness allowance). AMENDED INTO THIS MINT BEFORE ANY OBSERVATION PUBLISHED (harden review 2026-08-23): (d) the fallback->dynamic switch quorum additionally requires a NON-EMPTY attendance-passer set -- with zero passers (every candidate below the attendance floor, a lane-wide outage's aftermath) the every-passer-has-Q clause is vacuously true and one post-outage observation could have flipped the PERMANENT latch on zero attendance information, inverting the A2 intent; genesis is unaffected (a zero-scheduled window makes every candidate a passer at ratio 1.0); (e) row eligibility fails closed on NON-FINITE prices: a candidate row must carry a finite native price (and a finite USD price when one is present) or it is excluded and counted (screen_counts non_finite_price) -- json admits NaN/Infinity literals and non-USD rows skip the capture-side USD plausibility band, so a non-finite native could otherwise poison the lowest-eligible min; capture-side normalization now also flags non-finite natives implausible (flag-only, future snapshots only); (f) a new top-level record_exclusions key ([{date, hour, reason}]) quarantines a poisoned/unparseable record object at an unpublished stamp: the observation publishes an explicit record_quarantined artifact (index null, observation_missed false) WITHOUT reading the record -- instead of the lane wedging forever behind publish-in-order -- and the key rides calc_params, pinned per published observation exactly like manual_exclusions. Artifact-visibility hardening in the same review: silent ok-status seats pin eligible_rows plus per-screen screen_counts (a seat whose rows ALL screen out is distinguishable from one with no rows at all -- the dead-seat tripwire), and an observation_missed artifact publishes only after a confirming FRESH re-LIST of the slot keys (a transient empty LIST must never pin an immutable false missed record).",
+    "min_sources_to_claim": 7,
+    "eligible_tiers": [
+      "on-demand"
+    ],
+    "filter_window": 20,
+    "filter_sigma": 3.0,
+    "filter_warmup": 10,
+    "filter_sigma_floor": 0.05,
+    "filter_terms": "recorded_currency",
+    "composite_statistic": "median_ci_votes",
+    "manual_verify_pct": 15,
+    "fx_lane": "ecb",
+    "fx_max_staleness_days": 7,
+    "manual_exclusions": [],
+    "jump_screen": {
+      "quarantine_pct": 25,
+      "corroborate_pct": 10,
+      "min_corroborators": 2,
+      "reference_max_lookback": 24
+    },
+    "statistic_params": {
+      "vast_vwm_verified_us_ca_floor": {
+        "min_population_machines": 5,
+        "min_population_hosts": 3
+      },
+      "lium_vwm_book_floor": {
+        "min_population_machines": 5,
+        "min_population_miners": 3
+      }
+    },
+    "dynamic_weights": {
+      "scheme": "predictive_v1",
+      "lookback_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "forward_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "history_days": 90,
+      "half_life_days": 30,
+      "ridge_lambda": 1.0,
+      "gamma": 4.0,
+      "weight_min": 0.0125,
+      "weight_max": 0.3,
+      "min_train_samples": 10,
+      "target_variance_floor": 1e-12,
+      "switch_min_eligible": 5,
+      "max_abs_log_return": 0.5,
+      "attendance_floor": 0.5
+    }
+  },
+  "members": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "serverless rows (incl. serverless-spot) are tier-ineligible under eligible_tiers, on-demand only (see calc.description)"
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ]
+    },
+    {
+      "source_id": "coreweave",
+      "display_name": "CoreWeave",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ]
+    },
+    {
+      "source_id": "together",
+      "display_name": "Together AI",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation, see calc.description)"
+    },
+    {
+      "source_id": "hyperstack",
+      "display_name": "Hyperstack (NexGen Cloud)",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "reserved 'Starting from' floor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation)"
+    },
+    {
+      "source_id": "crusoe",
+      "display_name": "Crusoe",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ]
+    },
+    {
+      "source_id": "tensorpool",
+      "display_name": "TensorPool",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ]
+    },
+    {
+      "source_id": "civo",
+      "display_name": "Civo",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ]
+    },
+    {
+      "source_id": "sesterce",
+      "display_name": "Sesterce",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "OPEN CALL (recorded): prints are 'From' floors across configs/regions (tier on-demand, extra.price_basis from_floor); flagged for review"
+    },
+    {
+      "source_id": "deepinfra",
+      "display_name": "Deep Infra",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "ownership unverified (recorded) -- seated on the breadth panel where a single mispriced seat cannot move the median"
+    },
+    {
+      "source_id": "digitalocean",
+      "display_name": "DigitalOcean",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ]
+    },
+    {
+      "source_id": "e2e",
+      "display_name": "E2E Networks",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "USD table row prints; the INR JSON-LD row never converts (only the EUR conversion is defined) and is held out per row, mechanically"
+    },
+    {
+      "source_id": "ovh",
+      "display_name": "OVHcloud",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "bills EUR on the FR subsidiary -- the seat that makes this panel's fx_lane ecb; its H200 form factor is unconfirmed on its own surfaces (probe 2026-08-23: '141 GB HBM3 - NVLink' discriminates nothing), which a broad panel does not need"
+    },
+    {
+      "source_id": "oracle",
+      "display_name": "Oracle Cloud",
+      "weight": 0.064,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "hyperscaler premium seat -- contained by the median rather than by a screen (the composition rule)"
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod",
+      "weight": 0.032,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "extra_require": {
+        "cloud": "secure"
+      },
+      "notes": "Secure AND Community rows share one structured label, distinguished by the collector's extra.cloud field -- extra_require screens the seat to cloud 'secure'"
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "weight": 0.032,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "notes": "its H200 line is NVL-only ('H200 NVL (141GB)' rows, probe 2026-08-23) -- excluded from H200-SXM, admissible here by construction"
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "weight": 0.02,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "statistic": "vast_vwm_verified_us_ca_floor",
+      "notes": "statistic over the union of eligible rows across the sku set (probe 2026-08-23: H200 1 machine/1 host + H200 NVL 3/2 -- union below floors, holds out thin_book until the book deepens)"
+    },
+    {
+      "source_id": "lium",
+      "display_name": "Lium",
+      "weight": 0.02,
+      "skus": [
+        "H200",
+        "H200_NVL"
+      ],
+      "statistic": "lium_vwm_book_floor",
+      "notes": "statistic seat with book floors (probe: 1 H200 + 1 H200 NVL machine, below floors). NO verified field exists on lium and no geo screen is applied -- recorded open methodology calls"
+    }
+  ]
+}
