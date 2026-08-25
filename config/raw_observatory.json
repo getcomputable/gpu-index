@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "lane_id": "raw_observatory_v1",
-  "description": "Wide-net raw GPU price snapshotting (capture ONLY — no composite, no index, no curve input; nothing consumes this lane yet). The point is historical accumulation: capture gaps can never be backfilled, so the record starts before any methodology exists. Fully separate from the basket lanes (index/b300_basket, index/b200_basket) — shared transport/slot/store machinery, disjoint keyspace, own schedule. Collectors record EVERY GPU rental price row their surface publishes that the recipe can pin — all chips, all vendors, all tiers, labeled — with canonical skus derived by the framework from config/gpu_sku_catalog.json (unmapped labels recorded honestly, never guessed). Every parameter here is operational config, not code. min_sources_to_claim is deliberately LOW relative to the source count: a thin snapshot is still raw history (nothing consumes this lane), so the gate only refuses catastrophically broken captures; scraper rot on a wide net is expected and shows up as per-source error holes, not lost days.",
+  "description": "Wide-net raw GPU price snapshotting (capture ONLY -- this lane computes nothing, but since the 2026-08-23 hourly panel mint its stored record IS consumed, read-only, by the six panel-index calc lanes (METHODOLOGY.md), so a collector/recipe change here CAN move a contractual panel print: treat collector edits with basket-lane care. No lane ever writes under this keyspace; the panel loader refuses such a prefix mechanically). The original point stands: historical accumulation -- capture gaps can never be backfilled, so the record started before any methodology existed. Fully separate from the basket lanes (index/b300_basket, index/b200_basket) — shared transport/slot/store machinery, disjoint keyspace, own schedule. Collectors record EVERY GPU rental price row their surface publishes that the recipe can pin — all chips, all vendors, all tiers, labeled — with canonical skus derived by the framework from config/gpu_sku_catalog.json (unmapped labels recorded honestly, never guessed). Every parameter here is operational config, not code. min_sources_to_claim is deliberately LOW relative to the source count: a thin snapshot is still raw history AND still an honest panel input (the panel lanes screen per member and publish explicit dark artifacts on thin hours -- a recorded thin hour beats a lost one), so the gate only refuses catastrophically broken captures; scraper rot on a wide net is expected and shows up as per-source error holes, not lost days.",
   "bucket_prefix": "index/raw_observatory",
   "sku_catalog_path": "config/gpu_sku_catalog.json",
   "capture_slots_utc": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
@@ -75,9 +75,17 @@
           "RTX 3090",
           "MI300X"
         ],
-        "record_limit_per_gpu": 10
+        "record_limit_per_gpu": 10,
+        "population_gpu_names": [
+          "B200",
+          "H100 SXM",
+          "H100 NVL",
+          "H100 PCIE",
+          "H200",
+          "H200 NVL"
+        ]
       },
-      "notes": "bundles API, per-chip queries from options.gpu_names (grow the list = config edit; gpu_name is an exact-case string match — copy vast's own spellings verbatim, e.g. 'RTX 6000Ada' with no space, 'RTX PRO 6000 WS'/'RTX PRO 6000 S' because bare 'RTX PRO 6000' returns zero). Records the cheapest machines per chip (dedup by machine, ranked per-GPU) up to record_limit_per_gpu, with book_stats accounting for what was left out. 'MI300X' returns zero offers today — kept deliberately as a tripwire for AMD capacity appearing (costs one call, records an honest empty-book partial note). Big consumer-card books (>= 100 offers) emit persistent 'book wider than both fetch windows' partial notes — honest coverage accounting, not a fault."
+      "notes": "bundles API, per-chip queries from options.gpu_names (grow the list = config edit; gpu_name is an exact-case string match — copy vast's own spellings verbatim, e.g. 'RTX 6000Ada' with no space, 'RTX PRO 6000 WS'/'RTX PRO 6000 S' because bare 'RTX PRO 6000' returns zero). Records the cheapest machines per chip (dedup by machine, ranked per-GPU) up to record_limit_per_gpu, with book_stats accounting for what was left out. Chips in population_gpu_names (must be a subset of gpu_names, validated fail-closed) ALSO record every verified-US/CA machine beyond the cheapest-N, marked book_scope=verified_us_ca_population and capped at 200 with an explicit overflow flag: the full population the hourly panels' verified-US/CA statistics run over (the truncated-book capture fix ported config-driven; screen imported from gpu_index.index.composite, one home). 'MI300X' returns zero offers today — kept deliberately as a tripwire for AMD capacity appearing (costs one call, records an honest empty-book partial note). Big consumer-card books (>= 100 offers) emit persistent 'book wider than both fetch windows' partial notes — honest coverage accounting, not a fault."
     },
     {
       "source_id": "massedcompute",

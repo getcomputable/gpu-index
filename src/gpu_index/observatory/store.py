@@ -2,7 +2,9 @@
 # Copyright 2026 Computable
 """Append-only persistence for observatory capture snapshots.
 
-Keyspace (dark — no consumer polls it):
+Keyspace (consumed READ-ONLY by the hourly panel-index calc lanes since
+2026-08-23 -- METHODOLOGY.md; nothing but this lane
+ever writes under it):
 
   index/raw_observatory/snapshots/<YYYY-MM-DD>/slot<HH>-<run_id>.json  immutable
   index/raw_observatory/latest.json                                    pointer,

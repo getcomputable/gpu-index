@@ -13,6 +13,7 @@ reader can see coverage without parsing every observation.
 
 from __future__ import annotations
 
+import math
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -84,8 +85,16 @@ def normalize_observation(
     # INR/BRL native figure against a USD band flagged every correct print
     # from those surfaces — standing noise that would bury a real
     # implausible USD print. Non-USD prints are recorded unscreened
-    # (documented behavior); a missing/invalid price is always flagged.
-    price_ok = isinstance(native, (int, float)) and not isinstance(native, bool)
+    # (documented behavior); a missing/invalid price is always flagged,
+    # INCLUDING non-finite values (json.loads admits NaN/Infinity; the
+    # non-USD branch has no band to catch them -- flag-only here, the
+    # capture convention: the row is recorded, consumers screen on the
+    # flag; affects future snapshots only).
+    price_ok = (
+        isinstance(native, (int, float))
+        and not isinstance(native, bool)
+        and math.isfinite(float(native))
+    )
     if not price_ok:
         out["implausible"] = True
     elif currency == "USD":

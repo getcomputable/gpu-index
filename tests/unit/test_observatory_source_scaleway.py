@@ -209,7 +209,9 @@ def test_real_labels_normalize_through_catalog(rows):
         for r in rows
     }
     assert mapped["B300-SXM"] == "B300"
-    assert mapped["H100-PCIe"] == "H100"
+    # Variant split (design section 7): the PCIe label lands on H100_PCIE;
+    # SXM stays on the generic H100 entry (no H100_SXM sku by design).
+    assert mapped["H100-PCIe"] == "H100_PCIE"
     assert mapped["H100-SXM"] == "H100"
     assert mapped["L40S"] == "L40S"  # must not fall through to L40 or L4
     assert mapped["L4"] == "L4"  # boundary-aware: L4 never matches L40S

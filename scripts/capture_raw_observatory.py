@@ -4,10 +4,13 @@
 """Capture the raw price observatory — wide-net per-source GPU price prints.
 
 Collection only, for as many chips and sources as have parseable public
-surfaces. No composite or index value is derived here — raw history is
-being accumulated BEFORE any methodology consuming it exists,
-because capture gaps can never be backfilled. Fully separate from the
-basket lanes: this script never touches any index/<chip>_basket key.
+surfaces. This script computes nothing, but since the hourly panel mint
+(2026-08-23, METHODOLOGY.md) the stored record IS consumed, read-only, by
+the six panel-index calc lanes -- a collector or recipe change here CAN
+move a contractual panel print, so treat collector edits with basket-lane
+care. Capture gaps still can never be backfilled. Fully separate from the
+basket lanes: this script never touches any index/<chip>_basket key, and
+nothing writes under this lane's prefix but this script.
 
 Scheduling mirrors the basket lanes: fired frequently by a scheduler,
 slot idempotency ALWAYS on — any

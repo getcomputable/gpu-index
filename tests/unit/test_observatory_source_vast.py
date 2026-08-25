@@ -14,8 +14,14 @@ source exposes:
     unverified / deverified; non-US geolocations.
   - b300_asc.json: thin whole book -- ONE machine (144888) listing two
     slice sizes (2x and 4x), so machine dedup must record exactly one row.
-  - h200_nvl_asc.json: lookalike label ('H200 NVL' is not 'H200', and must
-    still normalize to the H200 catalog sku).
+  - h200_nvl_asc.json: lookalike label ('H200 NVL' is not 'H200'; since
+    the H-series variant split it normalizes to its own H200_NVL sku).
+
+The verified-US/CA population branch (hourly panel design section 6) is
+covered here too: the h100_sxm fixtures genuinely contain exactly two
+verified US/CA machines (59380, 57753), which exercises the screen against
+real bytes; cap/overflow depth is synthesized in-test because no fixture
+carries 200+ eligible machines.
 """
 
 from __future__ import annotations
@@ -231,6 +237,184 @@ def test_collect_fails_closed_without_options():
         collect(options={"gpu_names": ["B200"], "record_limit_per_gpu": 0})
 
 
+# ------------------------------------------- verified-US/CA population branch
+
+
+def test_population_rows_appended_screened_and_marked(h100_candidates):
+    """Design section 6: after the cheapest-N rows, every OTHER verified
+    US/CA machine rides in per-GPU ascending, marked with book_scope.
+    Fixture truth (record_limit=3): cheapest-3 = 148199/148240/140072;
+    the only verified US/CA machines beyond them are 59380 (1.7356) and
+    57753 (5.0939); verified non-US/CA (68475 Japan, 33102 India) and
+    unverified-US (146215) machines must NOT be appended."""
+    rows = select_chip_observations(h100_candidates, 3, population=True)
+    head, population = rows[:3], rows[3:]
+    assert [r["machine_id"] for r in head] == [148199, 148240, 140072]
+    assert all("book_scope" not in r for r in head)
+    assert [r["machine_id"] for r in population] == [59380, 57753]
+    assert [r["price_usd_gpu_hr"] for r in population] == [1.7356, 5.0939]
+    for row in population:
+        assert row["book_scope"] == "verified_us_ca_population"
+        assert row["verification"] == "verified"
+        assert row["sku_identifier"] == "H100 SXM"
+        assert "population row" in row["notes"]
+    recorded = {r["machine_id"] for r in rows}
+    assert 68475 not in recorded  # verified, Japan
+    assert 33102 not in recorded  # verified, India
+    assert 146215 not in {r["machine_id"] for r in population}  # unverified
+
+
+def test_non_population_chips_record_exactly_the_old_shape(h100_candidates):
+    """A chip NOT in population_gpu_names must record byte-identical rows
+    to the pre-branch behavior: cheapest-N only, no book_scope anywhere,
+    no population note."""
+    default = select_chip_observations(h100_candidates, 3)
+    explicit = select_chip_observations(h100_candidates, 3, population=False)
+    assert default == explicit
+    assert len(default) == 3
+    assert all("book_scope" not in r for r in default)
+    assert all("population row" not in r["notes"] for r in default)
+    # The population call's head is the same continuity record.
+    with_pop = select_chip_observations(h100_candidates, 3, population=True)
+    assert with_pop[:3] == default
+
+
+def test_population_cap_and_overflow(monkeypatch):
+    """The cap is a safety bound, never silent: rows stop at the limit and
+    book_stats flags the overflow. Depth synthesized (no fixture carries
+    200+ eligible machines); the limit is monkeypatched down instead of
+    faking 200 offers."""
+    monkeypatch.setattr("gpu_index.observatory.sources.vast.VAST_POPULATION_LIMIT", 2)
+    offers = [
+        _offer(id=i, machine_id=100 + i, dph_total=1.0 + 0.1 * i)
+        for i in range(6)  # all verified, 'Texas, US'
+    ]
+    candidates = parse_vast_offers(json.dumps({"offers": offers}))
+    rows = select_chip_observations(candidates, 1, population=True)
+    assert [r["machine_id"] for r in rows] == [100, 101, 102]
+    assert [r.get("book_scope") for r in rows] == [
+        None,
+        "verified_us_ca_population",
+        "verified_us_ca_population",
+    ]
+    stats = chip_book_stats(candidates, 1, population=True)
+    assert stats["machines_total"] == 6
+    assert stats["verified_us_ca_machines"] == 6
+    assert stats["rows_recorded"] == 3  # cheapest-1 + capped population 2
+    assert stats["population_recorded"] is True
+    assert stats["population_overflow"] is True
+
+
+def test_book_stats_population_accounting(h100_candidates):
+    """Population stats ride only on population chips; the screened count
+    covers the WHOLE deduped book (truncation never invisible).
+    An empty population book still records population_recorded=true --
+    'the branch ran and found nothing' is distinguishable from 'the
+    branch did not exist'."""
+    stats = chip_book_stats(h100_candidates, 3, population=True)
+    assert stats["machines_total"] == 14
+    assert stats["verified_us_ca_machines"] == 2
+    assert stats["rows_recorded"] == 5  # cheapest-3 + 2 population rows
+    assert stats["population_recorded"] is True
+    assert stats["population_overflow"] is False
+    # Non-population chips: none of the new keys, shape unchanged.
+    plain = chip_book_stats(h100_candidates, 3)
+    for key in (
+        "verified_us_ca_machines",
+        "population_recorded",
+        "population_overflow",
+    ):
+        assert key not in plain
+    empty = chip_book_stats([], 3, population=True)
+    assert empty["verified_us_ca_machines"] == 0
+    assert empty["population_recorded"] is True
+    assert empty["population_overflow"] is False
+    assert empty["rows_recorded"] == 0
+
+
+def test_population_options_validation():
+    """population_gpu_names is config-is-the-contract: malformed values,
+    duplicates, and chips that are never queried all fail loudly at load,
+    before any fetch."""
+    base = {"gpu_names": ["B200", "H100 SXM"], "record_limit_per_gpu": 10}
+    with pytest.raises(RuntimeError, match="population_gpu_names"):
+        collect(options={**base, "population_gpu_names": "B200"})
+    with pytest.raises(RuntimeError, match="population_gpu_names"):
+        collect(options={**base, "population_gpu_names": [1]})
+    with pytest.raises(
+        RuntimeError, match="population_gpu_names contains duplicates"
+    ):
+        collect(options={**base, "population_gpu_names": ["B200", "B200"]})
+    # A population chip missing from gpu_names would silently record no
+    # population -- the invisible-truncation class this branch kills.
+    with pytest.raises(RuntimeError, match="never queried"):
+        collect(options={**base, "population_gpu_names": ["H200 NVL"]})
+
+
+def test_collect_wires_population_from_config(monkeypatch, h100_candidates):
+    """collect() must pass the per-chip population flag through from
+    options.population_gpu_names -- rows and book_stats both prove which
+    branch ran for which chip."""
+    monkeypatch.setattr("gpu_index.observatory.sources.vast.REQUEST_SPACING_SECONDS", 0)
+
+    def fake_fetch(gpu_name, timeout):
+        cands = [dict(c, gpu_name=gpu_name) for c in h100_candidates]
+        return len(cands), cands, False, False
+
+    monkeypatch.setattr(
+        "gpu_index.observatory.sources.vast._fetch_chip_book", fake_fetch
+    )
+    out = collect(
+        options={
+            "gpu_names": ["H100 SXM", "H100 PCIE"],
+            "record_limit_per_gpu": 3,
+            "population_gpu_names": ["H100 SXM"],
+        }
+    )
+    sxm_rows = [
+        r for r in out["observations"] if r["sku_identifier"] == "H100 SXM"
+    ]
+    pcie_rows = [
+        r for r in out["observations"] if r["sku_identifier"] == "H100 PCIE"
+    ]
+    assert [r.get("book_scope") for r in sxm_rows] == [
+        None,
+        None,
+        None,
+        "verified_us_ca_population",
+        "verified_us_ca_population",
+    ]
+    assert len(pcie_rows) == 3
+    assert all("book_scope" not in r for r in pcie_rows)
+    sxm_stats = out["book_stats"]["H100 SXM"]
+    pcie_stats = out["book_stats"]["H100 PCIE"]
+    assert sxm_stats["population_recorded"] is True
+    assert sxm_stats["verified_us_ca_machines"] == 2
+    assert sxm_stats["rows_recorded"] == 5
+    assert "population_recorded" not in pcie_stats
+    assert "verified_us_ca_machines" not in pcie_stats
+    assert pcie_stats["rows_recorded"] == 3
+
+
+def test_real_config_pins_population_chips():
+    """The shipped config must arm the population branch for exactly the
+    design section 6 chip list, every name also queried."""
+    cfg = json.loads(
+        (REPO_ROOT / "config" / "raw_observatory.json").read_text()
+    )
+    vast_src = next(s for s in cfg["sources"] if s["source_id"] == "vast")
+    opts = vast_src["options"]
+    assert opts["population_gpu_names"] == [
+        "B200",
+        "H100 SXM",
+        "H100 NVL",
+        "H100 PCIE",
+        "H200",
+        "H200 NVL",
+    ]
+    assert set(opts["population_gpu_names"]) <= set(opts["gpu_names"])
+
+
 def test_real_labels_normalize_through_catalog():
     """Framework normalization over this source's real labels. The full
     configured gpu_names list is covered by the catalog today; genuinely
@@ -251,8 +435,8 @@ def test_real_labels_normalize_through_catalog():
     }
     assert mapped["H100 SXM"] == "H100"
     assert mapped["B300"] == "B300"
-    # Lookalike honesty: 'H200 NVL' is its own vast label but the same part
-    # family -- it must land on H200 (and never on H20).
-    assert mapped["H200 NVL"] == "H200"
+    # Variant separation (design section 7): 'H200 NVL' lands on its own
+    # H200_NVL sku now -- never on H200, and never on H20.
+    assert mapped["H200 NVL"] == "H200_NVL"
     unmapped = [label for label, sku in mapped.items() if sku is None]
     assert not unmapped, f"known vast labels now unmapped: {unmapped}"

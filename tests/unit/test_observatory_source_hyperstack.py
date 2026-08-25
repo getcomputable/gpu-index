@@ -176,8 +176,11 @@ def test_real_labels_normalize_through_catalog(rows):
     }
     assert mapped["NVIDIA H200 SXM"] == "H200"
     assert mapped["NVIDIA H100 SXM"] == "H100"
+    # Boundary honesty: 'NVL' never fires inside 'NVLink', so hyperstack's
+    # interconnect-marketing label stays on the generic part; the explicit
+    # PCIe label lands on the variant sku (design section 7 split).
     assert mapped["NVIDIA H100 NVLink"] == "H100"
-    assert mapped["NVIDIA H100 PCIe"] == "H100"
+    assert mapped["NVIDIA H100 PCIe"] == "H100_PCIE"
     assert mapped["NVIDIA RTX Pro 6000 SE"] == "RTX_PRO_6000"
     assert mapped["NVIDIA A100 SXM"] == "A100"
     assert mapped["NVIDIA A6000"] == "RTX_A6000"

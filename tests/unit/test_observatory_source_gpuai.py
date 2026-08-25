@@ -225,11 +225,13 @@ def test_real_labels_normalize_through_catalog(rows):
     # The lookalike pairs the catalog must keep discriminating.
     assert mapped["b300"] == "B300"
     assert mapped["b200"] == "B200"
+    # H-series variant split (design section 7): PCIe/NVL slugs land on
+    # their variant skus; SXM stays on the generic entries by design.
     assert mapped["h100_sxm"] == "H100"
-    assert mapped["h100_pcie"] == "H100"
-    assert mapped["h100_nvl"] == "H100"
+    assert mapped["h100_pcie"] == "H100_PCIE"
+    assert mapped["h100_nvl"] == "H100_NVL"
     assert mapped["h200_sxm"] == "H200"
-    assert mapped["h200_nvl"] == "H200"
+    assert mapped["h200_nvl"] == "H200_NVL"
     assert mapped["a100_40gb"] == "A100"
     assert mapped["a100_80gb"] == "A100"
     assert mapped["rtx_6000_ada"] == "RTX_6000_ADA"

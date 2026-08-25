@@ -33,6 +33,25 @@ Identity pin: the server-side gpu_name eq filter is load-bearing, so an
 offer whose OWN gpu_name does not equal the queried string is skipped and
 counted in partial_errors, never recorded into the queried book.
 
+Population branch (config-driven port of the basket lane's
+truncated-book fix): for chips named in
+options["population_gpu_names"], AFTER the cheapest-N rows the capture
+also records every OTHER verified-US/CA machine of the book, per-GPU
+ascending, marked book_scope=verified_us_ca_population and capped at
+VAST_POPULATION_LIMIT with an explicit population_overflow flag in
+book_stats. Without this branch, any statistic claiming to run over the
+verified-US/CA population would actually run over whichever eligible
+machines survived an UNSCREENED cheapest-N truncation -- one-sided low
+bias, invisible in artifacts (the exact defect shape the neutral
+exclusions record). The
+screen itself (us_ca_verified_host) is IMPORTED from gpu_index.index.composite:
+one home shared by capture and calc so the recorded population and the
+statistic's claim can never drift apart. book_scope is already a
+sanctioned top-level passthrough key in the snapshot schema -- no schema
+bump. Chips NOT named in population_gpu_names record exactly what they
+recorded before this branch existed (cheapest-N only, no new book_stats
+keys), so pre-existing consumers see byte-identical shapes.
+
 A chip whose book is empty is a partial_errors note, not an error (vast
 genuinely lists zero rentable MI300X machines as of 2026-08-22); the
 source raises only when NO chip produced rows and at least one chip
@@ -46,8 +65,9 @@ import time
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
+from gpu_index.index.composite import us_ca_verified_host
 from gpu_index.common.http import fetch
-from gpu_index.index.sources import parse_vast_offers
+from gpu_index.index.sources import VAST_POPULATION_LIMIT, parse_vast_offers
 from gpu_index.observatory.observation import DEFAULT_TIMEOUT, observation, result
 
 SOURCE_ID = "vast"
@@ -64,6 +84,14 @@ FETCH_LIMIT = 50
 # config list (26 calls), well inside the configured 180s per-source
 # deadline (config/raw_observatory.json per_source_deadline_seconds).
 REQUEST_SPACING_SECONDS = 0.75
+# Safety cap on population rows per chip -- IMPORTED from gpu_index.index.sources
+# (one home, maintainability review): the SAME bound the basket lane has
+# run live for B200 since its population fix, so the two capture lanes'
+# population
+# semantics can never drift apart by one constant edit. Import direction
+# is already basket -> observatory here (parse_vast_offers above).
+# Hitting it is recorded as population_overflow in chip_book_stats, never
+# silent.
 
 
 def _query_url(gpu_name: str, order: str = "asc") -> str:
@@ -134,7 +162,9 @@ def rank_machines(
     return sorted(best_per_machine.values(), key=lambda c: c["per_gpu"])
 
 
-def observation_row(cand: Dict[str, Any]) -> Dict[str, Any]:
+def observation_row(
+    cand: Dict[str, Any], *, population: bool = False
+) -> Dict[str, Any]:
     row = observation(
         sku_identifier=cand["gpu_name"],
         price_per_gpu_hr=cand["per_gpu"],
@@ -147,6 +177,12 @@ def observation_row(cand: Dict[str, Any]) -> Dict[str, Any]:
             f"{cand['num_gpus']}x rentable on-demand ask (dph_total incl "
             f"default storage), cheapest offer of machine "
             f"{cand['machine_id']}"
+            + (
+                " [population row: verified US/CA beyond the cheapest-N"
+                " record]"
+                if population
+                else ""
+            )
         ),
     )
     # L2 identity continuity: tomorrow's print must be
@@ -160,15 +196,55 @@ def observation_row(cand: Dict[str, Any]) -> Dict[str, Any]:
             "verification": cand["verification"],
         }
     )
+    if population:
+        # Sanctioned top-level passthrough key (snapshot schema): marks the
+        # row as part of the recorded verified-US/CA population, NOT part
+        # of the cheapest-N continuity record.
+        row["book_scope"] = "verified_us_ca_population"
     return row
 
 
-def select_chip_observations(
-    candidates: List[Dict[str, Any]], record_limit: int
+def _population_beyond_record(
+    ranked: List[Dict[str, Any]], record_limit: int
 ) -> List[Dict[str, Any]]:
-    """The recorded rows for one chip's book: cheapest ``record_limit``
-    machines, per-GPU ascending."""
-    return [observation_row(c) for c in rank_machines(candidates)[:record_limit]]
+    """The verified-US/CA machines BEYOND the cheapest-N record, per-GPU
+    ascending (``ranked`` is already sorted). The screen is the one home in
+    gpu_index.index.composite -- never forked (see module docstring)."""
+    return [
+        c
+        for c in ranked[record_limit:]
+        if us_ca_verified_host(c["verification"], c["geolocation"])
+    ]
+
+
+def select_chip_observations(
+    candidates: List[Dict[str, Any]],
+    record_limit: int,
+    *,
+    population: bool = False,
+) -> List[Dict[str, Any]]:
+    """The recorded rows for one chip's book.
+
+    Two populations, in order (mirrors gpu_index.index.sources
+    select_vast_observations):
+      1. the cheapest ``record_limit`` machines of the WHOLE book, per-GPU
+         ascending -- unchanged continuity record for every chip;
+      2. population chips only (options.population_gpu_names): every OTHER
+         verified-US/CA machine, per-GPU ascending, marked
+         book_scope=verified_us_ca_population -- the full population a
+         verified-US/CA statistic runs over, capped at
+         VAST_POPULATION_LIMIT (overflow recorded in chip_book_stats,
+         never silent).
+    """
+    ranked = rank_machines(candidates)
+    rows = [observation_row(c) for c in ranked[:record_limit]]
+    if population:
+        beyond = _population_beyond_record(ranked, record_limit)
+        rows.extend(
+            observation_row(c, population=True)
+            for c in beyond[:VAST_POPULATION_LIMIT]
+        )
+    return rows
 
 
 def chip_book_stats(
@@ -177,18 +253,39 @@ def chip_book_stats(
     *,
     fetch_truncated: bool = False,
     coverage_gap: bool = False,
+    population: bool = False,
 ) -> Dict[str, Any]:
     """Truncation must never be invisible: per-chip book
     accounting recorded alongside the rows, computed with the same
-    dedup/rank helper the selection uses."""
+    dedup/rank/screen helpers the selection uses. Population chips
+    additionally record verified_us_ca_machines (the screened count over
+    the WHOLE deduped book), population_recorded (the branch ran -- the
+    population-accounting gate downstream keys on presence, so a zero
+    count still proves the branch ran) and population_overflow; the keys
+    are ABSENT for non-population chips so their stats stay byte-identical
+    to the pre-branch shape."""
     ranked = rank_machines(candidates)
+    rows_recorded = min(len(ranked), record_limit)
     stats: Dict[str, Any] = {
         "candidate_offers": len(candidates),
         "machines_total": len(ranked),
-        "rows_recorded": min(len(ranked), record_limit),
+        "rows_recorded": rows_recorded,
         "fetch_truncated": fetch_truncated,
         "coverage_gap": coverage_gap,
     }
+    if population:
+        eligible = [
+            c
+            for c in ranked
+            if us_ca_verified_host(c["verification"], c["geolocation"])
+        ]
+        beyond = _population_beyond_record(ranked, record_limit)
+        stats["rows_recorded"] = rows_recorded + min(
+            len(beyond), VAST_POPULATION_LIMIT
+        )
+        stats["verified_us_ca_machines"] = len(eligible)
+        stats["population_recorded"] = True
+        stats["population_overflow"] = len(beyond) > VAST_POPULATION_LIMIT
     if ranked:
         stats["per_gpu_min"] = round(ranked[0]["per_gpu"], 4)
         stats["per_gpu_max"] = round(ranked[-1]["per_gpu"], 4)
@@ -197,7 +294,7 @@ def chip_book_stats(
 
 def _validated_options(
     options: Optional[Dict[str, Any]],
-) -> Tuple[List[str], int]:
+) -> Tuple[List[str], int, List[str]]:
     """Fail closed: this collector never invents a chip list -- the queried
     names are operational config (config/raw_observatory.json)."""
     if not isinstance(options, dict):
@@ -226,7 +323,34 @@ def _validated_options(
         raise RuntimeError(
             "vast: options.record_limit_per_gpu must be a positive integer"
         )
-    return list(names), limit
+    # population_gpu_names is OPTIONAL (absent = no chip records the
+    # verified-US/CA population -- the pre-branch behavior), but when
+    # present it must be well-formed and every name must also be queried:
+    # a population chip missing from gpu_names would validate and then
+    # silently record nothing, which is exactly the invisible-truncation
+    # class this branch exists to kill.
+    population_names = options.get("population_gpu_names", [])
+    if not isinstance(population_names, list) or not all(
+        isinstance(n, str) and n.strip() for n in population_names
+    ):
+        raise RuntimeError(
+            "vast: options.population_gpu_names must be a list of vast "
+            "gpu_name strings (the chips whose verified-US/CA population "
+            "is recorded beyond the cheapest record_limit_per_gpu)"
+        )
+    if len(set(population_names)) != len(population_names):
+        raise RuntimeError(
+            "vast: options.population_gpu_names contains duplicates"
+        )
+    unknown = [n for n in population_names if n not in names]
+    if unknown:
+        raise RuntimeError(
+            "vast: options.population_gpu_names entries not present in "
+            f"options.gpu_names: {unknown!r} -- a population chip that is "
+            "never queried would silently record no population; fix "
+            "config/raw_observatory.json"
+        )
+    return list(names), limit, list(population_names)
 
 
 def _fetch_chip_book(
@@ -256,12 +380,13 @@ def _fetch_chip_book(
 def collect(
     timeout: float = DEFAULT_TIMEOUT, options: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    gpu_names, record_limit = _validated_options(options)
+    gpu_names, record_limit, population_names = _validated_options(options)
     rows: List[Dict[str, Any]] = []
     partial: List[str] = []
     failures: List[str] = []
     book_stats: Dict[str, Dict[str, Any]] = {}
     for idx, gpu_name in enumerate(gpu_names):
+        population = gpu_name in population_names
         if idx:
             time.sleep(REQUEST_SPACING_SECONDS)
         try:
@@ -274,11 +399,17 @@ def collect(
         if raw_count == 0:
             # NOT an error: vast genuinely has empty books for some chips
             # (MI300X as of 2026-08-22). Recorded so the note is countable.
+            # A population chip's empty book still records
+            # population_recorded=true / verified_us_ca_machines=0: the
+            # branch RAN and honestly found nothing -- distinguishable
+            # downstream from a capture where the branch did not exist.
             partial.append(
                 f"{gpu_name}: zero rentable on-demand offers on the book "
                 "(empty book, not a failure)"
             )
-            book_stats[gpu_name] = chip_book_stats([], record_limit)
+            book_stats[gpu_name] = chip_book_stats(
+                [], record_limit, population=population
+            )
             continue
         pinned, skipped = pin_candidates(candidates, gpu_name)
         if skipped:
@@ -293,12 +424,15 @@ def collect(
                 "shape or its gpu_name filter changed; refusing to guess"
             )
             continue
-        chip_rows = select_chip_observations(pinned, record_limit)
+        chip_rows = select_chip_observations(
+            pinned, record_limit, population=population
+        )
         stats = chip_book_stats(
             pinned,
             record_limit,
             fetch_truncated=fetch_truncated,
             coverage_gap=coverage_gap,
+            population=population,
         )
         rows.extend(chip_rows)
         book_stats[gpu_name] = stats
@@ -308,6 +442,12 @@ def collect(
                 f"(>= {2 * FETCH_LIMIT} offers) -- mid-book cheap-per-GPU "
                 "offers may be missing from the candidate set"
             )
+        if stats.get("population_overflow"):
+            partial.append(
+                f"{gpu_name}: verified-US/CA population wider than "
+                f"VAST_POPULATION_LIMIT ({VAST_POPULATION_LIMIT}) -- "
+                "population rows truncated (flagged in book_stats)"
+            )
         # Per-chip one-liner (config-derived strings only -- remote strings
         # are never printed raw from this module; parse_vast_offers cleans
         # its own anomaly prints).
@@ -316,6 +456,12 @@ def collect(
             f"offers, {stats['machines_total']} machines, recording "
             f"{stats['rows_recorded']} (cheapest "
             f"${stats['per_gpu_min']:.4f}/gpu-hr)"
+            + (
+                f", verified US/CA population "
+                f"{stats['verified_us_ca_machines']}"
+                if population
+                else ""
+            )
         )
     if not rows and failures:
         # Every chip either failed or printed nothing, and at least one

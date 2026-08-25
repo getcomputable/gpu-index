@@ -157,10 +157,12 @@ def test_real_labels_normalize_through_catalog(rows):
     }
     assert mapped["NVIDIA B300 SXM6 AC"] == "B300"
     assert mapped["NVIDIA B200"] == "B200"
+    # True lookalikes preserved at capture now land on DIFFERENT skus
+    # (H-series variant split, design section 7).
     assert mapped["NVIDIA H200"] == "H200"
-    assert mapped["NVIDIA H200 NVL"] == "H200"
+    assert mapped["NVIDIA H200 NVL"] == "H200_NVL"
     assert mapped["NVIDIA H100 80GB HBM3"] == "H100"
-    assert mapped["NVIDIA H100 PCIe"] == "H100"
+    assert mapped["NVIDIA H100 PCIe"] == "H100_PCIE"
     assert mapped["NVIDIA RTX PRO 6000 Blackwell Server Edition"] == "RTX_PRO_6000"
     assert (
         mapped["NVIDIA RTX PRO 6000 Blackwell Workstation Edition"]

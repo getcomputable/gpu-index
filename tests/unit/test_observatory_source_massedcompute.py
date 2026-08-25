@@ -151,11 +151,13 @@ def test_real_labels_normalize_through_catalog(rows):
     }
     assert mapped["B300 SXM6"] == "B300"
     assert mapped["B200 SXM6"] == "B200"
-    assert mapped["H200 NVL (141GB)"] == "H200"
-    assert mapped["H200 NVL (141GB) NVLink"] == "H200"
+    # H-series variant split (hourly panel design section 7): NVL labels
+    # land on their own variant skus now, never on the generic parts.
+    assert mapped["H200 NVL (141GB)"] == "H200_NVL"
+    assert mapped["H200 NVL (141GB) NVLink"] == "H200_NVL"
     assert mapped["H100 (80GB)"] == "H100"
-    assert mapped["H100 NVL"] == "H100"
-    assert mapped["H100 NVL (94GB) NVLink"] == "H100"
+    assert mapped["H100 NVL"] == "H100_NVL"
+    assert mapped["H100 NVL (94GB) NVLink"] == "H100_NVL"
     assert mapped["H100 SXM5 (80GB)"] == "H100"
     assert mapped["A100 (80GB)"] == "A100"
     assert mapped["A100 SXM4 (80GB)"] == "A100"

@@ -182,7 +182,8 @@ def test_real_labels_normalize_through_catalog(rows):
         "NVIDIA B200 SXM6": "B200",
         "NVIDIA HGX B200": "B200",
         "NVIDIA H100 SXM": "H100",
-        "NVIDIA H100 PCIe": "H100",
+        # Variant split (design section 7): PCIe lands on its own sku.
+        "NVIDIA H100 PCIe": "H100_PCIE",
         "NVIDIA H100": "H100",
         "NVIDIA A100 SXM": "A100",
         "NVIDIA A100 PCIe": "A100",

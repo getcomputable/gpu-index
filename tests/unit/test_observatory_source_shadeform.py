@@ -188,8 +188,9 @@ def test_real_labels_normalize_through_catalog(rows):
     assert mapped["RTXPro6000"] == "RTX_PRO_6000"
     assert mapped["A4000"] == "RTX_A4000"
     assert mapped["RTX4000Ada"] == "RTX_4000_ADA"
-    # Variant labels collapse to the part.
-    assert mapped["H100_nvl"] == "H100"
+    # H-series variant split (design section 7): the NVL label lands on
+    # its own variant sku; memory-size suffixes still collapse to the part.
+    assert mapped["H100_nvl"] == "H100_NVL"
     assert mapped["A100_80G"] == "A100"
     assert mapped["V100_32G"] == "V100"
     assert mapped["B300"] == "B300"

@@ -161,6 +161,58 @@ def test_catalog_partial_compaction_and_variants(catalog, label, expected):
     )
 
 
+@pytest.mark.parametrize(
+    "label,expected",
+    [
+        # H-series variant separation (hourly panel design section 7 /
+        # METHODOLOGY.md 5.7): NVL and PCIe form factors
+        # trade at structurally different prices, so their entries sit
+        # ABOVE the generic parts and first-match-wins peels them off.
+        ("H200 NVL", "H200_NVL"),
+        ("NVIDIA H200 NVL", "H200_NVL"),
+        ("H200 NVL (141GB)", "H200_NVL"),
+        ("H100 NVL", "H100_NVL"),
+        ("H100 NVL (94GB) NVLink", "H100_NVL"),
+        ("H100 PCIe", "H100_PCIE"),
+        ("H100-PCIe-80GB", "H100_PCIE"),
+        ("h100_pcie", "H100_PCIE"),
+        ("H100 PCI-E", "H100_PCIE"),
+        # The generic entries no longer swallow the variants, but still
+        # catch everything else: SXM labels and bare parts stay put.
+        ("H100 SXM", "H100"),
+        ("H100 SXM5 80GB", "H100"),
+        ("NVIDIA H100", "H100"),
+        ("NVIDIA H200", "H200"),
+        ("NVIDIA H200 SXM", "H200"),
+        # Boundary honesty: 'NVL' never fires inside a longer run, so
+        # interconnect-marketing 'NVLink' labels are NOT the NVL part...
+        ("NVIDIA H100 NVLink", "H100"),
+        # ...and the GB-superchip entries above still win their labels.
+        ("NVIDIA GB200 NVL72", "GB200"),
+    ],
+)
+def test_hseries_variant_entries_win_above_generic(catalog, label, expected):
+    entry = match_sku(catalog, label)
+    assert entry is not None and entry["sku"] == expected, (
+        f"{label!r} -> {entry and entry['sku']}"
+    )
+
+
+def test_hseries_variant_entries_are_hopper_nvidia(catalog):
+    """The three new variant entries carry the H100/H200-band vendor,
+    family and plausibility (design section 7)."""
+    by_sku = {e["sku"]: e for e in catalog["entries"]}
+    for sku, band in (
+        ("H200_NVL", (0.3, 30.0)),
+        ("H100_NVL", (0.2, 25.0)),
+        ("H100_PCIE", (0.2, 25.0)),
+    ):
+        entry = by_sku[sku]
+        assert entry["vendor"] == "NVIDIA"
+        assert entry["family"] == "hopper"
+        assert entry["plausible_usd_gpu_hr"] == band
+
+
 def test_plausible_band_falls_back_to_default(catalog):
     assert plausible_band(catalog, None) == catalog["default_plausible_usd_gpu_hr"]
     assert plausible_band(catalog, "NOT_A_SKU") == catalog[
@@ -212,15 +264,29 @@ def test_real_config_loads_and_validates(real_config):
 
 def test_reserved_prefixes_cover_the_real_basket_lanes(real_config):
     """The keyspace fence's promise: RESERVED_LANE_PREFIXES must name the
-    ACTUAL basket lanes' bucket prefixes — a new basket lane landing with a
-    new prefix must grow the tuple (this is the reminder)."""
+    ACTUAL basket lanes' AND panel lanes' bucket prefixes — a new lane
+    landing with a new prefix must grow the tuple (this is the reminder).
+    The panel side pins full set-equality with its KNOWN_LANE_PREFIXES
+    (test_panel_engine), so neither constant can drift alone."""
     from gpu_index.observatory.config import RESERVED_LANE_PREFIXES
 
-    basket_prefixes = set()
-    for name in ("index_basket.json", "index_basket_b200.json"):
+    lane_prefixes = set()
+    for name in (
+        "index_basket.json",
+        "index_basket_b200.json",
+        "index_panel_b300.json",
+        "index_panel_b200.json",
+        "index_panel_h100_sxm.json",
+        "index_panel_h200_sxm.json",
+        "index_panel_h100_broad.json",
+        "index_panel_h200_broad.json",
+    ):
         cfg = json.loads((REPO_ROOT / "config" / name).read_text())
-        basket_prefixes.add(cfg["bucket_prefix"])
-    assert basket_prefixes == set(RESERVED_LANE_PREFIXES)
+        lane_prefixes.add(cfg["bucket_prefix"])
+    assert lane_prefixes == set(RESERVED_LANE_PREFIXES)
+    # The observatory's own prefix must never appear here: the fence
+    # refuses equality, so a self-entry would refuse the real config.
+    assert real_config["bucket_prefix"] not in RESERVED_LANE_PREFIXES
 
 
 def test_real_config_claim_floor_is_satisfiable(real_config):
@@ -449,6 +515,32 @@ def test_non_usd_prints_are_not_screened_against_usd_bands(catalog):
         {"sku_identifier": "NVIDIA H200", "currency": "INR"}, catalog
     )
     assert no_price["implausible"] is True
+
+
+def test_normalize_flags_non_finite_prices_implausible(catalog):
+    """Finiteness fail-closed (harden review): json admits NaN/Infinity,
+    and the non-USD branch has no band to catch them -- a non-finite
+    native must flag implausible in EVERY currency branch (flag-only,
+    the capture convention; consumers screen on the flag)."""
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        usd = normalize_observation(
+            {
+                "sku_identifier": "NVIDIA H200",
+                "price_native_per_gpu_hr": bad,
+                "currency": "USD",
+            },
+            catalog,
+        )
+        assert usd["implausible"] is True
+        eur = normalize_observation(
+            {
+                "sku_identifier": "NVIDIA H200",
+                "price_native_per_gpu_hr": bad,
+                "currency": "EUR",
+            },
+            catalog,
+        )
+        assert eur["implausible"] is True
 
 
 def test_first_party_disclosure_comes_from_config(catalog):

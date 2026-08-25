@@ -36,10 +36,23 @@ VALID_SOURCE_TYPES = {
     "hyperscaler",
 }
 
-# The observatory may share a bucket with the basket lanes but must never
-# collide with a basket lane's prefix. Grow this tuple when
-# a new basket lane lands (the test pinning it will remind you).
-RESERVED_LANE_PREFIXES = ("index/b300_basket", "index/b200_basket")
+# The observatory may share a bucket's index/ keyspace with the other
+# lanes but must never collide with another lane's prefix: the basket
+# lanes AND the hourly panel-index lanes (which READ this lane's record
+# and WRITE composites under their own prefixes -- an observatory config
+# typo'd onto one of them could shadow a contractual series' keys). Grow
+# this tuple when a new lane lands; it is pinned in set-equality lockstep
+# with gpu_index.index.panel_config.KNOWN_LANE_PREFIXES minus the
+# observatory's own prefix (test_panel_engine), so neither side can drift
+# alone.
+RESERVED_LANE_PREFIXES = (
+    "index/b300_basket",
+    "index/b200_basket",
+    "index/h100_sxm",
+    "index/h200_sxm",
+    "index/h100_broad",
+    "index/h200_broad",
+)
 
 
 class ObservatoryConfigError(RuntimeError):
