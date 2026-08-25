@@ -4,9 +4,11 @@ Checklist for cutting a release of `gpu-index`. Every item must hold before
 tagging.
 
 1. **Full test suite green**, including the contract guards:
-   `pytest` passes with the golden-artifact test
-   (`tests/unit/test_golden_artifact.py`, byte-identity against
-   `tests/golden/`) and the public-API surface test
+   `pytest` passes with the golden-artifact tests
+   (`tests/unit/test_golden_artifact.py` for the daily engine and
+   `tests/unit/test_panel_golden_artifact.py` for the hourly panel
+   engine, byte-identity against `tests/golden/`) and the public-API
+   surface test
    (`tests/unit/test_public_api.py`) untouched or deliberately updated in
    the same diff.
 2. **Signature compatibility**: `griffe check gpu_index --search src
@@ -19,15 +21,16 @@ tagging.
    GOVERNANCE.md ("Methodology changes"): every artifact embeds its full
    parameter set, and the calculation mechanically refuses to extend a
    series under drifted parameters. A minted change ships with the
-   regenerated golden artifact in the same diff.
+   regenerated golden artifact(s) in the same diff.
 4. **Upstream duty (maintainers)**: before any breaking release, run the
    private downstream consumer's test suite against the release candidate.
    A breaking release does not ship until that suite is green or the
    breakage is coordinated with its owners.
 5. **Golden regeneration is explicit and local only**: regenerate with
-   `GPU_INDEX_UPDATE_GOLDEN=1 pytest tests/unit/test_golden_artifact.py`
-   (with `CI` unset), then review the golden diff like code. The golden is
-   never written implicitly and never regenerated on CI.
+   `GPU_INDEX_UPDATE_GOLDEN=1 pytest tests/unit/test_golden_artifact.py
+   tests/unit/test_panel_golden_artifact.py` (with `CI` unset), then
+   review the golden diff like code. A golden is never written implicitly
+   and never regenerated on CI.
 6. **Tag and signed release notes**: tag the release commit, and publish
    release notes signed by a maintainer covering API changes, methodology
    mints, and data-license notes (LICENSE-DATA.md) where relevant.

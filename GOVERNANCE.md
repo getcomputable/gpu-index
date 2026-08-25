@@ -14,7 +14,9 @@ The methodology is versioned. Every published record embeds the full parameter
 set that produced it. Any change to a parameter that touches a published day
 requires minting a new methodology version; the calculation refuses to extend
 a series under altered parameters. Prior versions stay frozen and readable.
-Published values are never revised; corrections publish forward.
+Published values are never revised; corrections publish forward. Methodology
+documents are published (METHODOLOGY.md and the per-lane configs under
+config/), and the open pipeline runs those baked config files directly.
 
 ## Panel membership
 

@@ -1,10 +1,8 @@
 # Computable GPU Index (CGI) — Methodology
 
-> Draft: a finalize pass is pending (methodology version sync and cadence wording).
-
 **Collection, screening, and hourly index calculation for GPU rental rates.**
 
-Published for public review. Current version: **v5** (B300) / **v4** (B200).
+Published for counterparty and public review.
 
 ---
 
@@ -12,7 +10,7 @@ Published for public review. Current version: **v5** (B300) / **v4** (B200).
 
 A USD price per GPU-hour for a specified accelerator, computed from published on-demand rental rates of a fixed panel of providers. Collection is hourly, and the index and its weights are recomputed at **every hourly observation**.
 
-Live panels: **B200**, **B300**. The calculation is chip-generic — panel, currency treatment and per-provider statistic are configuration, not code. **H100, H200, A100** are the intended next panels; their price history is already being collected.
+Live panels: **B300**, **B200**, **H100-SXM**, **H200-SXM**. The calculation is chip-generic — panel, currency treatment and per-provider statistic are configuration, not code, so a further chip becomes a new panel rather than a new methodology.
 
 **Design commitments**
 
@@ -29,7 +27,7 @@ Live panels: **B200**, **B300**. The calculation is chip-generic — panel, curr
 
 ## 2. Coverage
 
-Hourly, **28 providers**, **66 chip models** (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers — a page listing eleven chips across four tiers is recorded in full.
+Hourly, **28 providers**, **69 chip models** (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers — a page listing eleven chips across four tiers is recorded in full.
 
 Every panel is a *selection* over this record, not a separate collection effort.
 
@@ -50,7 +48,7 @@ Each provider carries two disclosure fields: `source_type` and `first_party`.
 
 **What is panel-eligible.** Direct principals, direct-partnered providers, and **marketplaces**. Excluded: **aggregators**, which publish no price of their own, and **resellers**, whose price is another panel member's capacity under a second brand.
 
-Marketplaces are included deliberately. Vast.ai is the only venue in either panel where the published price is a live transactable ask rather than a posted list rate, which makes it the panel's only direct read on clearing prices. Two disclosures follow: its price embeds a host and platform spread, and it is the only member where manipulation would be transactional rather than reputational — hence the specific prohibition in §14.
+Marketplaces are included deliberately. Vast.ai is the only venue on any panel where the published price is a live transactable ask rather than a posted list rate, which makes it each panel's only direct read on clearing prices. Two disclosures follow: its price embeds a host and platform spread, and it is the only member where manipulation would be transactional rather than reputational — hence the specific prohibition in §14.
 
 Exclusion is by panel construction, not by filter. The panel is an explicit enumerated list (§C.2); nothing in the calculation branches on `source_type` or `first_party`, which are disclosure fields.
 
@@ -84,7 +82,7 @@ Collection records everything; the index uses a screened subset. All screens **f
 | Screen | Rule |
 |---|---|
 | Panel | Fixed enumerated list per chip (§C.2) |
-| Tier | On-demand only; spot and preemptible recorded but never eligible |
+| Tier | Allow-list: **on-demand only**. Every other tier — spot, preemptible, reserved, committed, monthly-commit, serverless, from-floor — is recorded but never eligible |
 | Product identity | Reject `NVL`, `GB200`, `GB300`, `Grace`, `B200A` in the structured label; stated memory 186 or 189 GB; GPU count 36 or 72 |
 | Plausibility | Per-chip price band; out-of-band prices flagged, not deleted |
 | Jump | ≥25% move with fewer than 2 other members moving ≥10% is flagged |
@@ -105,7 +103,37 @@ An index value and a weight vector are published for **each hourly observation**
 
 An hour with no usable record publishes as an explicit missing-observation entry — never skipped, never interpolated.
 
-**Settlement** over a calculation period is the arithmetic average of the published observations within it. Averaging over many observations, rather than reading one, is what removes any single hour's significance and with it the incentive to influence a particular moment.
+**Two distinct operations, at two levels.** The **weighted median** runs across providers *within one hour* and produces that hour's index value — it is what stops one provider moving the price. A **time-average** runs across hours *within a period* and produces a single figure for that period — it is what stops one hour moving a settlement. The index publishes only the hourly series; any period aggregation belongs to the contract that references it.
+
+**How the time-average limits one hour.** Each of the `N` hours in a period enters the average at weight `1/N`, so an hour wrong by `D` moves the period rate by `D/N` — arithmetic, not a safeguard. At an hourly cadence a month is `N ≈ 730`, so a single hour printing at twice its true level moves the period rate by about **0.14%**. A weekly period is `N ≈ 168`, about **0.6%**. Against a single-point fixing (`N = 1`), where the same bad hour moves settlement by the full **100%**, this is the substantive difference between an averaged index and a snapshot, and it is why the cadence is hourly rather than daily: a daily print over a month is `N = 30`, and one bad day carries **3.3%**.
+
+**Period aggregation is a contract term, not an index parameter.** A contract referencing this index states its own period, and the period rate is the **time-average of the hourly index values within it, with any missing hour carried forward** (§6.1). The index's obligation is to publish the hourly series plus the coverage record that lets any consumer apply that rule and see what it rested on. No period length is specified here; that is a term of the referencing contract.
+
+## 6.1 Missing hours and the period rate
+
+An hour carries no index value for one of two reasons: collection failed, or too few providers passed the screens and the hour published dark. Either way it is a hole in a time-average taken over it.
+
+**Definitions.** *Scheduled hours* — hours the panel was live for, clipped at its start date. *Filled hours* — hours carrying a published index value. *Missing hour* — a scheduled hour with none. *Gap* — a run of consecutive missing hours. *Coverage* — filled ÷ scheduled.
+
+**The fill rule.** Every hour in a gap of `G` missing hours takes the mean of the last `min(G, L)` filled hours immediately preceding it, where `L` = `fill_lookback_hours` = **72 h**. The window scales with the gap and caps at three days: a one-hour hole takes its neighbour, a two-day hole the preceding two days, a two-week hole the preceding three days — hours far from a gap stop being evidence about it, while a long gap needs enough context that one fluky final observation cannot set the level for days. Changing `L` is a versioned change.
+
+Three consequences follow. The rule applies always, not past a threshold — otherwise the period rate would jump discontinuously at that boundary and neighbouring periods would be computed under different definitions. It draws only on *preceding* hours, so a gap spanning a whole period resolves entirely from before it, which is what the escalation threshold below catches; at a panel's genesis, where no prior value exists, those hours are dropped from the average instead. And it never feeds the weighting — scoring requires real observations at both ends of a return and drops any sample it cannot form (§11.3). A contract demands a figure, so holes need a convention; scoring may return *undefined*, and floor-weighting already handles that.
+
+Filling from preceding hours invents no price movement, which is why it beats the alternatives: averaging only the filled hours silently assigns each gap the whole-period average, and interpolating fabricates a path through it.
+
+**Whether that figure is fit to settle on is a separate question**, governed by coverage. Two thresholds, three bands:
+
+| Band | Coverage | Longest gap | Consequence |
+|---|---|---|---|
+| Settles | ≥ 98% | ≤ 2% of period | Period rate stands as computed |
+| Review | 90–98% | — | Calculation agent certifies before settlement, recording whether the carried values materially affected the result. The rate is not recomputed |
+| Determination | < 90% | > 2% of period | Calculation agent determines the rate in good faith from the filled series and the coverage report, reasons recorded |
+
+In hours, the 98% and 2% lines are 3 h weekly, 15 h monthly, 44 h quarterly; the 90% line is 17 h, 73 h, 219 h. Ordinary operation settles without review — 98% allows roughly half a day of scattered outage a month.
+
+**The thresholds are recommended defaults, not index parameters.** The index publishes the hourly series and the coverage record; where a counterparty draws these lines is a contract term. They are stated so that a contract has a default to adopt rather than a blank, and so any deviation is visible as one.
+
+**The coverage report publishes every period, passing or failing** — scheduled and filled hours, coverage, and every gap with its timestamps and cause. A figure that appears only when something has gone wrong is a dispute on first sight. Any threshold also gives a party who dislikes the running average a reason to want an outage; both here require sustained failure across independently collected providers, and every gap is in the permanent record. **Published hourly values are never revised** — this procedure produces a period rate; the hourly series stands as published, holes and all.
 
 ## 7. Each provider's observed price
 
@@ -118,7 +146,11 @@ An hour with no usable record publishes as an explicit missing-observation entry
 | One list price | Lowest eligible | The minimum selects among that provider's own tiers and configurations |
 | A book of third-party asks | Median over the eligible host population | The lowest ask is one host's offer — frequently unverified, sometimes a single machine — and is not representative of the venue |
 
-Vast.ai is the only order book in either panel. It prices as the **volume-weighted median of rentable on-demand per-GPU asks across verified US and Canadian hosts**, weighted by each offer's GPU count. On one real observation the lowest-price rule would have returned an unverified host 29% below the median.
+Two order books are seated across the live panels: Vast.ai and Lium. Which statistic each seat uses is a per-panel parameter (§C.2):
+
+- **B200 — Vast.ai**: the **volume-weighted median of rentable on-demand per-GPU asks across verified US and Canadian hosts**, weighted by each offer's GPU count. On one real observation the lowest-price rule would have returned an unverified host 29% below the median. The statistic additionally requires the observation's stored book to prove the **full eligible population was recorded** (a population-accounting field written at collection); an observation that cannot prove it holds the seat out rather than pricing a truncated, one-sided-low book — fail closed, deterministic on replay.
+- **B300 — Vast.ai**: the **lowest-eligible rule**, per the governing annex as written. Aligning it with the order-book treatment above is a recorded open decision; until ruled, the annex-faithful rule stands.
+- **H-series panels — Vast.ai and Lium**: the volume-weighted median with **population floors**: at least **5 distinct machines** and **3 distinct hosts** (Vast.ai) or **3 distinct sellers** (Lium) in the eligible book, else the seat is held out with the counts recorded. The floors exist because the live verified-US/CA H-series books have been observed at one to three machines on a single host — a median over that is one host's price wearing a statistic's clothing. Lium publishes **no host-verification field**, so no verification screen exists there and none is applied (geography likewise); both are recorded open decisions, and the population-accounting requirement applies to the Vast.ai seats as above.
 
 Every other panel member — including those classed `marketplace` — publishes a price list, so the lowest-eligible rule applies to them unchanged.
 
@@ -141,7 +173,6 @@ accept if |price - mean(last 20)| <= 3.0 * max(sd, $0.05)
 | Rejected prices still enter the history | A genuine repricing then costs one day, not perpetuity |
 | The test runs in the quoted currency | On 20 Aug 2026 a ~1% EUR/USD move ejected a provider whose price sat unchanged at €7.50 |
 | Minimum band ±$0.15 | A frozen list price has sd 0; without a floor any repricing is rejected |
-| Threshold widened 2.5 → 3.0 sd | At 2.5 it rejected a genuine $5.95 → $6.60 repricing by 1.5¢. The aggregation in §9 is now the primary outlier defense; this is a gross-error screen |
 
 First ten observations pass untested. Such prices are flagged for review if more than 15% from that observation's cross-provider average, but counted.
 
@@ -280,7 +311,7 @@ then, while any w_i > w_max:
     excess over the remainder in proportion to s_i
 ```
 
-Every provider receives the **floor `w_min` = 2.5%** first; the remainder distributes by share. **Both bounds are uniform — no per-provider values, and no weight requires a human decision.** Allocation runs in full precision and rounds once; the rounded vector is the published weight.
+Every provider receives the **floor `w_min`** first — 2.5%, lowered to 1.25% on the broad H-series panels so that 19–22 floors do not consume the discretionary share (Appendix C.3) — and the remainder distributes by share. **Both bounds are uniform within a panel — no per-provider values, and no weight requires a human decision.** Allocation runs in full precision and rounds once; the rounded vector is the published weight.
 
 **γ controls how sharply score differences become weight differences.** Four providers scoring 0.20 / 0.10 / 0.05 / 0.00:
 
@@ -296,13 +327,7 @@ Every provider receives the **floor `w_min` = 2.5%** first; the remainder distri
 
 ## 13. Safeguards
 
-**A uniform ceiling suffices because the aggregation bounds influence.** A manipulated provider that moves and drags others looks identical to one that genuinely leads. Take a provider at the full 30% ceiling and reprice it +30%:
-
-```
-index  6.970000 → 6.970000   (0.000000)
-```
-
-A median over standard-deviation votes does not move. Ceiling and aggregation together bound single-provider influence without per-provider judgment.
+**A uniform ceiling suffices because the aggregation bounds influence.** A manipulated provider that moves and drags others looks identical to one that genuinely leads. Take a provider at the full 30% ceiling and reprice it +30%: the index does not move at all. A median over standard-deviation votes is indifferent to how far an outlying vote travels, only to how much weight sits either side of it, so the ceiling and the aggregation together bound single-provider influence without per-provider judgment.
 
 **An observation cannot move its own weights.** Every weight input is realized strictly before the observation being priced. A party listing capacity minutes before an observation cannot move its own weight for it, and each hour's weights are determinable before that hour's prices are read.
 
@@ -340,7 +365,9 @@ The floor governs the switch test alone. A provider below it stays index-eligibl
 
 ## 15. Known limitations
 
-**Committed-tier pricing.** Eligibility excludes interruptible tiers but not committed ones, so where a provider publishes both, a committed-term rate can win the lowest-price rule. The contractual definition excludes committed pricing. Unreconciled.
+**Committed-tier pricing.** Reconciled at the hourly panel mints: hourly-lane eligibility is an allow-list of eligible tiers -- on-demand only -- so reserved, committed, from-floor and serverless rates can no longer win the lowest-price rule (section 5, appendix C.2). The frozen daily B300/B200 series retain the original behavior (interruptible tiers excluded, committed tiers eligible); their published values are history and are not restated.
+
+**Period coverage thresholds are recommendations, not agreed terms.** The fill rule, the 98% review threshold and the 90% / 2%-gap escalation thresholds in section 6.1 fully specify how a period rate is computed and when it is fit to settle on. What they cannot do is bind a counterparty: they are defaults offered for adoption, and every referencing contract remains free to set its own. Until a contract adopts them, the honest statement is that the index publishes the hourly series and the coverage record, and the settlement convention is the contract's to choose.
 
 **Scoring is in-sample.** Scores are measured on the data the relationship was fitted to. Shrinkage, the score floor and the weight bounds are the counterweights, but every provider with sufficient data earns a small positive score from noise, compressing differences between them.
 
@@ -356,7 +383,9 @@ The floor governs the switch test alone. A provider below it stays index-eligibl
 
 **Residual double-count exposure.** Panel selection prevents two members resolving to the same capacity, but a reseller that does not disclose its upstream providers cannot be verified as distinct. Such sources are excluded from panels for that reason; the check is judgment at selection, not a runtime test.
 
-**Quoted, not transacted.** On any day the index may average prices for capacity that is not obtainable — providers have been observed publishing a price while showing out of stock. An availability screen remains open.
+**Quoted, not transacted — and mostly unverifiable.** The index may price capacity that is not obtainable: providers have been observed publishing a rate while showing out of stock. Coverage of any availability signal is thin and concentrated in the wrong places. Marketplace seats are verified at collection, since only rentable offers enter an order book. A small number of other providers publish a stock state. **The direct principals — the large majority of panel weight — publish nothing about whether the capacity behind a price exists**, and on the live panels the availability-verified share of weight is under 10%. This is not a defect being tolerated but a structural property of a list-price index: what a provider does not disclose cannot be verified from a public surface.
+
+Two consequences are recorded rather than resolved. First, **each observation publishes the share of panel weight that was availability-verified**, so a consumer can price the exposure instead of assuming it away; a screen is not applied, because screening only where a signal exists would filter the providers who disclose and admit those who do not. Second, **a counterparty that genuinely requires availability-backed pricing is not served by a screen on this panel.** That requirement points to a differently constructed index drawn only from venues publishing rentable state — in practice the marketplaces — which is a materially thinner, more volatile panel. That is a separate instrument and a product decision, not a repair to this one.
 
 ---
 
@@ -370,7 +399,7 @@ The floor governs the switch test alone. A provider below it stays index-eligibl
 | **Visible holes** | Every configured provider appears in every snapshot — success, error, or unimplemented. Never a silently shorter list. |
 | **Transport** | HTTPS-only including on redirect (a redirect to HTTP raises). Response bodies size-capped, with a wall-clock read limit bounding a slow-drip response a network timeout cannot see. Certificate verification never weakened. |
 | **Extraction contract** | Record the published figure alongside the normalization; state currency explicitly; **fail loudly on reading nothing** — a page that silently changed shape must error, not present as a healthy provider with no prices. No recipe aggregates across providers. |
-| **Thin-observation gate** | Fewer than five panel members read successfully → the observation is discarded and the interval left unclaimed so the next run retries. Recording a thin snapshot would both stop retries and become the reading the calculation uses. |
+| **Thin-observation gate** | Fewer than **8 of the 28 collected providers** read successfully → the observation is discarded and the interval left unclaimed so the next run retries. Recording a thin snapshot would both stop retries and become the reading the calculation uses. The gate counts collected providers, not panel members — collection is panel-agnostic; panel sufficiency is the calculation's minimum-panel rule (§9). |
 | **Alarms** | A missing previous day, or a previous day missing intervals, is reported on every run until resolved. |
 
 ---
@@ -430,33 +459,49 @@ Every value publishes inside each record. Changes require a new version.
 | Collection interval | hourly |
 | Index / weight recomputation | every hourly observation |
 | Providers collected | 28 |
-| Chip models identified | 66 |
-| Minimum panel members to record | 5 |
-| Series start | 10 Aug 2026 (B300) · 16 Aug 2026 (B200) |
+| Chip models identified | 69 |
+| Minimum providers to record an observation | 8 of 28 collected (panel-agnostic; see Appendix A) |
+| Series start | 10 Aug 2026 (B300) · 16 Aug 2026 (B200) · 23 Aug 2026 (H-series panels) |
 | Retention | life of trade + 2 years |
-| Jump threshold | 25% |
-| Corroboration threshold | 10% |
-| Corroborators required | 2 |
+
+**Movement screens**
+
+| Parameter | Value | Controls |
+|---|---|---|
+| Jump threshold | 25% | Move that triggers scrutiny |
+| Corroboration threshold | 10% | Move counting as another provider agreeing |
+| Corroborators required | 2 | How many must agree for the move to pass |
+
+**Period rate** (§6.1) — applies to any period a referencing contract defines; no period length is specified by the index.
+
+| Parameter | Value | Controls |
+|---|---|---|
+| `fill_lookback_hours` (L) | 72 h (3 days) | Cap on the averaging window used to fill a gap; window = min(gap, L) |
+| Review threshold, coverage | 98% of scheduled hours | Below it, the period rate is reviewed before certification |
+| Escalation threshold, coverage | 90% of scheduled hours | Below it, calculation-agent determination |
+| Escalation threshold, longest gap | 2% of period | Above it, calculation-agent determination |
+
+The three rows below `fill_lookback_hours` are **recommended contract defaults**, not index parameters — the index computes the same period rate either way (§6.1).
 
 ## C.2 Index calculation
 
 | Parameter | B300 | B200 | Controls |
 |---|---|---|---|
 | Aggregation | median of votes | median of votes | How prices combine |
-| Excluded tiers | spot, preemptible | spot, preemptible | Interruptible capacity is not the underlying |
+| Eligible tiers | on-demand (allow-list) | on-demand (allow-list) | Only the on-demand rate is the underlying; every other tier (spot, preemptible, reserved, committed, serverless, from-floor) is recorded but never eligible on the hourly lanes (section 15 reconciliation). The frozen daily series used a spot/preemptible exclusion list |
 | History window | 20 | 20 | Observations in the outlier test |
 | Threshold | 3.0 sd | 3.0 sd | Acceptance band width |
 | Minimum variability | $0.05 | $0.05 | Floor under a frozen price's band |
 | Warm-up | 10 | 10 | Observations before the test applies |
 | Test currency | as quoted | as quoted | Prevents FX moves ejecting a provider |
 | Review flag | 15% | 15% | Distance from panel average flagging review |
-| Minimum panel | — | 5 | Passing providers needed to publish |
+| Minimum panel | 5 | 5 | Passing providers needed to publish |
 | FX source | ECB | none (USD only) | Conversion reference |
 | FX staleness limit | 7 days | — | Beyond this, hold the provider out |
 | Currency-change confirmation | 3 | 3 | Consecutive observations confirming a switch |
 
 Counts above — history window, warm-up, currency confirmation — are in **observations**, so their wall-clock span follows the collection cadence: at hourly collection the outlier window spans 20 hours and warm-up 10 hours. See §15.
-| Order-book statistic | — (lowest eligible) | volume-weighted median | Replaces lowest-price for Vast.ai |
+| Order-book statistic | — (lowest eligible) | volume-weighted median, population-accounted | Replaces lowest-price for Vast.ai (§7) |
 
 **Panel membership.** Membership is the parameter; weights are computed (Part III).
 
@@ -472,9 +517,21 @@ Counts above — history window, warm-up, currency confirmation — are in **obs
 | Latitude.sh | RunPod |
 | | Vast.ai |
 
+**H-series panels** (seated 23 Aug 2026; seat-by-seat evidence and the form-factor screens in `docs/hseries_panel_proposal.md` and `docs/hourly_panel_engine_design.md`; the full membership, weights, and per-seat variant rules are the panel configuration files and publish inside every record):
+
+| Panel | Members | Claim floor | Weight floor | Construction |
+|---|---|---|---|---|
+| H100-SXM | 16 | 5 | 2.5% | H100 SXM5 80 GB only — per-seat form-factor rules, fail closed |
+| H200-SXM | 13 | 5 | 2.5% | H200 SXM 141 GB only — per-seat form-factor rules, fail closed |
+
+- **H100-SXM (16):** Verda, Nebius, CoreWeave, Lambda, Together AI, Hyperstack, Crusoe, TensorPool, Scaleway, Civo, Voltage Park, DigitalOcean, RunPod, Massed Compute, Vast.ai, Lium.
+- **H200-SXM (13):** Verda, Nebius, CoreWeave, Together AI, Hyperstack, Crusoe, TensorPool, Civo, Sesterce, RunPod, DigitalOcean, Vast.ai, Lium.
+
+Both H-series panels admit a seat only on a positively identified form factor. A provider that publishes an H100 or H200 price without stating connector or memory is not seated — the screen fails closed rather than assuming the common configuration. Lambda is not seated on H200: no live H200 price surface exists on its site as of seating.
+
 ## C.3 Weighting
 
-Identical on both panels. No per-provider values.
+Identical on every panel except the weight floor. No per-provider values.
 
 | Parameter | Value | Controls |
 |---|---|---|
@@ -484,7 +541,7 @@ Identical on both panels. No per-provider values.
 | Half-life | 30 days | How fast old observations lose influence |
 | Shrinkage penalty | 1.0 | How hard the fit is pulled toward "no relationship" — the main defence against scoring noise as skill |
 | **Sensitivity (γ)** | **4.0** | **How sharply score differences become weight differences** (§12) |
-| Weight floor | 2.5% | Minimum weight for an eligible provider |
+| Weight floor | 2.5% (1.25% on the broad H-series panels) | Minimum weight for an eligible provider — lower on 18–22-seat panels so floors do not crowd out the computed allocation |
 | Weight ceiling | 30% | Maximum weight — uniform, no exceptions |
 | **Minimum observations** | **10** | **Per provider, per window: observations needed before that provider can be scored.** Below it the score is undefined |
 | **Minimum variation** | **1e-12** | **The panel must have moved for prediction to be a meaningful question.** Below this variance in what is predicted, the score is undefined rather than computed from nothing. Set above price-rounding noise (~1e-14), below any real movement |
