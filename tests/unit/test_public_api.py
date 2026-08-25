@@ -42,6 +42,10 @@ PUBLIC_MODULES = {
     "gpu_index.index.snapshot",
     "gpu_index.index.sources",
     "gpu_index.index.weights",
+    "gpu_index.published",
+    "gpu_index.published.artifacts",
+    "gpu_index.published.reader",
+    "gpu_index.published.verify",
     "gpu_index.observatory",
     "gpu_index.observatory.catalog",
     "gpu_index.observatory.collect",
@@ -145,6 +149,27 @@ PUBLIC_NAMES = {
         "PanelSchedule", "PeriodRateError", "classify_artifact",
         "coverage_band", "find_gaps", "period_report",
         "stamp_to_hour_iso",
+    },
+    "gpu_index.published": {
+        "ArtifactDigestError", "ObservationCheck", "PublishedRecordError",
+        "PublishedRecordReader", "canonical_compact_bytes", "day_key",
+        "decode_and_verify_artifact", "latest_key", "payload_digest",
+        "recompute_observation", "select_observations", "series_key",
+    },
+    "gpu_index.published.artifacts": {
+        "ArtifactDigestError", "PublishedRecordError",
+        "canonical_compact_bytes", "day_key", "decode_and_verify_artifact",
+        "latest_key", "payload_digest", "series_key",
+    },
+    "gpu_index.published.reader": {
+        "BucketConfig", "PublishedRecordReader", "day_key",
+        "decode_and_verify_artifact", "get_object_bytes", "latest_key",
+        "make_client", "series_key",
+    },
+    "gpu_index.published.verify": {
+        "ObservationCheck", "PublishedRecordError", "field_diffs",
+        "median_stddev_composite", "recompute_observation",
+        "select_observations",
     },
 }
 

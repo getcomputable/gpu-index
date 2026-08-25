@@ -1,0 +1,270 @@
+{
+  "artifact_sha256": "d3980904e213ab6d0fff91ba0f4d792960e6467bf50959c6c577f12f66e31fa3",
+  "data": {
+    "date": "2026-08-20",
+    "kind": "gpu_index_observation_day",
+    "observations": [
+      {
+        "calc_params": {
+          "aggregation": "median_stddev_votes",
+          "collection_interval": "hourly",
+          "eligible_tiers": [
+            "verified"
+          ],
+          "filter_sigma": 3,
+          "filter_sigma_floor_usd_gpu_hr": 0.02,
+          "filter_terms": "recorded_currency",
+          "filter_warmup_observations": 3,
+          "filter_window_observations": 14,
+          "fx_max_staleness_days": null,
+          "fx_source": null,
+          "index_recomputation": "hourly",
+          "liveness": {
+            "attendance_floor": 0.6,
+            "forward_horizons_hours": [
+              24
+            ],
+            "gamma": 0.5,
+            "half_life_days": 7,
+            "history_days": 14,
+            "lookback_horizons_hours": [
+              24,
+              72
+            ],
+            "max_abs_log_return": 0.75,
+            "min_train_samples": 6,
+            "ridge_lambda": 0.000001,
+            "scheme": "predictive_v1",
+            "switch_min_eligible": 4,
+            "target_variance_floor": 0.000001,
+            "weight_max": 0.35,
+            "weight_min": 0.02
+          },
+          "manual_exclusions": [],
+          "manual_verify_pct": 25,
+          "members": [
+            {
+              "opening_weight": 0.25,
+              "source_id": "alpha"
+            },
+            {
+              "opening_weight": 0.25,
+              "source_id": "bravo"
+            },
+            {
+              "opening_weight": 0.25,
+              "source_id": "charlie"
+            },
+            {
+              "opening_weight": 0.25,
+              "source_id": "delta"
+            }
+          ],
+          "min_sources_to_publish": 4,
+          "minimum_panel_members_to_record": 4
+        },
+        "generated_at": "2026-08-20T04:59:30.000Z",
+        "input_snapshot_sha256": "d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3",
+        "kind": "gpu_price_index_observation",
+        "methodology_id": "b200_panel_annex_a2_v0_3_calc_v6",
+        "observed_at": "2026-08-20T04:00:00.000Z",
+        "reason": null,
+        "receipts": [
+          {
+            "filter_verdict": "accepted",
+            "last_seen": "2026-08-20T04:00:00.000Z",
+            "liveness_score": 0.8,
+            "price": 3.153125,
+            "price_disclosure": "published",
+            "sd": 0.026667,
+            "source_id": "alpha",
+            "source_url": "https://alpha.example.com/pricing",
+            "status": "ok",
+            "weight": 0.25
+          },
+          {
+            "filter_verdict": "accepted",
+            "last_seen": "2026-08-20T04:00:00.000Z",
+            "liveness_score": 0.8,
+            "price": 3.21,
+            "price_disclosure": "published",
+            "sd": 0.04,
+            "source_id": "bravo",
+            "source_url": "https://bravo.example.com/pricing",
+            "status": "ok",
+            "weight": 0.25
+          },
+          {
+            "filter_verdict": "accepted",
+            "last_seen": "2026-08-20T04:00:00.000Z",
+            "liveness_score": 0.8,
+            "price": 3.099999,
+            "price_disclosure": "published",
+            "sd": 0.02,
+            "source_id": "charlie",
+            "source_url": "https://charlie.example.com/pricing",
+            "status": "ok",
+            "weight": 0.3
+          },
+          {
+            "filter_verdict": "accepted",
+            "last_seen": "2026-08-20T04:00:00.000Z",
+            "liveness_score": 0.8,
+            "price": 3.18,
+            "price_disclosure": "published",
+            "sd": 0.031,
+            "source_id": "delta",
+            "source_url": "https://delta.example.com/pricing",
+            "status": "ok",
+            "weight": 0.2
+          }
+        ],
+        "restatements": [],
+        "schema_version": 1,
+        "sku": "B200",
+        "stability_band_usd_gpu_hr": 0.033126,
+        "status": "ok",
+        "unit": "USD/GPU/hour",
+        "value_usd_gpu_hr": 3.153125
+      },
+      {
+        "calc_params": {
+          "aggregation": "median_stddev_votes",
+          "collection_interval": "hourly",
+          "eligible_tiers": [
+            "verified"
+          ],
+          "filter_sigma": 3,
+          "filter_sigma_floor_usd_gpu_hr": 0.02,
+          "filter_terms": "recorded_currency",
+          "filter_warmup_observations": 3,
+          "filter_window_observations": 14,
+          "fx_max_staleness_days": null,
+          "fx_source": null,
+          "index_recomputation": "hourly",
+          "liveness": {
+            "attendance_floor": 0.6,
+            "forward_horizons_hours": [
+              24
+            ],
+            "gamma": 0.5,
+            "half_life_days": 7,
+            "history_days": 14,
+            "lookback_horizons_hours": [
+              24,
+              72
+            ],
+            "max_abs_log_return": 0.75,
+            "min_train_samples": 6,
+            "ridge_lambda": 0.000001,
+            "scheme": "predictive_v1",
+            "switch_min_eligible": 4,
+            "target_variance_floor": 0.000001,
+            "weight_max": 0.35,
+            "weight_min": 0.02
+          },
+          "manual_exclusions": [],
+          "manual_verify_pct": 25,
+          "members": [
+            {
+              "opening_weight": 0.25,
+              "source_id": "alpha"
+            },
+            {
+              "opening_weight": 0.25,
+              "source_id": "bravo"
+            },
+            {
+              "opening_weight": 0.25,
+              "source_id": "charlie"
+            },
+            {
+              "opening_weight": 0.25,
+              "source_id": "delta"
+            }
+          ],
+          "min_sources_to_publish": 4,
+          "minimum_panel_members_to_record": 4
+        },
+        "generated_at": "2026-08-20T10:59:30.000Z",
+        "input_snapshot_sha256": "d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3",
+        "kind": "gpu_price_index_observation",
+        "methodology_id": "b200_panel_annex_a2_v0_3_calc_v6",
+        "observed_at": "2026-08-20T10:00:00.000Z",
+        "reason": "insufficient_coverage",
+        "receipts": [
+          {
+            "filter_verdict": "accepted",
+            "last_seen": "2026-08-20T10:00:00.000Z",
+            "liveness_score": 0.8,
+            "price": 3.16,
+            "price_disclosure": "published",
+            "sd": 0.027,
+            "source_id": "alpha",
+            "source_url": "https://alpha.example.com/pricing",
+            "status": "ok",
+            "weight": 0.25
+          },
+          {
+            "filter_verdict": "accepted",
+            "last_seen": "2026-08-20T10:00:00.000Z",
+            "liveness_score": 0.8,
+            "price": 3.2,
+            "price_disclosure": "published",
+            "sd": 0.04,
+            "source_id": "bravo",
+            "source_url": "https://bravo.example.com/pricing",
+            "status": "ok",
+            "weight": 0.25
+          },
+          {
+            "filter_verdict": "accepted",
+            "last_seen": "2026-08-20T10:00:00.000Z",
+            "liveness_score": 0.8,
+            "price": 3.11,
+            "price_disclosure": "published",
+            "sd": 0.02,
+            "source_id": "charlie",
+            "source_url": "https://charlie.example.com/pricing",
+            "status": "ok",
+            "weight": 0.3
+          },
+          {
+            "filter_verdict": "not_evaluated",
+            "last_seen": null,
+            "liveness_score": null,
+            "price": null,
+            "price_disclosure": "published",
+            "sd": null,
+            "source_id": "delta",
+            "source_url": null,
+            "status": "missing",
+            "weight": null
+          }
+        ],
+        "restatements": [],
+        "schema_version": 1,
+        "sku": "B200",
+        "stability_band_usd_gpu_hr": null,
+        "status": "no_print",
+        "unit": "USD/GPU/hour",
+        "value_usd_gpu_hr": null
+      }
+    ]
+  },
+  "license": {
+    "attribution": "Computable GPU Index by Computable — index.example.com",
+    "commercial_licensing": "https://index.example.com/licensing",
+    "spdx": "CC-BY-NC-4.0",
+    "url": "https://creativecommons.org/licenses/by-nc/4.0/"
+  },
+  "meta": {
+    "disclosure_restatement_count": 0,
+    "from_observed_at": "2026-08-20T04:00:00.000Z",
+    "generated_at": "2026-08-20T10:59:30.000Z",
+    "index_name": "Computable GPU Index",
+    "observation_count": 2,
+    "schema_version": 1,
+    "to_observed_at": "2026-08-20T10:00:00.000Z"
+  }
+}
