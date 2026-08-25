@@ -8,20 +8,28 @@ published on-demand rental rates of a fixed, disclosed panel of providers. The
 methodology, the collection code, the panel inputs, and every published value live
 in the open. See [METHODOLOGY.md](METHODOLOGY.md) for the full specification.
 
-**Status: pre-launch.** Live panels: B300 (since 2026-08-10) and B200 (since
-2026-08-16). Additional accelerators are collected ahead of panel seating.
+**Status: pre-launch.** Live panels: B300 (since 2026-08-10), B200 (since
+2026-08-16), H100 and H200 (since 2026-08-23). Additional accelerators are
+collected ahead of panel seating.
 
 ## Reproduce a published value
 
 ```
 git clone https://github.com/getcomputable/gpu-index
-./reproduce <sku> <date>
+./reproduce h100 2026-08-24
 ```
 
-Every published observation is a pure function of the published input record and
-the published parameters. The record is append-only; published values are never
-revised. Corrections publish forward under a new methodology version, and prior
-series stay frozen and readable.
+`./reproduce <h100|h200|b300|b200> <date>` replays a live hourly panel lane: a
+UTC day (YYYY-MM-DD) covers all of that day's observations, and YYYY-MM-DDTHH
+targets a single one. Observations already present in your local copy of the
+published record (GPU_INDEX_DATA_DIR, default ./data) are verified byte-for-byte
+against the recorded artifact; unpublished ones are derived from the record and
+printed, writing nothing. Every published observation is a pure function of the
+published input record and the published parameters: the record is append-only,
+published values are never revised, and corrections publish forward under a new
+methodology version while prior series stay frozen and readable. The retired
+daily series remain reproducible via `./reproduce --frozen b300|b200 <date>`,
+and configured non-SKU panel lanes via `./reproduce --lane <panel_id>`.
 
 ## Conflict of interest statement
 
