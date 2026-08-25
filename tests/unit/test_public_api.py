@@ -26,6 +26,7 @@ PUBLIC_MODULES = {
     "gpu_index.common",
     "gpu_index.common.bucket",
     "gpu_index.common.http",
+    "gpu_index.common.jsondiff",
     "gpu_index.common.slots",
     "gpu_index.common.store",
     "gpu_index.index",
@@ -109,6 +110,9 @@ PUBLIC_NAMES = {
         "BucketConfig", "BucketPublishError", "LocalStore",
         "PublicReadStore", "get_object_bytes", "list_object_keys",
         "make_client", "put_bytes", "put_json_bytes",
+    },
+    "gpu_index.common.jsondiff": {
+        "field_diffs",
     },
     "gpu_index.observatory.collect": {
         "call_with_deadline", "collect_all",

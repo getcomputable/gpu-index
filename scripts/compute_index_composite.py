@@ -54,6 +54,7 @@ for _p in (str(_ROOT / "src"), str(_ROOT)):
         sys.path.insert(0, _p)
 
 from gpu_index.common.bucket import get_object_bytes, put_bytes  # noqa: E402
+from gpu_index.common.jsondiff import field_diffs  # noqa: E402
 from gpu_index.index.composite import (  # noqa: E402
     DEFAULT_FILTER_TERMS,
     advance_window,
@@ -325,42 +326,6 @@ def detect_drift(stored, selection, snapshots, *, day_str, params, fx_records):
 # ------------------------------------------------------- verify-published
 
 
-def _field_diffs(published, recomputed, path: str = "", limit: int = 40) -> list:
-    """Field-path differences between two parsed JSON documents, e.g.
-    ``sources[3].chosen.usd_per_gpu_hr: published 6.0 vs recomputed 5.0``."""
-    diffs: list = []
-
-    def walk(a, b, at):
-        if len(diffs) > limit:
-            return
-        if isinstance(a, dict) and isinstance(b, dict):
-            for key in sorted(set(a) | set(b)):
-                sub = f"{at}.{key}" if at else str(key)
-                if key not in a:
-                    diffs.append(f"{sub}: only in recomputed ({b[key]!r})")
-                elif key not in b:
-                    diffs.append(f"{sub}: only in published ({a[key]!r})")
-                else:
-                    walk(a[key], b[key], sub)
-            return
-        if isinstance(a, list) and isinstance(b, list):
-            if len(a) != len(b):
-                diffs.append(
-                    f"{at}: published has {len(a)} entries vs "
-                    f"recomputed {len(b)}"
-                )
-            for i, (ai, bi) in enumerate(zip(a, b)):
-                walk(ai, bi, f"{at}[{i}]")
-            return
-        if a != b or type(a) is not type(b):
-            diffs.append(f"{at}: published {a!r} vs recomputed {b!r}")
-
-    walk(published, recomputed, path)
-    if len(diffs) > limit:
-        return diffs[:limit] + [f"... and more (stopped at {limit} diffs)"]
-    return diffs
-
-
 def verify_published(args, config) -> int:
     """--verify-published <date>: recompute one PUBLISHED day byte-for-byte
     from the record and compare against the stored artifact. Reads only —
@@ -525,7 +490,7 @@ def verify_published(args, config) -> int:
         return 0
 
     recomputed_sha = hashlib.sha256(recomputed_raw).hexdigest()
-    diffs = _field_diffs(stored, payload)
+    diffs = field_diffs(stored, payload)
     print(
         f"MISMATCH {day_str}: published sha256={stored_sha} vs "
         f"recomputed sha256={recomputed_sha}"
