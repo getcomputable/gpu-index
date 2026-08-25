@@ -1,13 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
-"""./reproduce routing: public SKU -> live hourly panel lane.
+"""./reproduce routing: published record first, producer lanes behind it.
 
-The launch promise is `./reproduce h100 <date>`, so the mapping IS the
-product surface: h100 -> h100_sxm, h200 -> h200_sxm, b300 -> b300,
-b200 -> b200, all routed to the PANEL engine (compute_panel_index.py).
+The launch promise is `./reproduce h100 <date>`. The DEFAULT consumes
+the PUBLISHED record when one is reachable (a local copy holding the
+requested day file, or GPU_INDEX_PUBLIC_BASE_URL), routing to the
+recompute-and-match verifier (verify_published_record.py). Otherwise,
+and always under --producer, the public SKU maps to its live hourly
+panel lane: h100 -> h100_sxm, h200 -> h200_sxm, b300 -> b300,
+b200 -> b200, routed to the PANEL engine (compute_panel_index.py).
 A date without an hour covers the whole UTC day; with THH it targets one
-observation; anything already in the local record auto-routes to
---verify-published. The broad lanes exist but are NOT public SKUs and
+observation; anything already in the local producer record auto-routes
+to --verify-published. The broad lanes exist but are NOT public SKUs and
 require the explicit --lane flag; --frozen keeps the retired daily-lane
 behavior.
 
@@ -56,10 +60,15 @@ def data_dir(tmp_path) -> Path:
     return data
 
 
-def _run(shim, data_dir, *args):
+def _run(shim, data_dir, *args, base_url=None):
     env = dict(os.environ)
     env["PYTHON"] = str(shim)
     env["GPU_INDEX_DATA_DIR"] = str(data_dir)
+    # Hermetic: a developer's exported public front must not flip these
+    # routing assertions into published mode.
+    env.pop("GPU_INDEX_PUBLIC_BASE_URL", None)
+    if base_url is not None:
+        env["GPU_INDEX_PUBLIC_BASE_URL"] = base_url
     return subprocess.run(
         [str(REPRODUCE), *args],
         capture_output=True,
@@ -80,6 +89,73 @@ def _publish(data_dir: Path, config_name: str, stamp: str) -> None:
     artifact = data_dir / prefix / "composites" / methodology / f"{stamp}.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text("{}\n")
+
+
+# --------------------------------------- published record: default mode
+
+
+def _publish_public_day(data_dir: Path, date: str) -> None:
+    year, month, day = date.split("-")
+    target = data_dir / "observations" / year / month / f"{day}.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("{}\n")
+
+
+def test_local_published_day_routes_to_the_published_verifier(
+    shim, data_dir
+):
+    _publish_public_day(data_dir, "2026-08-25")
+    result = _run(shim, data_dir, "h100", "2026-08-25T14")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert "--sku H100 --date 2026-08-25T14" in line
+
+
+def test_public_base_url_routes_to_the_published_verifier(shim, data_dir):
+    # A configured public front is intent: published mode even with an
+    # empty local data dir.
+    result = _run(
+        shim,
+        data_dir,
+        "b200",
+        "2026-08-20",
+        base_url="https://record.example.com/cgi",
+    )
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert "--sku B200 --date 2026-08-20" in line
+
+
+def test_producer_flag_forces_the_internal_replay(shim, data_dir):
+    # Even with a published day file present, --producer keeps the
+    # previous producer-record semantics verbatim.
+    _publish_public_day(data_dir, "2026-08-24")
+    result = _run(shim, data_dir, "--producer", "h100", "2026-08-24T05")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "compute_panel_index.py" in line
+    assert "index_panel_h100_sxm.json" in line
+    assert "--observation 2026-08-24T05 --dry-run" in line
+
+
+def test_published_day_for_another_date_does_not_capture_the_run(
+    shim, data_dir
+):
+    # The probe is day-specific: a published copy of some OTHER day must
+    # not route this date away from the producer replay.
+    _publish_public_day(data_dir, "2026-08-25")
+    result = _run(shim, data_dir, "h100", "2026-08-24T05")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "compute_panel_index.py" in line
+
+
+def test_producer_flag_still_refuses_unknown_skus(shim, data_dir):
+    result = _run(shim, data_dir, "--producer", "h300", "2026-08-24")
+    assert result.returncode == 2
+    assert "unknown sku 'h300'" in result.stderr
 
 
 # ------------------------------------------------------ sku -> lane map
