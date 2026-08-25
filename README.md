@@ -20,8 +20,8 @@ git clone https://github.com/getcomputable/gpu-index
 ```
 
 `./reproduce <h100|h200|b300|b200> <date>` verifies the published record:
-recompute the index and weights from the published inputs and match them
-exactly; verify every file's digest. A UTC day (YYYY-MM-DD) covers all of that
+recompute the index from the published per-provider inputs and weights and
+match it exactly; verify every file's digest. A UTC day (YYYY-MM-DD) covers all of that
 day's observations, and YYYY-MM-DDTHH targets a single one. It reads the record
 from a local downloaded copy (GPU_INDEX_DATA_DIR, default ./data) or straight
 from the public front (set GPU_INDEX_PUBLIC_BASE_URL), and for every
