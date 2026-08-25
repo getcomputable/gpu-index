@@ -136,6 +136,14 @@ and in-sku-union rows before entering a small capped cache (memory
 bounded on wide observatory days). fx_lane "none" performs zero FX
 egress and prices no non-USD print, mechanically (the USD-only rule).
 
+--verify-published <YYYY-MM-DDTHH> recomputes one PUBLISHED observation
+byte-for-byte from the record (prior published artifacts advance the
+replay state; the observation's snapshot is the artifact's own pinned
+choice fetched by exact key) and compares against the stored artifact:
+MATCH exits 0 with the sha256, MISMATCH exits 1 with field-path diffs.
+Reads only, writes nothing -- the daily CLI's mode re-minted per
+observation (see verify_published_observation).
+
 --check-config validates the named config offline (loader + schedule +
 resolved calc_params) and exits 0 without touching bucket credentials
 -- the pre-merge sanity read for config-only PRs.
@@ -152,6 +160,7 @@ intervene on an armed lane, disarm or suspend the job first.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -194,15 +203,19 @@ from gpu_index.index.panel_schedule import (  # noqa: E402
     stamp_to_date_hour,
     stamp_to_hour_iso,
 )
-from gpu_index.common.slots import utc_now  # noqa: E402
+from gpu_index.common.jsondiff import field_diffs  # noqa: E402
+from gpu_index.common.slots import snapshot_key, utc_now  # noqa: E402
 from gpu_index.common.store import (  # noqa: E402
     BucketConfig,
     day_slot_keys,
+    get_object_bytes,
     get_panel_composite,
     get_snapshot_by_key,
     list_panel_observations,
     make_client,
     make_run_id,
+    panel_composite_key,
+    snapshot_bytes,
     upload_panel_composite,
 )
 from gpu_index.index.weights import (  # noqa: E402
@@ -489,6 +502,227 @@ def _config_excluded_for(exclusions, obs_date: str, obs_hour: int) -> set:
     }
 
 
+def verify_published_observation(args, config, params, schedule) -> int:
+    """--verify-published <YYYY-MM-DDTHH>: recompute one PUBLISHED
+    observation byte-for-byte from the record and compare against the
+    stored artifact -- the daily CLI's verify_published re-minted per
+    OBSERVATION. Reads only: published observations are never revised,
+    and this mode holds to that by construction (no upload, no pointer
+    move, no FX persist -- stored append-only FX records are the only
+    rates read, never the live feed).
+
+    Determinism comes from pinning everything to the record, exactly the
+    replay semantics main() defines:
+      - filter windows / currency streaks / the weight state advance
+        from the PUBLISHED artifacts genesis..target-1 (never from raw,
+        which can legitimately grow after publication);
+      - the observation's snapshot is the artifact's own pinned choice
+        (snapshot_run_id fetched by exact key under the observation's
+        record source), never re-selected from the record;
+      - a pinned observation_missed / record_quarantined verdict replays
+        as recorded (a quarantined stamp's stored object is never read
+        -- parsing it is the crash the quarantine fences off; a record
+        that GREW a snapshot after a missed publish is the drift scan's
+        finding, not a verify failure);
+      - the recompute runs under the LIVE config (the same config main()
+        extends the series with), so calc_params drift from the artifact
+        guarantees a MISMATCH that is config drift (rule D2: mint a new
+        methodology_id), not necessarily tampering -- a warning says so
+        before the verdict.
+    """
+    prefix = config["bucket_prefix"]
+    methodology_id = params["methodology_id"]
+    try:
+        target = hour_iso_to_stamp(args.verify_published)
+    except PanelScheduleError as exc:
+        error(f"--verify-published: {exc}")
+        return 1
+    stamp_iso = stamp_to_hour_iso(target)
+    if not schedule.is_scheduled(target):
+        error(
+            f"--verify-published {stamp_iso} is not a scheduled "
+            f"observation of this lane's era grid"
+        )
+        return 1
+    obs_date, obs_hour = stamp_to_date_hour(target)
+
+    bucket_config = BucketConfig.from_env()
+    client = make_client(bucket_config)
+    bucket = bucket_config.bucket
+
+    artifact_key = panel_composite_key(prefix, methodology_id, stamp_iso)
+    stored_raw = get_object_bytes(client, bucket, artifact_key)
+    if stored_raw is None:
+        error(
+            f"{stamp_iso} is not published under {methodology_id} "
+            f"(no {artifact_key}) -- derive it with --observation "
+            f"{stamp_iso} --dry-run instead"
+        )
+        return 1
+    stored = json.loads(stored_raw)
+    stored_sha = hashlib.sha256(stored_raw).hexdigest()
+    index = stored.get("index") or {}
+    print(
+        f"verify-published {stamp_iso} (methodology {methodology_id})\n"
+        f"artifact: {artifact_key}\n"
+        "published: "
+        + (
+            "PANEL_DARK"
+            if stored.get("panel_dark")
+            else f"{index.get('value_usd_gpu_hr'):.4f} $/GPU-hr "
+            f"({index.get('sources_used_count', 0)} sources)"
+        )
+        + (" [observation_missed]" if stored.get("observation_missed") else "")
+        + (
+            " [record_quarantined]"
+            if stored.get("record_quarantined")
+            else ""
+        )
+    )
+
+    # Rule D2 heads-up before the verdict: the recompute runs under the
+    # LIVE config, so params drift from the artifact guarantees a byte
+    # mismatch that is config drift, not necessarily tampering.
+    live_embedded = embedded_calc_params(params)
+    stored_params = stored.get("calc_params") or {}
+    drifted = sorted(
+        k
+        for k in set(live_embedded) | set(stored_params)
+        if live_embedded.get(k) != stored_params.get(k)
+    )
+    if drifted:
+        warn(
+            f"live config calc_params drift from the artifact's on key(s) "
+            f"{drifted} -- a MISMATCH below reflects config drift (rule "
+            "D2: mint a new methodology_id), not necessarily tampering"
+        )
+
+    # FX: stored append-only records only -- the record, not the live
+    # feed (fx_lane none performs zero FX reads, the USD-only rule).
+    if params["fx_lane"] == "none":
+        fx_records: dict = {}
+    else:
+        fx_records = load_stored_rates(client, bucket, prefix=prefix)
+
+    # Replay state advance from published artifacts, genesis..target-1 --
+    # the exact pin-to-published walk main() does, minus record reads and
+    # writes. recent_payloads doubles as the jump-screen reference book.
+    window_history: dict = {}
+    window_currencies: dict = {}
+    pending_currencies: dict = {}
+    weight_state: dict = new_weight_state()
+    lookback = params["jump_screen"]["reference_max_lookback"]
+    recent_payloads: deque = deque(maxlen=lookback)
+    for prior in schedule.scheduled_stamps(schedule.genesis_stamp, target):
+        prior_stored = get_panel_composite(
+            client,
+            bucket,
+            prefix=prefix,
+            methodology_id=methodology_id,
+            observation=stamp_to_hour_iso(prior),
+        )
+        if prior_stored is None:
+            warn(
+                f"{stamp_to_hour_iso(prior)} is unpublished below the "
+                "target observation -- the series publishes in order, so "
+                "replay state may be incomplete (expect MISMATCH until "
+                "the gap is explained)"
+            )
+            continue
+        advance_panel_state_from_published(
+            prior_stored,
+            window_history,
+            window_currencies,
+            pending_currencies,
+            weight_state,
+        )
+        recent_payloads.append(prior_stored)
+
+    # The observation's snapshot: the artifact's own pinned verdict. A
+    # missed or quarantined observation replays with snapshot=None; a
+    # priced one fetches the pinned snapshot by exact key.
+    quarantine = stored.get("record_quarantined")
+    if quarantine is not None or stored.get("observation_missed"):
+        snapshot = None
+    else:
+        record_entry = record_source_for(params["record_sources"], obs_date)
+        pinned_key = snapshot_key(
+            record_entry["prefix"],
+            date.fromisoformat(obs_date),
+            obs_hour,
+            stored.get("snapshot_run_id"),
+        )
+        snapshot_raw = get_object_bytes(client, bucket, pinned_key)
+        if snapshot_raw is None:
+            error(
+                f"MISMATCH {stamp_iso}: the artifact's pinned snapshot "
+                f"{pinned_key} is MISSING from the record -- cannot "
+                "recompute; the record evidence for this published "
+                "observation is gone (the drift tripwire case)"
+            )
+            return 1
+        snapshot = json.loads(snapshot_raw)
+
+    # Jump-screen reference: the most recent prior non-missed,
+    # non-quarantined published artifact within the walk-back window --
+    # main()'s rule verbatim.
+    reference_prints = None
+    reference_label = None
+    for prior_payload in reversed(recent_payloads):
+        if not prior_payload.get("observation_missed") and not (
+            prior_payload.get("record_quarantined")
+        ):
+            reference_prints = jump_reference_prints(prior_payload)
+            reference_label = prior_payload["date"]
+            break
+
+    payload = compute_observation(
+        config=config,
+        obs_stamp=target,
+        snapshot=snapshot,
+        fx_records=fx_records,
+        window_history=window_history,
+        window_currencies=window_currencies,
+        pending_currencies=pending_currencies,
+        weight_state=weight_state,
+        reference_prints=reference_prints,
+        reference_label=reference_label,
+        schedule=schedule,
+        calc_params=params,
+        compiled_screens=compile_screens(params),
+        record_quarantined=quarantine,
+    )
+    recomputed_raw = snapshot_bytes(payload)
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    if recomputed_raw == stored_raw:
+        print(f"MATCH sha256={stored_sha}")
+        return 0
+
+    recomputed_sha = hashlib.sha256(recomputed_raw).hexdigest()
+    diffs = field_diffs(stored, payload)
+    print(
+        f"MISMATCH {stamp_iso}: published sha256={stored_sha} vs "
+        f"recomputed sha256={recomputed_sha}"
+    )
+    if diffs:
+        for diff in diffs:
+            print(f"  {_log_clean(diff)}")
+        if any(".fx_" in d or "fx_as_of" in d for d in diffs):
+            notice(
+                "diff paths touch fx fields -- a rate walked back at "
+                "publish time and backfilled later is the known benign "
+                "cause; the artifact's recorded rate stands"
+            )
+    else:
+        print(
+            "  JSON content is identical; the stored bytes are not the "
+            "canonical serialization (sorted keys, 2-space indent, "
+            "trailing newline) -- the artifact bytes were rewritten"
+        )
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -538,15 +772,38 @@ def main() -> int:
         action="store_true",
         help="Validate the config offline and exit 0 (no bucket access)",
     )
+    parser.add_argument(
+        "--verify-published",
+        metavar="OBSERVATION",
+        help=(
+            "Recompute one PUBLISHED observation (YYYY-MM-DDTHH) "
+            "byte-for-byte from the record (prior artifacts + its pinned "
+            "snapshot) and compare against the stored artifact -- MATCH "
+            "exits 0, MISMATCH exits 1. Reads only; writes nothing."
+        ),
+    )
     args = parser.parse_args()
 
     if args.max_observations is not None and args.max_observations < 1:
         parser.error("--max-observations must be >= 1")
-    if not args.check_config and not (
+    if args.verify_published:
+        if (
+            args.sync
+            or args.observation
+            or args.from_obs
+            or args.to_obs
+            or args.check_config
+        ):
+            parser.error(
+                "--verify-published is its own mode -- do not combine it "
+                "with --sync/--observation/--from/--to/--check-config"
+            )
+    elif not args.check_config and not (
         args.sync or args.observation or (args.from_obs and args.to_obs)
     ):
         parser.error(
-            "pick a mode: --sync, --observation, --from/--to, or --check-config"
+            "pick a mode: --sync, --observation, --from/--to, "
+            "--verify-published, or --check-config"
         )
 
     client = None
@@ -572,6 +829,9 @@ def main() -> int:
             f"era(s); no bucket access performed"
         )
         return 0
+
+    if args.verify_published:
+        return verify_published_observation(args, config, params, schedule)
 
     now = utc_now()
     now_stamp = now.date().toordinal() * 24 + now.hour
