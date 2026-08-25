@@ -84,8 +84,11 @@ vectorized speed at n <= 90 samples.
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from gpu_index.index.panel_schedule import stamp_to_hour_iso
 
 SCHEME_PREDICTIVE_V1 = "predictive_v1"
 VALID_WEIGHT_SCHEMES = (SCHEME_PREDICTIVE_V1,)
@@ -112,8 +115,27 @@ def new_weight_state() -> Dict[str, Any]:
     slot prints (hour-stamped, R-slots), each day's pinned rounded vector,
     and the fallback -> dynamic mode latch. The CLI and every test build
     state through here so a future state key cannot silently miss a call
-    site."""
-    return {"prices": {}, "vectors": {}, "mode": MODE_FALLBACK}
+    site.
+
+    Also the constructor for the OBSERVATION-mode (hourly panel) state --
+    same shape, one difference in key semantics: day mode keys `vectors`
+    by DAY ORDINAL, observation mode keys `vectors` by absolute hour
+    STAMP (day_ordinal * 24 + hour). The two modes are NEVER mixed in
+    one lane: a lane's state is advanced exclusively by
+    advance_weight_state (day mode) or exclusively by
+    advance_panel_weight_state (observation mode) for its whole life.
+
+    ``_prune_threshold`` is observation-mode PRIVATE bookkeeping (the
+    stamp the state was last pruned to; None = never pruned) so
+    advance_panel_weight_state can defer pruning until the threshold has
+    advanced >= 24h. Day mode never reads or writes it; every reader
+    tolerates its absence (states built by hand in tests) via .get."""
+    return {
+        "prices": {},
+        "vectors": {},
+        "mode": MODE_FALLBACK,
+        "_prune_threshold": None,
+    }
 
 
 def series_print(usd: Any, observation: Tuple[float, str]) -> Dict[str, Any]:
@@ -853,3 +875,563 @@ def advance_weight_state(
             weight_state["mode"] = MODE_DYNAMIC
         else:
             weight_state.setdefault("mode", MODE_FALLBACK)
+
+
+# ------------------------------------- observation mode (hourly panel lanes)
+#
+# The hourly panel engine (METHODOLOGY.md) recomputes weights at EVERY scheduled observation of an
+# era-aware grid (gpu_index.index.panel_schedule.PanelSchedule). Everything below is
+# ADDITIVE: the day-mode functions above keep pricing the frozen daily
+# B300/B200 series byte-for-byte, and the two modes never share a state
+# (see new_weight_state). The pure pieces -- fit_ridge, in_sample_q,
+# _clamp_return, source_return, allocate_weights, series_print -- are
+# REUSED, never forked. Observation-mode divergences, each a design-doc
+# section 5 rule:
+#
+#   - R-cutoff per observation: cutoff = the previous SCHEDULED stamp
+#     (era-aware; across the 4-slot -> hourly boundary the first hourly
+#     stamp's cutoff is the last 4-slot stamp). Nothing observed at t can
+#     enter t's weights.
+#   - Vectors per observation: state["vectors"] is keyed by hour STAMP;
+#     the LOO vector for sample tau = the vector published at the LAST
+#     stamp <= tau, held fixed at both endpoints (the day-mode "tau's
+#     day" rule re-minted for the hourly grid).
+#   - LOO arithmetic is full-sum-minus-own: one pass per (vector, t0, t1)
+#     endpoint pair builds the both-endpoints contribution sums, and every
+#     source's leave-one-out value is that total minus its own
+#     contribution -- all N exclusions from one O(N) pass (the design's
+#     perf requirement; pure Python, numpy stays forbidden). This is THE
+#     definition in observation mode, cached and uncached paths
+#     bit-identical by construction (test-pinned against a naive
+#     recompute-everything reimplementation).
+#   - A2 transition rule (supersedes R-quorum-v2 for panel lanes;
+#     amended pre-publish per adversarial review F2):
+#     dynamic iff prior mode dynamic OR (a NON-EMPTY attendance-passer
+#     set exists AND every ATTENDANCE-PASSER has a defined Q AND >=
+#     switch_min_eligible sources eligible at this observation).
+#     Attendance = trusted-print stamps / scheduled stamps over the
+#     trailing history window, clipped at genesis. This deliberately
+#     RESTORES (bounded by the floor) the outage protection R-quorum-v2
+#     traded away: a regular provider mid warm-up holds the switch; a
+#     sparse one does not; ZERO passers (post-outage) also hold it --
+#     the vacuous every-passer clause must never latch on no information.
+#   - No slot_prints block: every observation's own artifact records its
+#     trusted prints, so replay ingests each published observation's
+#     prints at that stamp AFTER computing that stamp's vector -- one
+#     state machine for live and replay, same as day mode.
+#   - State is PRUNED to the trailing window (+ margin) at every advance;
+#     provably score-neutral (see advance_panel_weight_state).
+
+# Pruning margin beyond history + max forward horizon, in hours. One week
+# -- generously above the widest live lookback horizon (48h), which the
+# prune-safety proof needs (advance_panel_weight_state enforces it).
+PRUNE_MARGIN_HOURS = 168
+
+_UNSET = object()
+
+
+def validate_attendance_floor(dw_params: Dict[str, Any]) -> float:
+    """Load-time fence for the observation-mode dw_params addition
+    `attendance_floor` (A2). Called by the PANEL config loader --
+    deliberately NOT wired into config.py's basket validation, where the
+    day-mode configs have no attendance concept. Returns the validated
+    float.
+
+    Required and in (0, 1]: a missing floor must refuse at load (the
+    switch rule is undefined without it), 0 would silently resurrect the
+    superseded all-recently-printed rule (every candidate passes), and
+    the finiteness check is the same JSON-Infinity armor as the basket
+    validator's."""
+    value = dw_params.get("attendance_floor")
+    if not (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and 0 < value <= 1
+    ):
+        raise ValueError(
+            f"dynamic_weights.attendance_floor must be a finite number in "
+            f"(0, 1], got {value!r}"
+        )
+    return float(value)
+
+
+def attendance(
+    state_prices: Dict[str, Dict[int, Dict[str, Any]]],
+    sid: str,
+    *,
+    obs_stamp: int,
+    schedule: Any,
+    history_hours: int,
+    scheduled_window: Optional[Sequence[int]] = None,
+) -> Dict[str, Any]:
+    """A2 attendance for one source at one observation:
+    {printed, scheduled, ratio}.
+
+    printed  = the source's trusted-print stamps in [obs - history, obs)
+               that sit ON a scheduled stamp (era-aware; a print at an
+               unscheduled stamp -- which the engine never writes -- can
+               neither help nor hurt, so ratio is structurally in [0, 1]);
+    scheduled = scheduled stamps in the same half-open window, counted
+               PER ERA and clipped at the lane's genesis by the schedule
+               itself, so pre-genesis hours never count as missed;
+    ratio    = printed / scheduled, EXCEPT 1.0 when scheduled == 0 (the
+               genesis corner): nothing was scheduled, so nothing was
+               missed -- and the A2 switch test must see every candidate
+               as a passer there, or the vacuous every-passer-defined
+               clause could fire the PERMANENT switch at the very first
+               observation with zero scored history.
+
+    `scheduled_window` lets the caller precompute one window's scheduled
+    stamps for all sources (compute_panel_weights does); it MUST equal
+    schedule.scheduled_stamps(obs - history, obs) when passed.
+    """
+    window_start = int(obs_stamp) - int(history_hours)
+    if scheduled_window is None:
+        scheduled_window = schedule.scheduled_stamps(
+            window_start, int(obs_stamp)
+        )
+    scheduled_set = {int(s) for s in scheduled_window}
+    series = (state_prices or {}).get(sid) or {}
+    printed = sum(1 for t in series if t in scheduled_set)
+    scheduled = len(scheduled_set)
+    ratio = 1.0 if scheduled == 0 else printed / scheduled
+    return {"printed": printed, "scheduled": scheduled, "ratio": ratio}
+
+
+def predictive_scores_obs(
+    weight_state: Dict[str, Any],
+    *,
+    obs_stamp: int,
+    source_ids: Sequence[str],
+    dw_params: Dict[str, Any],
+    schedule: Any,
+) -> Dict[str, Dict[str, Any]]:
+    """Observation-mode per-source scoring block -- the day-mode
+    predictive_scores contract (q per forward horizon, sample counts, Q =
+    all-or-nothing mean) re-anchored to a per-observation cutoff:
+
+      - cutoff = schedule.prev_scheduled_stamp(obs_stamp). None (the
+        genesis observation) means every score is UNDEFINED -- never zero.
+      - samples exactly as build_samples: anchors are the source's own
+        trusted-print stamps with tau >= cutoff - history_hours and
+        tau + horizon <= cutoff; the LOO vector for tau is the vector at
+        the LAST stamp <= tau from the stamp-keyed state["vectors"].
+      - perf (design section 5): each tau's lookback features are
+        computed ONCE across all forward horizons, and all N sources'
+        LOO exclusions are served from ONE full-sum-minus-own pass per
+        (vector, t0, t1) endpoint pair. The both-endpoints composition
+        rule is preserved: a source contributes to the cached sums only
+        with positive USD prints at BOTH endpoints, so subtracting the
+        scored source's own contribution (when present) is exactly the
+        both-endpoint LOO sum. Results are bit-identical to computing
+        every sum from scratch (test-pinned).
+    """
+    lookbacks = [int(x) for x in dw_params["lookback_horizons_hours"]]
+    horizons = [int(x) for x in dw_params["forward_horizons_hours"]]
+    cutoff = schedule.prev_scheduled_stamp(int(obs_stamp))
+    if cutoff is None:
+        return {
+            sid: {
+                "q": {str(h): None for h in horizons},
+                "n_samples": {str(h): 0 for h in horizons},
+                "Q": None,
+            }
+            for sid in source_ids
+        }
+    prices = weight_state.get("prices") or {}
+    vectors = weight_state.get("vectors") or {}
+    history_hours = int(dw_params["history_days"]) * 24
+    half_life_hours = float(dw_params["half_life_days"]) * 24.0
+    max_abs = dw_params.get("max_abs_log_return")
+    ridge_lambda = float(dw_params["ridge_lambda"])
+    min_train = int(dw_params["min_train_samples"])
+    variance_floor = float(
+        dw_params.get("target_variance_floor", DEFAULT_TARGET_VARIANCE_FLOOR)
+    )
+
+    vector_stamps = sorted(int(s) for s in vectors)
+
+    def _vector_at(tau: int) -> Optional[Tuple[int, Dict[str, float]]]:
+        # The vector in effect at tau: published at the last stamp <= tau.
+        idx = bisect_right(vector_stamps, tau) - 1
+        if idx < 0:
+            return None
+        stamp = vector_stamps[idx]
+        return stamp, vectors[stamp]
+
+    # One both-endpoints pass per (vector stamp, t0, t1): contribution sums
+    # over sources with positive USD prints at BOTH endpoints, plus each
+    # member's own (num, den) contribution for the minus-own subtraction.
+    loo_cache: Dict[
+        Tuple[int, int, int],
+        Tuple[float, float, int, Dict[str, Tuple[float, float]]],
+    ] = {}
+
+    def _loo(
+        vector_stamp: int,
+        vector: Dict[str, float],
+        exclude: str,
+        t0: int,
+        t1: int,
+    ) -> Optional[float]:
+        key = (vector_stamp, t0, t1)
+        entry = loo_cache.get(key)
+        if entry is None:
+            num_total = 0.0
+            den_total = 0.0
+            count = 0
+            own: Dict[str, Tuple[float, float]] = {}
+            for member in sorted(vector):
+                weight = vector[member]
+                if not _is_pos_number(weight):
+                    continue
+                member_series = prices.get(member) or {}
+                p0 = (member_series.get(t0) or {}).get("usd")
+                p1 = (member_series.get(t1) or {}).get("usd")
+                if not _is_pos_number(p0) or not _is_pos_number(p1):
+                    continue
+                c_num = float(weight) * float(p1)
+                c_den = float(weight) * float(p0)
+                num_total += c_num
+                den_total += c_den
+                count += 1
+                own[member] = (c_num, c_den)
+            entry = (num_total, den_total, count, own)
+            loo_cache[key] = entry
+        num, den, count, own = entry
+        contribution = own.get(exclude)
+        if contribution is not None:
+            num -= contribution[0]
+            den -= contribution[1]
+            count -= 1
+        if count == 0 or num <= 0 or den <= 0:
+            return None
+        return _clamp_return(math.log(num / den), max_abs)
+
+    start = cutoff - history_hours
+    min_horizon = min(horizons)
+    out: Dict[str, Dict[str, Any]] = {}
+    for sid in source_ids:
+        series = prices.get(sid) or {}
+        samples_by_h: Dict[int, List[Tuple[int, List[float], float]]] = {
+            h: [] for h in horizons
+        }
+        for tau in sorted(series):
+            if tau < start or tau + min_horizon > cutoff:
+                continue
+            resolved = _vector_at(tau)
+            if resolved is None:
+                continue
+            vector_stamp, vector = resolved
+            if not vector:
+                continue
+            # Features depend on tau only -- computed at most ONCE across
+            # all forward horizons (lazily, on the first horizon whose
+            # target realizes; None poisons every horizon at this tau).
+            features: Any = _UNSET
+            for h in horizons:
+                if tau + h > cutoff:
+                    continue
+                target = _loo(vector_stamp, vector, sid, tau, tau + h)
+                if target is None:
+                    continue
+                if features is _UNSET:
+                    feats: Optional[List[float]] = []
+                    for lb in lookbacks:
+                        own_r = source_return(
+                            series,
+                            tau - lb,
+                            tau,
+                            max_abs_log_return=max_abs,
+                        )
+                        rest_r = _loo(
+                            vector_stamp, vector, sid, tau - lb, tau
+                        )
+                        if own_r is None or rest_r is None:
+                            feats = None
+                            break
+                        feats.append(own_r - rest_r)
+                    features = feats
+                if features is None:
+                    break
+                samples_by_h[h].append((tau, features, target))
+        q_by_h: Dict[str, Optional[float]] = {}
+        n_by_h: Dict[str, int] = {}
+        for h in horizons:
+            q, n_samples = in_sample_q(
+                samples_by_h[h],
+                anchor=cutoff,
+                ridge_lambda=ridge_lambda,
+                half_life=half_life_hours,
+                min_train_samples=min_train,
+                target_variance_floor=variance_floor,
+            )
+            q_by_h[str(h)] = q
+            n_by_h[str(h)] = n_samples
+        defined = all(q is not None for q in q_by_h.values())
+        q_score = (
+            sum(q for q in q_by_h.values() if q is not None) / len(q_by_h)
+            if defined and q_by_h
+            else None
+        )
+        out[sid] = {"q": q_by_h, "n_samples": n_by_h, "Q": q_score}
+    return out
+
+
+def compute_panel_weights(
+    weight_state: Dict[str, Any],
+    *,
+    obs_stamp: int,
+    eligible: Sequence[str],
+    dw_params: Dict[str, Any],
+    fallback_weights: Dict[str, float],
+    schedule: Any,
+) -> Dict[str, Any]:
+    """One OBSERVATION's weight_calc block for the hourly panel lanes --
+    the compute_dynamic_weights contract per observation, with the A2
+    transition rule and per-source attendance audit fields.
+
+    Fallback/dynamic modes exactly as day mode: fallback pins the config
+    weights RESTRICTED to the eligible set (deliberately unnormalized --
+    every consumer renormalizes, so fallback-mode index math matches the
+    fixed-weight formulation byte for byte); dynamic allocates
+    softmax(gamma * Q) -> floor -> cap over the eligible set with
+    undefined Q scoring 0.
+
+    TRANSITION RULE (A2, superseding
+    R-quorum-v2 for panel lanes; amended into the mints before any
+    observation published -- adversarial review F2): mode = dynamic iff
+    prior mode dynamic OR (the attendance-passer set is NON-EMPTY AND
+    every ATTENDANCE-PASSER -- attendance ratio >=
+    dw_params["attendance_floor"] over the trailing history window --
+    has a defined Q AND len(eligible) >= switch_min_eligible). Permanent
+    latch, carried in weight_state["mode"] by the caller's advance. A
+    below-floor source stays index-ELIGIBLE and simply scores 0
+    post-switch (weight floor); the floor governs the switch test ONLY.
+    The non-empty leg closes the vacuous-truth corner: with zero passers
+    (reachable only when EVERY candidate's attendance sits below the
+    floor -- a lane-wide outage's aftermath) the every-passer clause is
+    vacuously true and the eligible-count leg alone would have flipped
+    the PERMANENT latch on zero attendance information, inverting the A2
+    intent. Genesis is structurally unaffected: the zero-scheduled window
+    makes every candidate a passer (attendance's 1.0 rule) with an
+    undefined Q, so the switch holds there exactly as before.
+
+    The SCORED set = eligible UNION attendance-passers UNION
+    recently-printed (>= 1 trusted print in the trailing window). Any
+    passer with a positive ratio has a print in the window, and the
+    genesis corner's universal passers carry no unknown ids, so scoring
+    eligible + recently-printed covers every passer by construction.
+
+    The block pins, per scored source, attendance_printed /
+    attendance_scheduled / attendance_ratio (ratio at 9dp, the q/Q
+    precision rule) so the switch decision replays from artifacts alone;
+    switched_on pins the full YYYY-MM-DDTHH observation stamp. NO
+    slot_prints key: every observation's own artifact records its
+    trusted prints, replay ingests them per observation.
+    """
+    obs_stamp = int(obs_stamp)
+    eligible = list(eligible)
+    history_hours = int(dw_params["history_days"]) * 24
+    window_start = obs_stamp - history_hours
+    prices = weight_state.get("prices") or {}
+    scheduled_window = schedule.scheduled_stamps(window_start, obs_stamp)
+    recent = sorted(
+        sid
+        for sid, series in prices.items()
+        if any(window_start <= t < obs_stamp for t in series)
+    )
+    scored = list(eligible) + [sid for sid in recent if sid not in eligible]
+    attendance_by_sid = {
+        sid: attendance(
+            prices,
+            sid,
+            obs_stamp=obs_stamp,
+            schedule=schedule,
+            history_hours=history_hours,
+            scheduled_window=scheduled_window,
+        )
+        for sid in scored
+    }
+    attendance_floor = float(dw_params["attendance_floor"])
+    passers = [
+        sid
+        for sid in scored
+        if attendance_by_sid[sid]["ratio"] >= attendance_floor
+    ]
+    scores = predictive_scores_obs(
+        weight_state,
+        obs_stamp=obs_stamp,
+        source_ids=scored,
+        dw_params=dw_params,
+        schedule=schedule,
+    )
+    prior_mode = weight_state.get("mode", MODE_FALLBACK)
+    min_eligible = int(dw_params.get("switch_min_eligible", 1))
+    # A2 amendment (F2): bool(passers) -- zero passers must HOLD the
+    # switch (the all() clause is vacuously true there; see docstring).
+    quorum_met = (
+        len(eligible) >= min_eligible
+        and bool(passers)
+        and all(scores[sid]["Q"] is not None for sid in passers)
+    )
+    mode = (
+        MODE_DYNAMIC
+        if (prior_mode == MODE_DYNAMIC or quorum_met)
+        else MODE_FALLBACK
+    )
+    switched = mode == MODE_DYNAMIC and prior_mode != MODE_DYNAMIC
+    stamp_iso = stamp_to_hour_iso(obs_stamp)
+
+    flags: Dict[str, Any] = {"degenerate_allocation": None, "capped": []}
+    if not eligible:
+        weights: Dict[str, float] = {}
+    elif mode == MODE_FALLBACK:
+        weights = {sid: float(fallback_weights[sid]) for sid in eligible}
+    else:
+        q_values = {
+            sid: (scores[sid]["Q"] if scores[sid]["Q"] is not None else 0.0)
+            for sid in eligible
+        }
+        weights, flags = allocate_weights(
+            q_values,
+            gamma=float(dw_params["gamma"]),
+            weight_min=float(dw_params["weight_min"]),
+            weight_max=float(dw_params["weight_max"]),
+            source_caps=dw_params.get("source_weight_caps") or {},
+        )
+    rounded = {sid: round(w, 6) for sid, w in weights.items()}
+    for sid, w in rounded.items():
+        if not (math.isfinite(w) and w >= 0):
+            raise ValueError(
+                f"{stamp_iso}: non-finite or negative weight for {sid}: {w!r}"
+            )
+    block: Dict[str, Any] = {
+        "scheme": dw_params["scheme"],
+        "mode": mode,
+        "weights": {sid: rounded[sid] for sid in sorted(rounded)},
+        "sources": {
+            sid: {
+                "Q": _round_opt(scores[sid]["Q"]),
+                "q": {
+                    h: _round_opt(q)
+                    for h, q in sorted(scores[sid]["q"].items())
+                },
+                "n_samples": dict(sorted(scores[sid]["n_samples"].items())),
+                "attendance_printed": int(
+                    attendance_by_sid[sid]["printed"]
+                ),
+                "attendance_scheduled": int(
+                    attendance_by_sid[sid]["scheduled"]
+                ),
+                "attendance_ratio": round(
+                    float(attendance_by_sid[sid]["ratio"]), 9
+                ),
+            }
+            for sid in sorted(scores)
+        },
+        "degenerate_allocation": flags.get("degenerate_allocation"),
+        "capped": flags.get("capped", []),
+    }
+    if flags.get("fallback_reason"):
+        block["fallback_reason"] = flags["fallback_reason"]
+    if switched:
+        block["switched_on"] = stamp_iso
+    return block
+
+
+def advance_panel_weight_state(
+    weight_state: Dict[str, Any],
+    *,
+    obs_stamp: int,
+    prints: Dict[str, Dict[str, Any]],
+    vector: Optional[Dict[str, float]],
+    mode: str,
+    dw_params: Dict[str, Any],
+) -> None:
+    """Advance the OBSERVATION-mode weight state with one published
+    observation's pinned facts, then prune. ONE state machine for live
+    and replay, same as day mode: the live path advances from the block
+    it just computed; replay re-applies each published observation's
+    facts in order and rebuilds identical state.
+
+      - prints: {sid: {usd, native, currency}} -- the observation's own
+        trusted prints (accepted AND fenced; the fence holds a print out
+        of the INDEX, never out of the weight series -- R-winsor bounds
+        it), each entry shaped by series_print. Stored at obs_stamp.
+      - vector: the observation's pinned rounded weight vector, stored
+        under state["vectors"][obs_stamp] (hour-STAMP keyed -- never mix
+        with a day-mode state, whose vectors are day-ordinal keyed).
+        Empty/dark observations store NO vector, same as day mode.
+      - mode: the block's pinned mode; the latch is monotonic (fallback
+        -> dynamic, never back).
+
+    PRUNING (design section 5 perf): price and vector stamps STRICTLY
+    older than obs_stamp - (history_hours + max_forward + 168) are
+    dropped. Provably score-neutral: the engine only computes at
+    scheduled stamps, so every future observation's cutoff is >=
+    obs_stamp (the next stamp's previous-scheduled IS obs_stamp), the
+    oldest sample anchor is cutoff - history_hours, and the oldest
+    endpoint any sample touches is anchor - max(lookback) -- inside the
+    kept range because PRUNE_MARGIN_HOURS covers the max lookback
+    (enforced below, so a widened lookback can never silently break the
+    proof). Attendance and recently-printed windows are narrower still.
+    Vectors additionally keep the NEWEST entry below the threshold:
+    vector resolution is last-at-or-below tau with unbounded lookback,
+    so after a long dark spell that entry still anchors in-window taus.
+    A source whose series prunes empty is dropped entirely (state size
+    stays bounded; an absent series and an empty one are
+    indistinguishable to every reader).
+
+    PRUNE CADENCE (hot-loop invariant, review perf stage): the full
+    prune sweep walks every source's whole series, so on a 24/day grid
+    it must not run 24 times a day. It runs only when the threshold has
+    advanced >= 24h since the last sweep (``_prune_threshold``, the
+    private bookkeeping key new_weight_state seeds; a state built
+    without it -- hand-made test fixtures, pre-change replays -- prunes
+    on its first advance and gains the key). Pruning LESS often only
+    KEEPS MORE data, and everything below the strict threshold is never
+    consulted by any computation (the proof above), so deferring the
+    sweep is trivially score-neutral; the extra retention is bounded at
+    24 hours of stamps.
+    """
+    obs_stamp = int(obs_stamp)
+    history_hours = int(dw_params["history_days"]) * 24
+    max_forward = max(int(x) for x in dw_params["forward_horizons_hours"])
+    max_lookback = max(int(x) for x in dw_params["lookback_horizons_hours"])
+    if max_lookback > max_forward + PRUNE_MARGIN_HOURS:
+        raise ValueError(
+            f"lookback horizon {max_lookback}h exceeds max_forward + "
+            f"PRUNE_MARGIN_HOURS ({max_forward} + {PRUNE_MARGIN_HOURS}); "
+            f"pruning would eat live feature endpoints"
+        )
+    prices = weight_state.setdefault("prices", {})
+    for sid in sorted(prints or {}):
+        entry = prints[sid]
+        prices.setdefault(sid, {})[obs_stamp] = {
+            "usd": entry["usd"],
+            "native": entry["native"],
+            "currency": entry["currency"],
+        }
+    vectors = weight_state.setdefault("vectors", {})
+    if vector:
+        vectors[obs_stamp] = dict(vector)
+    if mode == MODE_DYNAMIC:
+        weight_state["mode"] = MODE_DYNAMIC
+    else:
+        weight_state.setdefault("mode", MODE_FALLBACK)
+    threshold = obs_stamp - (history_hours + max_forward + PRUNE_MARGIN_HOURS)
+    last_pruned = weight_state.get("_prune_threshold")
+    if last_pruned is not None and threshold - int(last_pruned) < 24:
+        return  # deferred sweep (docstring: score-neutral by the proof)
+    weight_state["_prune_threshold"] = threshold
+    for sid in sorted(prices):
+        series = prices[sid]
+        for stamp in [t for t in series if t < threshold]:
+            del series[stamp]
+        if not series:
+            del prices[sid]
+    stale_vectors = sorted(t for t in vectors if t < threshold)
+    for stamp in stale_vectors[:-1]:  # keep the newest as resolution anchor
+        del vectors[stamp]

@@ -108,10 +108,32 @@ def fx_key(prefix: str, day: str) -> str:
     return f"{prefix}/fx/ecb-{day}.json"
 
 
-def load_stored_rates(client, bucket: str, *, prefix: str) -> Dict[str, Dict[str, Any]]:
-    """All persisted ECB records keyed by published date."""
+def load_stored_rates(
+    client,
+    bucket: str,
+    *,
+    prefix: str,
+    from_day: str | None = None,
+) -> Dict[str, Dict[str, Any]]:
+    """All persisted ECB records keyed by published date.
+
+    ``from_day`` (optional YYYY-MM-DD) bounds the read: keys still LIST in
+    one paginated pass (names only, cheap), but records dated strictly
+    before it are never fetched or parsed -- the hourly panel lanes' cost
+    fence, where a years-old fx/ store must not cost one GET per record
+    per firing. A key whose date segment does not parse is fetched anyway
+    (fail-open to the unbounded behavior; nothing valid can be skipped).
+    Default None keeps the daily lanes' load-everything behavior exactly.
+    """
     out: Dict[str, Dict[str, Any]] = {}
-    for key in list_object_keys(client, bucket, f"{prefix}/fx/ecb-"):
+    marker = f"{prefix}/fx/ecb-"
+    for key in list_object_keys(client, bucket, marker):
+        if from_day is not None:
+            stem = key[len(marker):]
+            if stem.endswith(".json"):
+                stem = stem[: -len(".json")]
+            if _DATE_RE.fullmatch(stem) and stem < str(from_day):
+                continue  # dated strictly before the bound: never needed
         raw = get_object_bytes(client, bucket, key)
         if raw is None:
             continue
@@ -154,6 +176,7 @@ def ensure_rates(
     prefix: str,
     timeout: float = 30.0,
     persist: bool = True,
+    from_day: str | None = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Stored records, topped up from the ECB 90-day feed for any new dates.
 
@@ -162,8 +185,12 @@ def ensure_rates(
     swallow here would make a sustained feed blockade look like a quiet
     offline run until sources start failing FX a week later.
     ``persist=False`` (dry runs) merges the feed in memory only.
+    ``from_day`` bounds the STORED read exactly as load_stored_rates does
+    (additive; default None = the daily lanes' unbounded behavior); the
+    feed itself is date-complete for its 90-day window either way, and
+    persisting a fresh date older than the bound is harmless append-only.
     """
-    stored = load_stored_rates(client, bucket, prefix=prefix)
+    stored = load_stored_rates(client, bucket, prefix=prefix, from_day=from_day)
     try:
         feed = parse_ecb_rates(fetch(ECB_90D_URL, timeout=timeout))
     except Exception as exc:  # noqa: BLE001 — fail closed onto stored history, loudly
@@ -181,6 +208,34 @@ def ensure_rates(
                 "rates": rates,
             }
     return stored
+
+
+def rates_cover(
+    stored: Dict[str, Dict[str, Any]],
+    days: Any,
+    *,
+    currency: str = "USD",
+    max_staleness_days: int = DEFAULT_FX_MAX_STALENESS_DAYS,
+) -> bool:
+    """True iff every day in ``days`` resolves a ``currency`` rate from
+    ``stored`` alone via the standard walk-back (lookup_rate). The hourly
+    panel lanes' skip-the-feed test: when every unpublished observation's
+    day is already priceable from persisted records, the live ECB fetch
+    is pure latency and egress and is skipped -- the fail-closed staleness
+    fence is untouched (an unresolvable day triggers the fetch, and only
+    a fetch failure after THAT walks into FxUnavailableError territory).
+    """
+    for day in days:
+        try:
+            lookup_rate(
+                stored,
+                str(day),
+                currency,
+                max_staleness_days=max_staleness_days,
+            )
+        except FxUnavailableError:
+            return False
+    return True
 
 
 def lookup_rate(
