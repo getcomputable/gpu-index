@@ -2,14 +2,13 @@
 # Copyright 2026 Computable
 """Canonical serialization + envelope digest for the PUBLISHED record.
 
-The published files are written by the publisher in computable-mcp
-(src/publisher/artifacts.ts): pretty-printed with sortJson + 2-space
+The published files are written by the publisher pipeline:
+pretty-printed with sortJson + 2-space
 indent + trailing newline, while artifact_sha256 is sha256 over the
 COMPACT ``JSON.stringify(sortJson(payload))`` of the payload without the
 digest field. The fixtures under tests/fixtures/published/ were minted
-by a byte-exact Node mirror of those functions (sortJson :204-212,
-digestPayload :198-202, createArtifactEnvelope :138-178, encodeArtifact
-:180-182), so every digest assertion here is a CROSS-IMPLEMENTATION
+by a byte-exact Node mirror of those behaviors (the generator's
+envelope.mjs), so every digest assertion here is a CROSS-IMPLEMENTATION
 check: JS wrote and digested, Python re-derives.
 
 The number-formatting cases pin ECMAScript Number::toString against
@@ -56,8 +55,8 @@ def _load(key: str) -> bytes:
 
 
 def test_key_layout_matches_publisher_paths():
-    # paths.ts:10-27: latest.json / observations/YYYY/MM/DD.json /
-    # series/{24h,7d,30d,90d}.json.
+    # The published key layout: latest.json /
+    # observations/YYYY/MM/DD.json / series/{24h,7d,30d,90d}.json.
     assert latest_key() == "latest.json"
     assert day_key("2026-08-05") == "observations/2026/08/05.json"
     for r in ("24h", "7d", "30d", "90d"):

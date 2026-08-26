@@ -10,9 +10,8 @@ producer's aggregate is a pure function of exactly those receipt fields
 design, so the artifact alone recomputes it):
 
   - passing set = receipts with status "ok" AND filter_verdict
-    "accepted" (the panel's own predicate; computable-mcp
-    src/publisher/projector.ts:236-259 emits weight+sd non-null exactly
-    for that set);
+    "accepted" (the panel's own predicate; the publisher emits weight
+    and sd non-null exactly for that contributing set);
   - each passing source votes its weight at price and price +/- sd
     (three votes), and the index is the weighted median of all votes;
     the published stability band is the larger distance from the index
@@ -24,8 +23,8 @@ that priced the observation — never duplicated here, so this check can
 only diverge from production if the inputs diverge.
 
 Withheld sources: the publisher's disclosure pass nulls price+sd on a
-receipt and marks it ``price_disclosure: "withheld"`` (computable-mcp
-src/publisher/artifacts.ts:89-108) while the published index value is
+receipt and marks it ``price_disclosure: "withheld"`` while the
+published index value is
 unchanged. A withheld CONTRIBUTING receipt therefore makes the exact
 vote rebuild impossible and the observation degrades to
 digest-verification only, saying which sources are withheld. A withheld
@@ -36,7 +35,7 @@ No-print observations (value null) are checked for consistency instead:
 the passing set must be below ``calc_params.min_sources_to_publish``
 (the same minimum-panel rule the panel applies), and — when every receipt is
 disclosed — the published no-print reason must re-derive from the
-receipts (projector.ts:367-374).
+receipts (the publisher derives it from the same receipt fields).
 """
 
 from __future__ import annotations
@@ -91,7 +90,7 @@ def disclosure_window_warning(
         "the weight vector itself from the public record for this day"
     )
 
-# Receipt-derived no-print reasons (projector.ts noPrintReason, :367-374).
+# Receipt-derived no-print reasons, exactly as the publisher derives them.
 _RECEIPT_DERIVED_REASONS = (
     "no_eligible_sources",
     "all_sources_filtered",
@@ -322,8 +321,8 @@ def recompute_observation(observation: dict) -> ObservationCheck:
 
 
 def _no_print_reason(receipts: List[dict]) -> str:
-    """The publisher's receipt-derived no-print reason
-    (projector.ts:367-374), re-derivable only when fully disclosed."""
+    """The publisher's receipt-derived no-print reason, re-derivable
+    only when fully disclosed."""
     priced = [r for r in receipts if r.get("price") is not None]
     if not priced:
         return "no_eligible_sources"

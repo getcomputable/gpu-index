@@ -9,8 +9,8 @@ cross-implementation check:
   1. this script builds the observation SPEC with engine-true values
      (median_stddev_composite prices each fixture observation from its
      own receipts, exactly like production);
-  2. ``envelope.mjs`` (a byte-exact Node mirror of computable-mcp
-     src/publisher/artifacts.ts) wraps, digests, and pretty-prints each
+  2. ``envelope.mjs`` (a byte-exact Node mirror of the publisher
+     pipeline's envelope writer) wraps, digests, and pretty-prints each
      file — JS writes and digests, the Python package re-derives.
 
     python3 build_spec.py spec.json

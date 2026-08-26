@@ -2,16 +2,16 @@
 # Copyright 2026 Computable
 """The published record's file layout, envelope shape, and digest rule.
 
-Mirrors the publisher contract of getcomputable/computable-mcp @ dc7587c
-(src/publisher/paths.ts, src/publisher/artifacts.ts) WITHOUT importing
-from that repo. The load-bearing duality, handled here explicitly:
+Mirrors the publisher contract -- key layout, envelope shape, digest
+rule -- without sharing any code with the publisher. The load-bearing
+duality, handled here explicitly:
 
   - the FILES are pretty-printed: ``JSON.stringify(sortJson(envelope),
-    null, 2)`` plus a trailing newline (artifacts.ts encodeArtifact);
+    null, 2)`` plus a trailing newline (the publisher's file encoder);
   - the DIGEST ``artifact_sha256`` is sha256 over the COMPACT canonical
     JSON of the payload WITHOUT the digest field itself:
     ``JSON.stringify(sortJson({data, meta, license}))``
-    (artifacts.ts digestPayload).
+    (the publisher's digest rule).
 
 So a verifier must parse the pretty file and re-serialize the parsed
 payload compactly — never hash the file bytes. Re-serializing compactly
@@ -40,15 +40,15 @@ import math
 import re
 from typing import Any, List
 
-# Public keys (computable-mcp src/publisher/paths.ts:10-27).
+# Public keys, exactly as the publisher lays the record out.
 _LATEST_KEY = "latest.json"
-# Series ranges (computable-mcp src/publisher/artifacts.ts:17).
+# Series ranges the publisher writes.
 SERIES_RANGES = ("24h", "7d", "30d", "90d")
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# Envelope shape (computable-mcp src/publisher/artifacts.ts:67-87).
+# Envelope shape: every published file carries exactly these keys.
 _ENVELOPE_KEYS = frozenset({"artifact_sha256", "data", "meta", "license"})
 _META_KEYS = frozenset(
     {
@@ -92,12 +92,12 @@ class ArtifactDigestError(PublishedRecordError):
 
 
 def latest_key() -> str:
-    """``latest.json`` (paths.ts:21)."""
+    """``latest.json``: the newest observation per lane."""
     return _LATEST_KEY
 
 
 def day_key(date: str) -> str:
-    """``observations/YYYY/MM/DD.json`` for a UTC date (paths.ts:25-26)."""
+    """``observations/YYYY/MM/DD.json`` for a UTC date."""
     if not _DATE_RE.match(date):
         raise PublishedRecordError(
             f"day key needs a YYYY-MM-DD date, got {date!r}"
@@ -107,7 +107,7 @@ def day_key(date: str) -> str:
 
 
 def series_key(series_range: str) -> str:
-    """``series/{24h,7d,30d,90d}.json`` (paths.ts:11-19)."""
+    """``series/{24h,7d,30d,90d}.json``: aggregate history rows."""
     if series_range not in SERIES_RANGES:
         raise PublishedRecordError(
             f"unknown series range {series_range!r}; "
@@ -214,15 +214,15 @@ def _canonical(value: Any, out: List[str]) -> None:
 
 
 def canonical_compact_bytes(value: Any) -> bytes:
-    """``JSON.stringify(sortJson(value))`` as UTF-8 bytes
-    (artifacts.ts:198-212)."""
+    """``JSON.stringify(sortJson(value))`` as UTF-8 bytes -- the compact
+    canonical form the publisher digests."""
     out: List[str] = []
     _canonical(value, out)
     return "".join(out).encode("utf-8")
 
 
 def payload_digest(payload: Any) -> str:
-    """sha256 hex over the compact canonical JSON (artifacts.ts:198-202)."""
+    """sha256 hex over the compact canonical JSON of the payload."""
     return hashlib.sha256(canonical_compact_bytes(payload)).hexdigest()
 
 
@@ -249,8 +249,9 @@ def _validate_meta(meta: Any, observations: List[Any]) -> None:
             f"unsupported meta.schema_version {meta['schema_version']!r} "
             "(this reader mirrors schema_version 1)"
         )
-    # Meta cross-checks against the observations the envelope carries
-    # (createArtifactEnvelope, artifacts.ts:152-168).
+    # Meta cross-checks against the observations the envelope carries:
+    # the publisher derives meta FROM the observations, so a reader can
+    # re-derive and compare every meta field.
     if meta["observation_count"] != len(observations):
         raise PublishedRecordError(
             f"meta.observation_count {meta['observation_count']!r} vs "
@@ -328,8 +329,7 @@ def _validate_data(data: Any) -> List[Any]:
 
 
 def decode_and_verify_artifact(raw: bytes) -> dict:
-    """Parse a published file and verify its envelope digest
-    (artifacts.ts decodeAndVerifyArtifact, :184-196).
+    """Parse a published file and verify its envelope digest.
 
     The file is pretty-printed; the digest covers the compact canonical
     form of the payload (everything but ``artifact_sha256``), so the
