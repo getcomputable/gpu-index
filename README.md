@@ -134,4 +134,8 @@ Contributions are welcome under the Developer Certificate of Origin (see
 [CONTRIBUTING.md](CONTRIBUTING.md)). The code in this repository is Apache-2.0
 permanently; see [GOVERNANCE.md](GOVERNANCE.md).
 
+Found a problem? A published value that looks wrong, a misread provider, a
+methodology surprise: [open an issue](https://github.com/getcomputable/gpu-index/issues)
+or write to index@getcomputable.com.
+
 Contact: index@getcomputable.com
