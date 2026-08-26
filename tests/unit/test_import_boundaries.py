@@ -47,7 +47,12 @@ def test_only_declared_cross_package_edges():
                 continue  # root or same-package: not a cross-package edge
             if (src_pkg, dst_pkg) in ALLOWED_EDGES:
                 continue
-            if any(rel.startswith(f) and module.startswith(p) for f, ps in WAIVERS.items() for p in ps):
+            waived = any(
+                rel.startswith(f) and module.startswith(p)
+                for f, prefixes in WAIVERS.items()
+                for p in prefixes
+            )
+            if waived:
                 continue
             violations.append(f"{rel}: import of {module}")
     assert not violations, (

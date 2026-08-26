@@ -22,7 +22,13 @@ DEFAULT_PER_SOURCE_DEADLINE_SECONDS = 120.0
 DEFAULT_PER_SOURCE_TIMEOUT_SECONDS = 30.0
 
 
-def call_with_deadline(fn: Callable[..., Any], *, timeout: float, deadline: float, options: Optional[Dict[str, Any]] = None) -> Any:
+def call_with_deadline(
+    fn: Callable[..., Any],
+    *,
+    timeout: float,
+    deadline: float,
+    options: Optional[Dict[str, Any]] = None,
+) -> Any:
     """Run a collector with a HARD wall-clock bound.
 
     Between-source budget checks alone don't cap the source that is already

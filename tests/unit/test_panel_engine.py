@@ -1798,7 +1798,8 @@ def test_currency_change_fence_confirms_at_the_third_print():
             ]
         )
 
-    eur = lambda: _obs("H100", "H100", usd=None, native=2.0, currency="EUR")
+    def eur():
+        return _obs("H100", "H100", usd=None, native=2.0, currency="EUR")
     payloads = [
         _compute(cfg, _snap(_obs("H100", "H100", 2.5)), state, fx=FX),
         _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 1, fx=FX),

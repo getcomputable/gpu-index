@@ -10,7 +10,7 @@ dependencies = [
 
 [project.optional-dependencies]
 publish = ["boto3>=1.36"]
-dev = ["pytest>=8.0", "pyyaml>=6.0", "jsonschema>=4.26"]
+dev = ["pytest>=8.0", "pyyaml>=6.0", "jsonschema>=4.26", "ruff>=0.9"]
 
 [project.urls]
 Homepage = "https://github.com/getcomputable/gpu-index"
@@ -19,6 +19,25 @@ Homepage = "https://github.com/getcomputable/gpu-index"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+# Correctness + pycodestyle. Deliberately NOT the full ruleset and NOT
+# `ruff format`: the tree predates ruff, and a wholesale reformat would
+# bury blame for zero behavior change. Widen rule by rule, with the fixes.
+select = ["E", "F", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# The frozen daily lane is retained byte-untouched for replay
+# (docs/architecture.md): never reflow it to please a linter.
+"src/gpu_index/index/sources.py" = ["E501"]
+"src/gpu_index/index/composite.py" = ["E501"]
+# The frozen lane's tests carry live-captured fixture strings.
+"tests/unit/test_index_basket.py" = ["E501"]
+"tests/unit/test_index_composite.py" = ["E501"]
 
 [build-system]
 requires = ["hatchling"]

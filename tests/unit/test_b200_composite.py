@@ -1269,8 +1269,12 @@ def test_collect_vast_wires_book_stats_and_snapshot_carries_them(monkeypatch):
         "capture_slots_utc": [4, 16],
         "canonical_slot_utc": 16,
         "sources": [
-            {"source_id": "vast", "display_name": "Vast.ai", "role": "b200_basket", "weight": 0.5, "source_type": "marketplace"},
-            {"source_id": "verda", "display_name": "Verda", "role": "b200_basket", "weight": 0.5, "source_type": "direct_principal"},
+            {"source_id": "vast", "display_name": "Vast.ai",
+             "role": "b200_basket", "weight": 0.5,
+             "source_type": "marketplace"},
+            {"source_id": "verda", "display_name": "Verda",
+             "role": "b200_basket", "weight": 0.5,
+             "source_type": "direct_principal"},
         ],
     }
     snapshot = build_capture_snapshot(

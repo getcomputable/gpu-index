@@ -262,8 +262,8 @@ def vast_vwm_verified_us_ca_v2(
     else held out ``no_population_accounting``. Without the gate, a
     pre-branch snapshot's cheapest-N truncation would silently price the
     statistic on a one-sided-low book -- the truncated-book capture defect
-    shape the neutral exclusions record. Fail-closed by construction, deterministic on replay: the gate
-    reads only stored bytes."""
+    shape the neutral exclusions record. Fail-closed by construction,
+    deterministic on replay: the gate reads only stored bytes."""
     if not rows:
         return None
     holdout = _accounting_holdout(rows, source_entry, statistic)

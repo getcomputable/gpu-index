@@ -15,6 +15,10 @@ jobs:
           python-version-file: .python-version
       - name: Install
         run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        # `ruff format --check` is deliberately absent: the tree predates
+        # ruff and a wholesale reformat belongs in its own PR, if ever.
+        run: ruff check src tests scripts
       - name: Tests
         run: pytest -q
 

@@ -13,7 +13,6 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
-import os
 import time
 import urllib.error
 import urllib.request
