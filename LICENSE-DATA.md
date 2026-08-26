@@ -75,12 +75,17 @@ endorsed, sold, or promoted by Computable unless separately agreed in writing.
 
 ## 6. Machine-readable declaration
 
-Each artifact embeds:
+Each artifact embeds a `license` block with exactly these four fields:
 
     "license": {
-      "values": "CC-BY-NC-4.0",
-      "grant": "LICENSE-DATA.md in the CGI repository",
-      "attribution": "Computable GPU Index (CGI), (c) 2026 Computable"
+      "spdx": "CC-BY-NC-4.0",
+      "url": "https://creativecommons.org/licenses/by-nc/4.0/",
+      "attribution": "<index name> by Computable — <index domain>",
+      "commercial_licensing": "<commercial licensing URL>"
     }
 
-The operative terms are this file, not the embedded field.
+`spdx` is pinned to `CC-BY-NC-4.0`; `url` is the CC BY-NC 4.0 license
+text; `attribution` names the index and Computable; `commercial_licensing`
+is where to ask about the Section 3 uses. The Derived Index Grant
+(Section 2) is granted by this file and is not restated inside the
+artifact. The operative terms are this file, not the embedded field.
