@@ -66,8 +66,9 @@ def screen_params(config: Dict[str, Any]) -> Dict[str, Any]:
 # Currencies the calc lane can actually price (USD direct, EUR via the ECB
 # record) — a print the composite would never use must not become the
 # screen's reference or today's would-be print (e.g. a deliberately
-# UNKNOWN-labeled currency).
-_PRICEABLE_CURRENCIES = ("USD", "EUR")
+# UNKNOWN-labeled currency). Public: the panel engine screens rows
+# against the same fence (docs/architecture.md).
+PRICEABLE_CURRENCIES = ("USD", "EUR")
 
 
 def _eligible(
@@ -83,7 +84,7 @@ def _eligible(
         obs.get("sku") == sku
         and obs.get("tier") not in interruptible
         and not obs.get("implausible")
-        and obs.get("currency", "USD") in _PRICEABLE_CURRENCIES
+        and obs.get("currency", "USD") in PRICEABLE_CURRENCIES
         and isinstance(obs.get("price_native_per_gpu_hr"), (int, float))
         and not isinstance(obs.get("price_native_per_gpu_hr"), bool)
     )

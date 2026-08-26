@@ -93,7 +93,14 @@ PUBLIC_NAMES = {
         "persist_rates", "put_json_bytes", "rates_cover", "rfc3339",
     },
     "gpu_index.index.screens": {
+        # PRICEABLE_CURRENCIES is public surface too (a constant, so it is
+        # asserted by test_declared_waiver_names_are_public below rather
+        # than by the function/class walk).
         "apply_jump_screen", "lowest_eligible", "screen_params",
+    },
+    "gpu_index.observatory.catalog": {
+        "SkuCatalogError", "boundary_pattern", "load_sku_catalog",
+        "match_sku", "normalize_label", "plausible_band",
     },
     "gpu_index.common.store": {
         "BucketConfig", "BucketPublishError", "build_pointer",
@@ -123,7 +130,8 @@ PUBLIC_NAMES = {
     },
     "gpu_index.index.panel": {
         "FxUnavailableError", "advance_panel_weight_state",
-        "advance_window", "apply_panel_jump_screen", "compile_screens",
+        "advance_window", "apply_panel_jump_screen", "boundary_pattern",
+        "compile_screens",
         "compute_observation", "compute_panel_weights",
         "embedded_calc_params", "eur_to_usd", "evaluate_filter",
         "exclusion_applies", "filter_observation",
@@ -215,6 +223,18 @@ def _observed_names(module_name):
         and (inspect.isfunction(obj) or inspect.isclass(obj))
         and getattr(obj, "__module__", "").startswith("gpu_index")
     }
+
+
+def test_declared_waiver_names_are_public():
+    """The two cross-package waiver imports (docs/architecture.md) ride
+    PUBLIC names — the panel engine must never reach for underscore
+    internals, and the names must stay importable as spelled."""
+    from gpu_index.index.screens import PRICEABLE_CURRENCIES
+    from gpu_index.observatory.catalog import boundary_pattern
+
+    assert PRICEABLE_CURRENCIES == ("USD", "EUR")
+    assert boundary_pattern("B200").search("GB200") is None
+    assert boundary_pattern("B200").search("8x B200 SXM") is not None
 
 
 @pytest.mark.parametrize("module_name", sorted(PUBLIC_NAMES))

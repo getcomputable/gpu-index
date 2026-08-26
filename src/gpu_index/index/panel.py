@@ -115,11 +115,11 @@ from gpu_index.index.weights import (
 # lane must speak the same words the capture lane spoke); the boundary
 # matcher is gpu_index.observatory.catalog's (a token must mean the same thing to
 # the catalog and to the panel screens -- 'B200' never inside 'GB200',
-# 'NVL' never inside 'NVLINK'). The underscore imports are deliberate
-# reuse-over-fork of package-internal helpers, same as composite's
-# _weighted_median above.
-from gpu_index.index.screens import QUARANTINE_REASON, _PRICEABLE_CURRENCIES
-from gpu_index.observatory.catalog import _boundary_pattern, normalize_label
+# 'NVL' never inside 'NVLINK'). Both are PUBLIC names: this deliberate
+# reuse-over-fork rides the declared waiver edges in docs/architecture.md,
+# never underscore internals.
+from gpu_index.index.screens import PRICEABLE_CURRENCIES, QUARANTINE_REASON
+from gpu_index.observatory.catalog import boundary_pattern, normalize_label
 
 PANEL_SCHEMA_VERSION = 1
 PANEL_COMPOSITE_KIND = "index_panel_composite"
@@ -701,10 +701,10 @@ def _token_patterns(token: str) -> List[Any]:
     alpha<->digit split) and its fully-compacted variant also gets a
     pattern when it differs (the catalog's partial-compaction rule)."""
     norm = normalize_label(token)
-    patterns = [_boundary_pattern(norm)]
+    patterns = [boundary_pattern(norm)]
     compact = normalize_label(norm.replace(" ", ""))
     if compact != norm:
-        patterns.append(_boundary_pattern(compact))
+        patterns.append(boundary_pattern(compact))
     return patterns
 
 
@@ -980,7 +980,7 @@ def _jump_lowest_row(
         row
         for row in rows
         if row.get("currency", "USD") == currency
-        and row.get("currency", "USD") in _PRICEABLE_CURRENCIES
+        and row.get("currency", "USD") in PRICEABLE_CURRENCIES
         and isinstance(row.get("price_native_per_gpu_hr"), (int, float))
         and not isinstance(row.get("price_native_per_gpu_hr"), bool)
     ]
