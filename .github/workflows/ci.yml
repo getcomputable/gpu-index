@@ -37,3 +37,37 @@ jobs:
         run: pip install griffe
       - name: Check API against the PR base
         run: griffe check gpu_index --search src --against "origin/${{ github.base_ref }}" --format github
+
+  # DCO gate (PRs only): every commit in the PR range must carry a
+  # Signed-off-by trailer (CONTRIBUTING.md section 1). Stopgap until an
+  # org admin installs the GitHub DCO app; drop this job once it is on.
+  dco:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the PR range spans commits beyond the merge ref
+      - name: Every PR commit has a Signed-off-by trailer
+        run: |
+          set -euo pipefail
+          range="${{ github.event.pull_request.base.sha }}..HEAD"
+          echo "checking DCO sign-off over $range"
+          missing=""
+          for sha in $(git rev-list --no-merges "$range"); do
+            if ! git log -1 --format='%B' "$sha" | grep -Eqi '^Signed-off-by: .+'; then
+              missing="$missing $sha"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "commits missing a Signed-off-by trailer:"
+            for sha in $missing; do
+              git log -1 --format='  %h %s' "$sha"
+            done
+            echo
+            echo "Every commit must be signed off: commit with 'git commit -s'"
+            echo "(or amend/rebase with --signoff). See CONTRIBUTING.md,"
+            echo "section 1 (Developer Certificate of Origin)."
+            exit 1
+          fi
+          echo "all commits in the range carry a Signed-off-by trailer"
