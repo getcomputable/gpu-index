@@ -11,7 +11,7 @@ there is no unverified read path.
 
 Day files are MUTABLE BY DESIGN inside the publisher's 90-day window
 (the publisher re-reconciles them on every run and deletes files that
-age out of the window; computable-mcp src/publisher/publish.ts), so a
+age out of the window), so a
 missing day is an ordinary state — out of window, or not yet published —
 and reads return ``None`` for it rather than raising.
 """

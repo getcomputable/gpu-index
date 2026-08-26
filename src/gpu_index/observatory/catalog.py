@@ -58,9 +58,11 @@ class SkuCatalogError(RuntimeError):
     """config/gpu_sku_catalog.json is missing or malformed."""
 
 
-def _boundary_pattern(token: str) -> re.Pattern:
-    # A token never matches inside a longer alphanumeric run: 'B200' must
-    # not match 'GB200'. Spaces inside the token are literal.
+def boundary_pattern(token: str) -> re.Pattern:
+    """Token-boundary matcher shared by the catalog and the panel screens
+    (docs/architecture.md, waiver edge 2): a token never matches inside a
+    longer alphanumeric run -- 'B200' must not match 'GB200', 'NVL' never
+    inside 'NVLINK'. Spaces inside the token are literal."""
     return re.compile(r"(?<![A-Z0-9])" + re.escape(token) + r"(?![A-Z0-9])")
 
 
@@ -116,10 +118,10 @@ def load_sku_catalog(path: Optional[Path] = None) -> Dict[str, Any]:
             # by the digit rule, so the fully-compacted token also gets a
             # pattern — run through the same normalizer so both sides stay
             # canonical.
-            patterns.append(_boundary_pattern(token_norm))
+            patterns.append(boundary_pattern(token_norm))
             compact = normalize_label(token_norm.replace(" ", ""))
             if compact != token_norm:
-                patterns.append(_boundary_pattern(compact))
+                patterns.append(boundary_pattern(compact))
         band = entry.get("plausible_usd_gpu_hr")
         if band is not None:
             _validate_band(band, f"catalog sku {sku!r} plausible_usd_gpu_hr")

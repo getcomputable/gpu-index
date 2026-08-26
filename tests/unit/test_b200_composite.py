@@ -1058,7 +1058,8 @@ def test_b200_config_rejects_bad_exclusions_and_lane_knobs(tmp_path):
             "unknown statistic",
         ),
         ({"source_statistics": ["vast"]}, "must be an object"),
-        # F3: the capture coverage line reads the top-level knob, the
+        # Daily-lane review F3 (docs/adversarial-reviews.md): the capture
+        # coverage line reads the top-level knob, the
         # composite floors on the calc knob — they must agree.
         ({"min_sources_to_claim": 4}, "one claim floor"),
     )
@@ -1268,8 +1269,12 @@ def test_collect_vast_wires_book_stats_and_snapshot_carries_them(monkeypatch):
         "capture_slots_utc": [4, 16],
         "canonical_slot_utc": 16,
         "sources": [
-            {"source_id": "vast", "display_name": "Vast.ai", "role": "b200_basket", "weight": 0.5, "source_type": "marketplace"},
-            {"source_id": "verda", "display_name": "Verda", "role": "b200_basket", "weight": 0.5, "source_type": "direct_principal"},
+            {"source_id": "vast", "display_name": "Vast.ai",
+             "role": "b200_basket", "weight": 0.5,
+             "source_type": "marketplace"},
+            {"source_id": "verda", "display_name": "Verda",
+             "role": "b200_basket", "weight": 0.5,
+             "source_type": "direct_principal"},
         ],
     }
     snapshot = build_capture_snapshot(

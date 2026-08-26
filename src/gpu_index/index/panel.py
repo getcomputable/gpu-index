@@ -115,11 +115,11 @@ from gpu_index.index.weights import (
 # lane must speak the same words the capture lane spoke); the boundary
 # matcher is gpu_index.observatory.catalog's (a token must mean the same thing to
 # the catalog and to the panel screens -- 'B200' never inside 'GB200',
-# 'NVL' never inside 'NVLINK'). The underscore imports are deliberate
-# reuse-over-fork of package-internal helpers, same as composite's
-# _weighted_median above.
-from gpu_index.index.screens import QUARANTINE_REASON, _PRICEABLE_CURRENCIES
-from gpu_index.observatory.catalog import _boundary_pattern, normalize_label
+# 'NVL' never inside 'NVLINK'). Both are PUBLIC names: this deliberate
+# reuse-over-fork rides the declared waiver edges in docs/architecture.md,
+# never underscore internals.
+from gpu_index.index.screens import PRICEABLE_CURRENCIES, QUARANTINE_REASON
+from gpu_index.observatory.catalog import boundary_pattern, normalize_label
 
 PANEL_SCHEMA_VERSION = 1
 PANEL_COMPOSITE_KIND = "index_panel_composite"
@@ -262,8 +262,8 @@ def vast_vwm_verified_us_ca_v2(
     else held out ``no_population_accounting``. Without the gate, a
     pre-branch snapshot's cheapest-N truncation would silently price the
     statistic on a one-sided-low book -- the truncated-book capture defect
-    shape the neutral exclusions record. Fail-closed by construction, deterministic on replay: the gate
-    reads only stored bytes."""
+    shape the neutral exclusions record. Fail-closed by construction,
+    deterministic on replay: the gate reads only stored bytes."""
     if not rows:
         return None
     holdout = _accounting_holdout(rows, source_entry, statistic)
@@ -505,7 +505,8 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         key=lambda e: (e["date"], e["source_id"], e.get("hour", -1))
     )
     # Record-quarantine entries (top-level config key; adversarial review
-    # F6, amended into the mints before any observation published): an
+    # F6, docs/adversarial-reviews.md, amended into the mints before any
+    # observation published): an
     # excluded (date, hour) never reads the record and publishes an
     # explicit record_quarantined artifact -- the escape hatch for a
     # poisoned/unparseable snapshot object that would otherwise crash
@@ -700,10 +701,10 @@ def _token_patterns(token: str) -> List[Any]:
     alpha<->digit split) and its fully-compacted variant also gets a
     pattern when it differs (the catalog's partial-compaction rule)."""
     norm = normalize_label(token)
-    patterns = [_boundary_pattern(norm)]
+    patterns = [boundary_pattern(norm)]
     compact = normalize_label(norm.replace(" ", ""))
     if compact != norm:
-        patterns.append(_boundary_pattern(compact))
+        patterns.append(boundary_pattern(compact))
     return patterns
 
 
@@ -780,7 +781,8 @@ def member_eligible_rows(
     retroactively unseat every basket-era print. Screens read the
     structured sku_identifier / extra only, never prose notes.
 
-    FINITENESS FAIL-CLOSED (adversarial review F9, amended pre-publish):
+    FINITENESS FAIL-CLOSED (adversarial review F9,
+    docs/adversarial-reviews.md, amended pre-publish):
     a candidate row must carry a FINITE native price (and a finite USD
     price when one is present) or it is excluded and counted
     (``non_finite_price``). json.loads admits NaN/Infinity, and non-USD
@@ -793,7 +795,8 @@ def member_eligible_rows(
     sku-matched row by screen: ``tier_ineligible``, ``implausible``,
     ``non_finite_price``, ``identity_rejected``, ``variant_unmatched``,
     ``extra_require_mismatch`` -- the dead-seat visibility record
-    (adversarial review F1): a seat whose rows ALL screen out must be
+    (adversarial review F1, docs/adversarial-reviews.md): a seat whose
+    rows ALL screen out must be
     distinguishable in the artifact from a seat with no rows at all."""
     if (source_entry or {}).get("status") != "ok":
         return []
@@ -977,7 +980,7 @@ def _jump_lowest_row(
         row
         for row in rows
         if row.get("currency", "USD") == currency
-        and row.get("currency", "USD") in _PRICEABLE_CURRENCIES
+        and row.get("currency", "USD") in PRICEABLE_CURRENCIES
         and isinstance(row.get("price_native_per_gpu_hr"), (int, float))
         and not isinstance(row.get("price_native_per_gpu_hr"), bool)
     ]
@@ -1222,7 +1225,8 @@ def compute_observation(
     calc_params for exactly that reason). Derived here from the same
     config otherwise, so the two paths cannot diverge.
 
-    ``record_quarantined`` (adversarial review F6): the config's
+    ``record_quarantined`` (adversarial review F6,
+    docs/adversarial-reviews.md): the config's
     record-exclusion reason for this stamp, when one applies. The CALLER
     checks record_exclusions BEFORE reading the record and passes
     snapshot=None with the reason -- the whole point is that the stored
@@ -1452,7 +1456,8 @@ def compute_observation(
             if chosen and chosen.get("fx_errors"):
                 detail["fx_errors"] = chosen["fx_errors"]
             if (entry or {}).get("status") == "ok":
-                # Dead-seat visibility (adversarial review F1): an
+                # Dead-seat visibility (adversarial review F1,
+                # docs/adversarial-reviews.md): an
                 # ok-status seat with NO print must say WHY on the
                 # artifact. eligible_rows pins how many rows survived the
                 # screens; a non-empty screen_counts block proves rows

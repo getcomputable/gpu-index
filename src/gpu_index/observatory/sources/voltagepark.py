@@ -7,7 +7,8 @@ Price surface: GET https://cloud-api.voltagepark.com/api/v1/bare-metal/locations
 2026-08-22, re-verified byte-identical 2026-08-25: results[] holds one
 location row keyed by specs_per_node.gpu_model ('h100-sxm5-80gb', 8x per
 node) with TWO published per-GPU hourly prices -- gpu_price_ethernet
-("1.99") and gpu_price_infiniband ("2.49") -- as decimal strings. Both are networking variants of the same ON-DEMAND product (ethernet
+("1.99") and gpu_price_infiniband ("2.49") -- as decimal strings. Both
+are networking variants of the same ON-DEMAND product (ethernet
 vs 3200Gbps InfiniBand), NOT an on-demand/reserved split (long-term reserve is
 contact-only and never published), so tier stays "on-demand" for both and the
 voltagepark-native ``network`` label lives in extra -- same vocabulary rule as

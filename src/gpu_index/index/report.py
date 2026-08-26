@@ -406,9 +406,13 @@ def _kpi_tiles(
         f"{'/' + _esc(n_constituents) if n_constituents else ''}</div>"
         f'<div class="delta">{statistic_label}</div></div>'
     )
+    unweighted_mean = index.get("unweighted_mean_usd_gpu_hr")
+    unweighted_cell = (
+        "$" + _idx(unweighted_mean) if unweighted_mean is not None else _DASH
+    )
     tiles.append(
         '<div class="tile"><div class="label">Unweighted mean</div>'
-        f'<div class="value">{"$" + _idx(index.get("unweighted_mean_usd_gpu_hr")) if index.get("unweighted_mean_usd_gpu_hr") is not None else _DASH}</div>'
+        f'<div class="value">{unweighted_cell}</div>'
         '<div class="delta">same passing set</div></div>'
     )
     # calc_v5 (dynamic weighting): the day's weighting posture — present
@@ -437,10 +441,15 @@ def _kpi_tiles(
         )
         if weight_calc.get("mode") == "fallback" and pending:
             weighting_notes.append("switch pending: " + ", ".join(pending))
+        weighting_delta = (
+            " &middot; ".join(_esc(n) for n in weighting_notes)
+            if weighting_notes
+            else "dynamic predictive weighting"
+        )
         tiles.append(
             '<div class="tile"><div class="label">Weighting</div>'
             f'<div class="value">{_esc(weight_calc.get("mode") or _DASH)}</div>'
-            f'<div class="delta">{" &middot; ".join(_esc(n) for n in weighting_notes) if weighting_notes else "dynamic predictive weighting"}</div></div>'
+            f'<div class="delta">{weighting_delta}</div></div>'
         )
     pool = (latest or {}).get("fallback_pool") or {}
     pool_mean = pool.get("mean_usd_gpu_hr")
@@ -693,10 +702,12 @@ def _day_breakdown(day: str, comp: Dict[str, Any], *, visible: bool) -> str:
             f"(votes [{_idx(index.get('vote_p25_usd_gpu_hr'))}, "
             f"{_idx(index.get('vote_p75_usd_gpu_hr'))}])"
         )
+    day_value = index.get("value_usd_gpu_hr")
+    day_value_cell = "$" + _idx(day_value) if day_value is not None else "DARK"
     summary = (
         '<div class="day-summary">'
         f"<strong>{_esc(day)}</strong> &#183; index "
-        f"<strong>{'$' + _idx(index.get('value_usd_gpu_hr')) if index.get('value_usd_gpu_hr') is not None else 'DARK'}</strong>"
+        f"<strong>{day_value_cell}</strong>"
         f"{conf_seg}"
         f" &#183; unweighted {_idx(index.get('unweighted_mean_usd_gpu_hr'))}"
         f" &#183; {_esc(index.get('sources_used_count', 0))} sources"
@@ -740,12 +751,16 @@ def _day_breakdown(day: str, comp: Dict[str, Any], *, visible: bool) -> str:
             f"<td>{_esc(entry.get('status', 'ok' if chosen else _DASH))}</td>"
             "</tr>"
         )
+    pool_mean_value = pool.get("mean_usd_gpu_hr")
+    pool_mean_cell = (
+        "$" + _price(pool_mean_value) if pool_mean_value is not None else _DASH
+    )
     pool_table = (
         "<table class='pool'><thead><tr><th>pool source (B200)</th>"
         "<th class='num'>$/GPU-hr</th><th>status</th></tr></thead><tbody>"
         + "".join(pool_rows)
-        + f"</tbody></table><div class='sub'>pool mean: "
-        f"{'$' + _price(pool.get('mean_usd_gpu_hr')) if pool.get('mean_usd_gpu_hr') is not None else _DASH}</div>"
+        + "</tbody></table><div class='sub'>pool mean: "
+        f"{pool_mean_cell}</div>"
     )
 
     params = comp.get("calc_params") or {}

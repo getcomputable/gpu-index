@@ -205,7 +205,8 @@ def test_cli_unreachable_front_exits_two_with_one_actionable_line(
 ):
     # An unreachable record source must be "could not verify" (exit 2)
     # with an actionable message -- never a traceback, and never exit 0
-    # having verified nothing (the F1 fail-loudly ruling).
+    # having verified nothing (the F1 fail-loudly ruling,
+    # docs/adversarial-reviews.md).
     class _DeadFrontReader:
         def describe(self):
             return "public HTTPS front https://data.getcomputable.com"

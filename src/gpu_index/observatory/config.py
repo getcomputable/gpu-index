@@ -109,7 +109,11 @@ def _validate(cfg: Dict[str, Any]) -> None:
             f"segments: {prefix!r}"
         )
     for reserved in RESERVED_LANE_PREFIXES:
-        if prefix == reserved or prefix.startswith(reserved + "/") or reserved.startswith(prefix + "/"):
+        if (
+            prefix == reserved
+            or prefix.startswith(reserved + "/")
+            or reserved.startswith(prefix + "/")
+        ):
             # Nesting either way would let one lane's LIST/PUT see the
             # other's objects — the b200/b300 keyspace separation is an
             # invariant this lane must never be able to break by

@@ -2,12 +2,12 @@
 # Copyright 2026 Computable
 """Reader + verifier for the PUBLISHED record (the public projection).
 
-The publisher (a separate repo: getcomputable/computable-mcp,
-src/publisher/) projects the private producer record into a small public
+The publisher (a separate pipeline, maintained outside this
+repository) projects the private producer record into a small public
 layout — ``latest.json``, ``observations/YYYY/MM/DD.json`` day files, and
 ``series/{24h,7d,30d,90d}.json`` — each file a self-digesting envelope of
 ``gpu_price_index_observation`` documents. This package mirrors that
-contract in Python WITHOUT importing anything from that repo:
+contract in Python without sharing any code with the publisher:
 
   - ``artifacts``: the key layout, the envelope shape, and the
     envelope-digest rule (sha256 over the COMPACT canonical JSON of the

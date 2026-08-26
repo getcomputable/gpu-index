@@ -1,6 +1,6 @@
-// Envelope + digest + pretty-print EXACTLY as computable-mcp @ dc7587c
-// src/publisher/artifacts.ts (createArtifactEnvelope :138-178,
-// encodeArtifact :180-182, digestPayload :198-202, sortJson :204-212).
+// Envelope + digest + pretty-print EXACTLY as the publisher pipeline
+// writes them: a byte-exact Node mirror of its envelope creation, file
+// encoding, payload digest, and key-sort behaviors.
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';

@@ -2,20 +2,20 @@
 # Copyright 2026 Computable
 """Recompute-and-match over published observations.
 
-The published observation (schema ``gpu_price_index_observation``,
-computable-mcp src/publisher/projector.ts:69-106) carries per-provider
-receipts {price, sd, weight, status, filter_verdict} plus the disclosure
-flag (artifacts.ts:20-24, applyDisclosure :89-108). The verifier rebuilds
-the passing set (status ok + filter_verdict accepted, the exact set
-projector.ts:236-259 marks contributing), re-derives the weighted median
+The published observation (schema ``gpu_price_index_observation``)
+carries per-provider receipts {price, sd, weight, status,
+filter_verdict} plus the disclosure flag the publisher's disclosure
+pass writes. The verifier rebuilds the passing set (status ok +
+filter_verdict accepted, the exact set the publisher marks
+contributing), re-derives the weighted median
 of the three sd-votes per source with the panel engine's own
 median_stddev_composite, and must land exactly on the published value
 and stability band.
 
 Era note: the b300/b200 lanes ran a 4-slot grid before 2026-08-24 and
 hourly after; the PUBLISHED schema does not distinguish the eras
-structurally (projector.ts:125-126 pins calc_params.collection_interval
-to the literal "hourly"), the eras differ only in how many stamps a day
+structurally (the publisher pins calc_params.collection_interval to
+the literal "hourly"), the eras differ only in how many stamps a day
 file carries. Both densities are covered: the H100 fixture day is
 hourly-era, the B200 fixture day is slot-era (observations at T04/T10).
 """

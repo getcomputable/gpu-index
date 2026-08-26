@@ -50,7 +50,8 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       rule).
   record_exclusions   OPTIONAL [{date, hour, reason}] (amended into the
                       mints before any observation published; adversarial
-                      review F6): quarantines ONE scheduled (date, hour)'s
+                      review F6, docs/adversarial-reviews.md):
+                      quarantines ONE scheduled (date, hour)'s
                       record object -- the escape hatch for a poisoned/
                       unparseable stored snapshot that would otherwise
                       crash every firing forever. The observation
@@ -139,7 +140,7 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
 
 Unknown keys REFUSE at every documented level (top level, calc, member,
 dynamic_weights, jump_screen, exclusion entries; adversarial review F12,
-amended pre-publish): a key the engine does not read is silently inert
+docs/adversarial-reviews.md, amended pre-publish): a key the engine does not read is silently inert
 config -- a typo'd 'rejected_tokens' would ship a panel with NO identity
 screen while its author reads a live one.
 """
@@ -249,7 +250,8 @@ def panel_schedule(config: Dict[str, Any]) -> PanelSchedule:
 
 # ------------------------------------------------------------- validation
 
-# Documented schema allowlists (adversarial review F12, unknown-key
+# Documented schema allowlists (adversarial review F12,
+# docs/adversarial-reviews.md -- unknown-key
 # rejection): a key the engine does not read would otherwise validate and
 # silently do nothing -- the exact silently-inert-config class this loader
 # refuses everywhere else (a typo'd 'rejected_tokens' would ship a panel
@@ -573,8 +575,9 @@ def _validate_record_sources(entries: Any, genesis: str) -> None:
 
 
 def _validate_record_exclusions(entries: Any, schedule: PanelSchedule) -> None:
-    """Top-level record_exclusions (adversarial review F6, amended into
-    the mints before any observation published): [{date, hour, reason}]
+    """Top-level record_exclusions (adversarial review F6,
+    docs/adversarial-reviews.md, amended into the mints before any
+    observation published): [{date, hour, reason}]
     quarantining ONE scheduled (date, hour)'s record object -- the escape
     hatch for a poisoned/unparseable stored snapshot that would otherwise
     crash every firing forever (publish-in-order blocks the lane behind

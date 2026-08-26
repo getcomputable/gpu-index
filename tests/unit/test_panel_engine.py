@@ -597,7 +597,8 @@ def test_config_methodology_id_key_segment_and_frozen_fence():
 
 
 def test_config_unknown_keys_refused_at_every_level():
-    """Adversarial review F12: an unread key is silently inert config --
+    """Adversarial review F12 (docs/adversarial-reviews.md): an unread
+    key is silently inert config --
     a typo'd 'rejected_tokens' would ship a panel with NO identity screen
     while its author reads a live one. One rejection per documented
     level."""
@@ -888,7 +889,8 @@ def test_extra_require_screens_on_the_structured_extra_dict():
 
 
 def test_non_finite_prices_are_held_out_at_eligibility():
-    """Finiteness fail-closed (adversarial review F9): json admits
+    """Finiteness fail-closed (adversarial review F9,
+    docs/adversarial-reviews.md): json admits
     NaN/Infinity and non-USD rows skip the capture plausibility band --
     a non-finite native (or a non-finite USD, when present) is excluded
     and counted, never a candidate. The statistics inherit the screen
@@ -912,7 +914,8 @@ def test_non_finite_prices_are_held_out_at_eligibility():
 
 
 def test_silent_ok_seat_pins_eligible_rows_and_screen_counts():
-    """Dead-seat visibility (adversarial review F1): a member whose rows
+    """Dead-seat visibility (adversarial review F1,
+    docs/adversarial-reviews.md): a member whose rows
     ALL screen out keeps status ok but pins eligible_rows 0 + the
     per-screen screen_counts block; a member with NO rows for its skus
     pins eligible_rows 0 WITHOUT screen_counts -- the two silences stay
@@ -1795,7 +1798,8 @@ def test_currency_change_fence_confirms_at_the_third_print():
             ]
         )
 
-    eur = lambda: _obs("H100", "H100", usd=None, native=2.0, currency="EUR")
+    def eur():
+        return _obs("H100", "H100", usd=None, native=2.0, currency="EUR")
     payloads = [
         _compute(cfg, _snap(_obs("H100", "H100", 2.5)), state, fx=FX),
         _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 1, fx=FX),

@@ -564,7 +564,8 @@ def test_switch_latch_is_permanent_and_stamps_switched_on():
 
 
 def test_zero_attendance_passers_hold_the_switch():
-    """A2 amendment (adversarial review F2): with EVERY candidate below
+    """A2 amendment (adversarial review F2, docs/adversarial-reviews.md):
+    with EVERY candidate below
     the attendance floor the every-passer-has-Q clause is vacuously true
     -- the amended quorum requires a NON-EMPTY passer set, so a
     post-outage observation (eligible >= quorum, zero passers) must stay
