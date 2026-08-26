@@ -147,14 +147,24 @@ def parse_availability(page_bodies: Sequence[str]) -> Dict[str, str]:
 
 def parse_scaleway(
     page_bodies: Sequence[str],
-    availability: Dict[str, str],
+    availability: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Pure parse over the fetched page bodies, joining the availability
     map (from ``parse_availability``, same zone only) onto each GPU row.
 
     Returns (observations, skipped_notes); skipped_notes feed
     partial_errors so an unpinnable row is a visible hole, never a guess.
+
+    ``availability`` defaults to None (treated as an empty map) so the
+    pre-availability call shape stays signature-compatible for external
+    callers; every GPU row then records availability None WITH the loud
+    join-miss note, never silently. collect() always passes the real
+    fetched map (upstream declares the parameter required; the default
+    is this repo's api-compat adaptation, behavior identical on the
+    collect path).
     """
+    if availability is None:
+        availability = {}
     rows: List[Dict[str, Any]] = []
     skipped: List[str] = []
     seen_names: set = set()
