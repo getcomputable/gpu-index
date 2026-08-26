@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
 """Compute hourly PANEL index composites from the stored record
-(METHODOLOGY.md sections 1, 2, 5, 6).
+(METHODOLOGY.md sections 1, 3, 5, 9).
 
 One CLI for every hourly lane: a REQUIRED --config path names a panel
 config (gpu_index.index.panel_config), which supplies the lane's keyspace,

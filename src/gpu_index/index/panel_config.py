@@ -105,7 +105,7 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       the claim floor is lane law, design section 1
                       table), eligible_tiers (REQUIRED non-empty tier
                       ALLOW-LIST containing "on-demand" -- methodology
-                      section 5 "on-demand only", the section 15
+                      section 5 "on-demand only", the hourly-mint tier
                       reconciliation; the retired exclusion-list key
                       interruptible_tiers is REFUSED outright -- the
                       frozen DAILY basket lanes keep it, panels never
@@ -786,8 +786,8 @@ def _validate_calc(
         raise PanelConfigError(
             "calc.interruptible_tiers is not a panel key: panel tier "
             "eligibility is the ALLOW-LIST calc.eligible_tiers "
-            "(methodology section 5 'on-demand only', the section 15 "
-            "reconciliation) -- declare eligible_tiers ['on-demand'] "
+            "(methodology section 5 'on-demand only', the hourly-mint "
+            "tier reconciliation) -- declare eligible_tiers ['on-demand'] "
             "instead"
         )
     tiers = calc.get("eligible_tiers")

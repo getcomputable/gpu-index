@@ -12,7 +12,7 @@ gpu_index.index.composite posture verbatim.
 The daily basket engine is REUSED, never forked, wherever the semantics
 are identical: filter_observation / advance_window / evaluate_filter /
 window_incompatible / the D1 pending-currency streak (the per-source
-outlier fence, METHODOLOGY.md section 8,
+outlier fence, METHODOLOGY.md section 6.4,
 and its fail-closed currency rules), vote_stddev / median_stddev_composite
 / weighted_composite (the calc_v4 median-of-CI-votes aggregate and its
 weighted-quantile arithmetic), the volume-weighted-median helper, the
@@ -24,7 +24,7 @@ What is panel-NEW, each a design-doc rule:
   - eligibility runs over the OBSERVATORY record shape per member SKU SET
     (section 3 steps 1-2; the tier screen is the ALLOW-LIST
     calc.eligible_tiers -- methodology section 5 "on-demand only", the
-    section 15 reconciliation), then the panel-level IDENTITY screen
+    hourly-mint tier reconciliation), then the panel-level IDENTITY screen
     (step 3: boundary-aware reject tokens on the structured
     sku_identifier, reusing gpu_index.observatory.catalog's normalization/boundary
     machinery -- one home), the per-seat VARIANT rule (step 4:
@@ -157,7 +157,7 @@ def _finite_number(value: Any) -> bool:
 # {"reason": ..., counts...}}), or None (no book at all -- the member
 # simply has no print, same as the daily statistics' None).
 
-# Chosen priors (METHODOLOGY.md section 7); config
+# Chosen priors (METHODOLOGY.md section 6.2); config
 # calc.statistic_params overrides per statistic, and the RESOLVED values
 # ride calc_params so every artifact pins the floors it was priced under.
 PANEL_STATISTIC_PARAM_DEFAULTS: Dict[str, Dict[str, int]] = {
@@ -746,7 +746,7 @@ def member_eligible_rows(
 ) -> List[Dict[str, Any]]:
     """Design section 3 steps 1-4 for one member: entry status ok; row sku
     in the member's sku set, tier in the ALLOW-LIST ``eligible_tiers``
-    (methodology section 5 "on-demand only" -- the section 15
+    (methodology section 5 "on-demand only" -- the hourly-mint tier
     reconciliation: reserved/committed/serverless/from_floor rows are
     ineligible by construction, where the retired exclusion-list screen
     admitted any tier it had not enumerated), implausible falsy; then the

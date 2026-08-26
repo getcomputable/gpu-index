@@ -21,7 +21,7 @@ config/), and the open pipeline runs those baked config files directly.
 ## Panel membership
 
 Panel membership is the parameter; liveness weights within the panel are
-computed (see METHODOLOGY.md Part III). Adding or removing a panel provider is a governance
+computed (see METHODOLOGY.md section 8). Adding or removing a panel provider is a governance
 decision taken at panel review, with the reasoning documented in the
 methodology change log. Merging a provider's collector into this repository
 does not by itself make that provider a panel member.

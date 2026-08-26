@@ -6,8 +6,8 @@
 Collection only: per-source raw prints into the append-only keyspace under
 the lane's ``bucket_prefix``; no composite is computed here.
 
-Designed to be fired every ~30 minutes by a scheduler (the collection
-mechanics appendix of METHODOLOGY.md). Slot idempotency is ALWAYS on: any
+Designed to be fired every ~30 minutes by a scheduler (collection
+mechanics: METHODOLOGY.md section 3.5). Slot idempotency is ALWAYS on: any
 non-``--force`` run exits 0
 when the current (date, slot) is already captured, so frequent firings
 record exactly the configured 2-4 snapshots per day and a dead firing

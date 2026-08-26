@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
-"""Unit tests for gpu_index.index.period_rate (METHODOLOGY.md section
-6.1 -- fill rule, coverage record, band verdicts, period rate).
+"""Unit tests for gpu_index.index.period_rate (METHODOLOGY.md sections
+9.3-9.4 -- fill rule, coverage record, band verdicts, period rate).
 
 The heart is the SHARED vector file tests/fixtures/period_rate_vectors.json:
-hand-computed expectations for every rule in section 6.1 (neighbour fill,
+hand-computed expectations for every rule in sections 9.3-9.4 (neighbour fill,
 window-scales-with-gap, the 72-stamp cap, filled-hours-only windows that
 skip earlier holes and never treat a derived fill as evidence, the
 genesis drop, per-stamp cause attribution, exact-threshold band edges in

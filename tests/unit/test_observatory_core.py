@@ -165,7 +165,7 @@ def test_catalog_partial_compaction_and_variants(catalog, label, expected):
     "label,expected",
     [
         # H-series variant separation (hourly panel design section 7 /
-        # METHODOLOGY.md 5.7): NVL and PCIe form factors
+        # METHODOLOGY.md section 5.1): NVL and PCIe form factors
         # trade at structurally different prices, so their entries sit
         # ABOVE the generic parts and first-match-wins peels them off.
         ("H200 NVL", "H200_NVL"),

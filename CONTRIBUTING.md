@@ -32,9 +32,10 @@ subsystem) we may ask for a one-time signed statement of provenance.
 
 ## Practicalities
 
-- Collectors must follow the extraction contract in METHODOLOGY.md Appendix A:
+- Collectors must follow the extraction contract in METHODOLOGY.md section 3.5:
   fail loudly rather than guess, record the published figure alongside the
-  normalization, state currency explicitly, honest User-Agent, HTTPS only.
+  normalization, state currency explicitly, HTTPS only. Collectors also send
+  the project's honest User-Agent (a repo convention, not a methodology rule).
 - Run the test suite before opening a PR. Every collector has a fixture-based
   test; new collectors need one.
 - Keep fixtures minimal: the smallest page excerpt that exercises the recipe.

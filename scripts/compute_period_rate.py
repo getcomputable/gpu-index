@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
 """Coverage report + period rate over a published hourly panel series
-(METHODOLOGY.md section 6.1; gpu_index.index.period_rate).
+(METHODOLOGY.md sections 9.3-9.4; gpu_index.index.period_rate).
 
 READ-ONLY on purpose: this CLI never publishes, never moves a pointer,
 never touches an artifact. It reads the published record of one lane
 (--config names the panel config, exactly the compute_panel_index.py
-convention -- no env-var lane fallback) and prints the section 6.1
+convention -- no env-var lane fallback) and prints the sections 9.3-9.4
 report for a half-open period [--start, --end):
 
   - scheduled / filled stamps, coverage, every gap with its per-stamp
@@ -174,8 +174,9 @@ def build_statuses(
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Read-only section 6.1 coverage report + period rate for one "
-            "hourly panel lane over [--start, --end)."
+            "Read-only coverage report + period rate (METHODOLOGY.md "
+            "sections 9.3-9.4) for one hourly panel lane over "
+            "[--start, --end)."
         )
     )
     parser.add_argument(

@@ -852,7 +852,7 @@ def test_variant_declared_mode_admits_bare_labels():
 
 
 def test_tier_allow_list_admits_on_demand_only():
-    # Methodology section 5 / the section 15 reconciliation: the tier
+    # Methodology section 5 / the hourly-mint tier reconciliation: the tier
     # screen is an ALLOW-LIST, so reserved, committed, serverless and
     # from-floor rows are ineligible by construction -- including tiers
     # the retired exclusion list never enumerated.

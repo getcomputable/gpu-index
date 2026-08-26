@@ -25,7 +25,7 @@ SNAPSHOT_KIND = "index_basket_capture"
 # are still STORED (raw is raw) but flagged.
 PLAUSIBLE_USD_GPU_HR = (0.5, 40.0)
 
-# GB200-lookalike screen (METHODOLOGY.md §5, product identity) — the
+# GB200-lookalike screen (METHODOLOGY.md §5.1, product identity) — the
 # highest-consequence screen in the B200
 # lane: Grace-coupled/rack-scale parts are marketed by real providers under
 # the string "B200" (Oracle: "BM.GPU.GB200.4 (4x Nvidia B200 189GB NVL72)";

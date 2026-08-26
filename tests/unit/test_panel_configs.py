@@ -143,7 +143,7 @@ def test_all_six_load_and_match_the_lane_table(configs):
         assert "fallback_parity_methodology_id" not in calc, rel
         # Tier screen (recorded in every calc.description): eligibility
         # is the ALLOW-LIST eligible_tiers, on-demand only (methodology
-        # section 5) -- the section 15 committed-tier limitation is
+        # section 5) -- the old committed-tier limitation is
         # RECONCILED at these hourly mints (reserved/committed/serverless/
         # from_floor rows are ineligible by construction; the frozen
         # daily series kept committed-eligible). The retired exclusion

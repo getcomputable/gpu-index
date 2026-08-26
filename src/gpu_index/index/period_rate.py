@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
 """Period rate, gap fill, and coverage report over a published hourly
-panel series (METHODOLOGY.md section 6.1).
+panel series (METHODOLOGY.md sections 9.3-9.4).
 
 The hourly series is the index; a PERIOD RATE is a convention applied on
 top of it by a referencing contract: the time-average of the hourly
@@ -25,7 +25,7 @@ that accompanies it. Three postures, fixed on purpose:
     cannot form; this module exists only because a contract demands a
     figure where scoring may return undefined.
 
-Fill rule (methodology section 6.1). Every stamp in a gap of G
+Fill rule (methodology section 9.3). Every stamp in a gap of G
 consecutive missing scheduled stamps takes the mean of the last
 min(G, L) FILLED stamps immediately preceding the gap, where
 L = FILL_LOOKBACK_HOURS = 72. "Filled" means carrying a published index
@@ -38,8 +38,9 @@ DROPPED from the average instead -- the only case that shrinks the
 denominator.
 
 **A gap is a property of the SERIES, not of the querying period**
-(section 6.1 defines it as "a run of consecutive missing hours" and
-contemplates one spanning a whole period). A missing run that straddles
+(section 9.3 states the fill rule over "a gap of G missing hours" -- a
+run of consecutive missing hours -- wherever a contract period's
+boundaries fall). A missing run that straddles
 a period boundary therefore keeps its FULL length G on both sides: the
 run extends backward through pre-period missing stamps and forward past
 the period's end to wherever the record resumes (bounded by
@@ -60,7 +61,7 @@ can reference that era (the period machinery postdates the hourly
 cutover), so this is a display/investigation semantic only, recorded
 here rather than silently redefined.
 
-Coverage bands (methodology section 6.1, RECOMMENDED CONTRACT DEFAULTS
+Coverage bands (methodology section 9.4, RECOMMENDED CONTRACT DEFAULTS
 -- not index parameters; only FILL_LOOKBACK_HOURS is an index
 parameter and changing it is a versioned change):
 
@@ -110,12 +111,12 @@ class PeriodRateError(ValueError):
     a settlement convention must refuse before it guesses."""
 
 
-# The ONE index parameter of section 6.1 (Appendix C.1). Counted in
+# The ONE index parameter of section 9.3 (parameter table: 12.2). Counted in
 # scheduled stamps == hours on the hourly grid; changing it is a
 # versioned change.
 FILL_LOOKBACK_HOURS = 72
 
-# Recommended contract defaults (section 6.1 / C.1) -- thresholds a
+# Recommended contract defaults (sections 9.4 / 12.2) -- thresholds a
 # referencing contract may adopt or replace; the period rate computes
 # identically either way. Integer percents so band tests stay exact.
 REVIEW_COVERAGE_PCT = 98
@@ -515,7 +516,7 @@ def period_report(
         },
         "diagnostics": {
             # What "average only the filled hours" would have printed --
-            # the alternative section 6.1 rejects; published so the
+            # the alternative section 9.3 rejects; published so the
             # difference is inspectable, never the rate.
             "filled_only_mean_usd_gpu_hr": (
                 round(filled_only_mean, 6) if filled_only_mean is not None else None
