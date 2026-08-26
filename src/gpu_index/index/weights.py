@@ -905,7 +905,8 @@ def advance_weight_state(
 #     bit-identical by construction (test-pinned against a naive
 #     recompute-everything reimplementation).
 #   - A2 transition rule (supersedes R-quorum-v2 for panel lanes;
-#     amended pre-publish per adversarial review F2):
+#     amended pre-publish per adversarial review F2,
+#     docs/adversarial-reviews.md):
 #     dynamic iff prior mode dynamic OR (a NON-EMPTY attendance-passer
 #     set exists AND every ATTENDANCE-PASSER has a defined Q AND >=
 #     switch_min_eligible sources eligible at this observation).
@@ -1201,7 +1202,8 @@ def compute_panel_weights(
 
     TRANSITION RULE (A2, superseding
     R-quorum-v2 for panel lanes; amended into the mints before any
-    observation published -- adversarial review F2): mode = dynamic iff
+    observation published -- adversarial review F2,
+    docs/adversarial-reviews.md): mode = dynamic iff
     prior mode dynamic OR (the attendance-passer set is NON-EMPTY AND
     every ATTENDANCE-PASSER -- attendance ratio >=
     dw_params["attendance_floor"] over the trailing history window --

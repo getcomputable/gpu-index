@@ -895,7 +895,7 @@ def test_cli_exclusion_pinning_hour_and_day_scoped(monkeypatch, capsys, tmp_path
 def test_cli_record_quarantine_unwedges_a_poisoned_snapshot(
     monkeypatch, capsys, tmp_path
 ):
-    """Adversarial F6 end to end: a malformed record object at an
+    """Adversarial F6 (docs/adversarial-reviews.md) end to end: a malformed record object at an
     unpublished stamp crashes every firing forever (publish-in-order
     blocks the lane; earliest-key-wins means a later good snapshot can
     never shadow it) -- and the record_exclusions escape hatch publishes
@@ -986,7 +986,8 @@ class BlippyS3(FakeS3):
 def test_cli_false_missed_guard_re_lists_before_publishing_missed(
     monkeypatch, capsys, tmp_path
 ):
-    """Adversarial F7: a transient empty-Contents LIST must not pin an
+    """Adversarial F7 (docs/adversarial-reviews.md): a transient
+    empty-Contents LIST must not pin an
     immutable false observation_missed artifact -- the missed verdict is
     confirmed against ONE fresh re-LIST, and when the key appears the
     observation computes normally."""

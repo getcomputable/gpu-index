@@ -505,7 +505,8 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         key=lambda e: (e["date"], e["source_id"], e.get("hour", -1))
     )
     # Record-quarantine entries (top-level config key; adversarial review
-    # F6, amended into the mints before any observation published): an
+    # F6, docs/adversarial-reviews.md, amended into the mints before any
+    # observation published): an
     # excluded (date, hour) never reads the record and publishes an
     # explicit record_quarantined artifact -- the escape hatch for a
     # poisoned/unparseable snapshot object that would otherwise crash
@@ -780,7 +781,8 @@ def member_eligible_rows(
     retroactively unseat every basket-era print. Screens read the
     structured sku_identifier / extra only, never prose notes.
 
-    FINITENESS FAIL-CLOSED (adversarial review F9, amended pre-publish):
+    FINITENESS FAIL-CLOSED (adversarial review F9,
+    docs/adversarial-reviews.md, amended pre-publish):
     a candidate row must carry a FINITE native price (and a finite USD
     price when one is present) or it is excluded and counted
     (``non_finite_price``). json.loads admits NaN/Infinity, and non-USD
@@ -793,7 +795,8 @@ def member_eligible_rows(
     sku-matched row by screen: ``tier_ineligible``, ``implausible``,
     ``non_finite_price``, ``identity_rejected``, ``variant_unmatched``,
     ``extra_require_mismatch`` -- the dead-seat visibility record
-    (adversarial review F1): a seat whose rows ALL screen out must be
+    (adversarial review F1, docs/adversarial-reviews.md): a seat whose
+    rows ALL screen out must be
     distinguishable in the artifact from a seat with no rows at all."""
     if (source_entry or {}).get("status") != "ok":
         return []
@@ -1222,7 +1225,8 @@ def compute_observation(
     calc_params for exactly that reason). Derived here from the same
     config otherwise, so the two paths cannot diverge.
 
-    ``record_quarantined`` (adversarial review F6): the config's
+    ``record_quarantined`` (adversarial review F6,
+    docs/adversarial-reviews.md): the config's
     record-exclusion reason for this stamp, when one applies. The CALLER
     checks record_exclusions BEFORE reading the record and passes
     snapshot=None with the reason -- the whole point is that the stored
@@ -1452,7 +1456,8 @@ def compute_observation(
             if chosen and chosen.get("fx_errors"):
                 detail["fx_errors"] = chosen["fx_errors"]
             if (entry or {}).get("status") == "ok":
-                # Dead-seat visibility (adversarial review F1): an
+                # Dead-seat visibility (adversarial review F1,
+                # docs/adversarial-reviews.md): an
                 # ok-status seat with NO print must say WHY on the
                 # artifact. eligible_rows pins how many rows survived the
                 # screens; a non-empty screen_counts block proves rows
