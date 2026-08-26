@@ -156,6 +156,19 @@ def test_all_six_load_and_match_the_lane_table(configs):
         # loader refuses the retired calc location outright.
         assert cfg["drift_scan_observations"] == 48, rel
         assert "drift_scan_observations" not in calc, rel
+        # Availability disclosure (marketplaces-first ruling 2026-08-24):
+        # the verified-source list, pinned PER LANE so a config refactor
+        # or merge-conflict resolution can never silently drop a
+        # declared-verified seat (the share would quietly publish 0%
+        # forever -- the validator accepts absence by design). vast on
+        # all six lanes; lium on the four H panels only (not seated on
+        # B300/B200). Sorted: calc_params embeds the list canonically.
+        expected_verified = (
+            ["vast"]
+            if cfg["panel_id"] in ("b300", "b200")
+            else ["lium", "vast"]
+        )
+        assert calc["availability_verified_sources"] == expected_verified, rel
 
 
 def test_runpod_seats_are_secure_cloud_only(configs):

@@ -114,7 +114,12 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       median_ci_votes requires sigma_floor > 0, the
                       basket rule), manual_verify_pct?, fx_lane (REQUIRED
                       ecb|none), fx_max_staleness_days?,
-                      manual_exclusions ([{date, source_id, reason,
+                      availability_verified_sources? (OPTIONAL [member
+                      source_id], no dupes -- the availability disclosure
+                      list driving index.availability_verified_weight_
+                      share; a CALC key because it shapes artifact bytes,
+                      so retunes are versioned changes under the D2
+                      fence), manual_exclusions ([{date, source_id, reason,
                       hour?}] -- hour scopes ONE observation, absent hour
                       holds out the whole date; design section 3 item 9),
                       jump_screen (REQUIRED {quarantine_pct,
@@ -289,6 +294,7 @@ _CALC_KEYS = frozenset(
         "jump_screen",
         "statistic_params",
         "dynamic_weights",
+        "availability_verified_sources",
         # Retired locations -- recognized so their DEDICATED refusals
         # (naming the successor) fire instead of the generic unknown-key
         # message.
@@ -615,6 +621,37 @@ def _validate_record_exclusions(entries: Any, schedule: PanelSchedule) -> None:
         seen.add(pair)
 
 
+def _validate_availability_verified_sources(
+    raw: Any, member_ids: List[str]
+) -> None:
+    """OPTIONAL calc.availability_verified_sources (the availability
+    disclosure): each entry must name a member, no duplicates. A CALC key
+    on purpose -- it shapes artifact bytes (the disclosure share), so it
+    rides calc_params under the D2 fence and a retune is a versioned
+    methodology change like any other parameter. Loud on a non-member
+    id -- a typo'd entry would silently publish a 0% share for a seat
+    the config meant to disclose as verified."""
+    if raw is None:
+        return
+    if not isinstance(raw, list) or not all(
+        isinstance(item, str) and item for item in raw
+    ):
+        raise PanelConfigError(
+            "availability_verified_sources must be a list of non-empty "
+            "source_id strings"
+        )
+    if len(set(raw)) != len(raw):
+        raise PanelConfigError(
+            "availability_verified_sources carries duplicate entries"
+        )
+    unknown = sorted(set(raw) - set(member_ids))
+    if unknown:
+        raise PanelConfigError(
+            f"availability_verified_sources names non-member id(s) "
+            f"{unknown} -- every entry must be a panel member source_id"
+        )
+
+
 def _validate_members(members: Any) -> List[str]:
     if not isinstance(members, list) or not members:
         raise PanelConfigError("members must be a non-empty list")
@@ -873,6 +910,9 @@ def _validate_calc(
     _validate_jump_screen(calc.get("jump_screen"))
     _validate_statistic_params(
         calc.get("statistic_params"), members, PANEL_STATISTIC_PARAM_DEFAULTS
+    )
+    _validate_availability_verified_sources(
+        calc.get("availability_verified_sources"), member_ids
     )
     _validate_dynamic_weights(
         calc.get("dynamic_weights"), members, member_ids, slot_grids

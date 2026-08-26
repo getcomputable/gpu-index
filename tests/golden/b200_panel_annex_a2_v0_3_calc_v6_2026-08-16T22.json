@@ -1,5 +1,8 @@
 {
   "calc_params": {
+    "availability_verified_sources": [
+      "vast"
+    ],
     "composite_statistic": "median_ci_votes",
     "dynamic_weights": {
       "attendance_floor": 0.5,
@@ -194,6 +197,7 @@
   },
   "date": "2026-08-16T22",
   "index": {
+    "availability_verified_weight_share": 0.0,
     "confidence_usd_gpu_hr": 1.4,
     "renormalized_weights": {
       "coreweave": 0.130435,

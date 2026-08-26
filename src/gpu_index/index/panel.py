@@ -572,6 +572,16 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         ),
         "manual_exclusions": exclusions,
         "record_exclusions": record_exclusions,
+        # The availability-verified disclosure list SHAPES artifact bytes
+        # (the share below), so it is a calc param under the D2 fence --
+        # a retune is a versioned methodology change, and the
+        # published-stamp recompute path stays byte-deterministic
+        # (adversarial review: an unpinned live key here turned the
+        # store's idempotent re-PUT into BucketPublishError after any
+        # retune). Sorted for canonical bytes.
+        "availability_verified_sources": sorted(
+            str(sid) for sid in calc.get("availability_verified_sources") or []
+        ),
         "jump_screen": {
             "quarantine_pct": float(screen["quarantine_pct"]),
             "corroborate_pct": float(screen["corroborate_pct"]),
@@ -1619,6 +1629,32 @@ def compute_observation(
         )
     else:
         composite = None
+
+    # Availability-verified weight share: the share of the weight that
+    # actually priced THIS observation belonging to availability-verified
+    # members -- a disclosure aggregate, never a screen. Added HERE and
+    # not in median_stddev_composite because that helper also prices the
+    # FROZEN daily series, whose artifacts must never grow the field.
+    # Computed from the UNROUNDED passing weights (adversarial review:
+    # summing the published 6dp renormalized weights can print 1.000002
+    # with enough verified passers), so the share is bounded by 1.0 and
+    # matches the sum of published rounded weights to within rounding.
+    # Always a float on the wire (0.0, never integer 0). The list rides
+    # calc_params (params, not live config), so published-stamp
+    # recompute is byte-deterministic and a retune is a versioned change
+    # the D2 fence owns. Dark hours carry no index and no share.
+    if composite is not None:
+        verified = set(params.get("availability_verified_sources") or [])
+        passing_total = sum(weight for _, weight, _ in passing)
+        composite["availability_verified_weight_share"] = round(
+            sum(
+                weight
+                for source_id, weight, _ in passing
+                if source_id in verified
+            )
+            / passing_total,
+            6,
+        )
 
     # Advance the observation-mode weight state with this observation's
     # pinned facts -- AFTER the vector was computed (nothing observed at t
