@@ -30,6 +30,33 @@ subsystem) we may ask for a one-time signed statement of provenance.
   version. The calculation refuses to extend a series under altered
   parameters; do not try to work around that.
 
+## Add a collector in 4 steps
+
+1. **One file**: `src/gpu_index/observatory/sources/<source_id>.py`
+   defining `SOURCE_ID` (must equal the module name) and
+   `collect(timeout=..., options=None)`. Discovery is automatic — adding
+   a source is adding one file, no registry to edit.
+2. **One config entry**: add the source to `config/raw_observatory.json`'s
+   `sources` list (`source_id`, `display_name`, `source_type`,
+   `first_party`, `notes`). Only listed sources are ever invoked.
+3. **Fixture + test**: record a trimmed live response under
+   `tests/fixtures/observatory/<source_id>/` and write
+   `tests/unit/test_observatory_source_<source_id>.py` following the
+   runpod exemplar's house style: parse the recorded fixture, pin exact
+   prints for a few known rows including this source's edge cases, prove
+   the framework normalization maps its real labels, and prove
+   present-but-unusable values are counted, never silently dropped.
+4. **Run the suite**: `pip install -e ".[dev]" && pytest`.
+
+Remember: merging a collector does NOT seat the provider on a published
+panel (see rule 2 above).
+
+## Where things live
+
+The README's "What is here" table maps the tree, and
+[docs/architecture.md](docs/architecture.md) has the package layering,
+the sanctioned cross-package edges, and the three contributor seams.
+
 ## Practicalities
 
 - Collectors must follow the extraction contract in METHODOLOGY.md section 3.5:

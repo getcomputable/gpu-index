@@ -47,6 +47,24 @@ requested date). It never exits 0 without verifying. Where the published
 disclosure policy withholds a provider's recent prices, the affected
 observation says so and is verified by digest only.
 
+A successful run looks like this (captured live against
+https://data.getcomputable.com):
+
+```
+$ ./reproduce h100 2026-08-25
+published record: observations/2026/08/25.json via public HTTPS front https://data.getcomputable.com
+digest OK: 5f573fbb2dfaa01479172177d10bf8c77f82582f0d71457dc1de8442b6c4cbe9
+H100 2026-08-25T00 recomputed 3.645759 (band 0.505759) published 3.645759 (band 0.505759) MATCH digest OK
+H100 2026-08-25T01 recomputed 3.645759 (band 0.505759) published 3.645759 (band 0.505759) MATCH digest OK
+H100 2026-08-25T02 recomputed 3.645759 (band 0.505759) published 3.645759 (band 0.505759) MATCH digest OK
+[... 20 more hourly MATCH lines ...]
+H100 2026-08-25T23 recomputed 3.704254 (band 0.564254) published 3.704254 (band 0.564254) MATCH digest OK
+summary: 24 observation(s): 24 MATCH, 0 MISMATCH, 0 degraded
+```
+
+(While a lane's published history is shorter than 100 days the run also
+prints the non-fatal weight-window warning described below.)
+
 Published values are never revised, and corrections publish forward under a
 new methodology version while prior series stay frozen and readable. The
 internal producer-record replay (deriving unpublished observations from the
@@ -80,9 +98,27 @@ venue prices are not panel inputs.
 |---|---|
 | `src/gpu_index/observatory/` | Collection: per-provider price collectors and the snapshot recorder |
 | `src/gpu_index/index/` | Calculation: screens, per-provider statistics, the median-of-votes aggregation, liveness weighting |
+| `src/gpu_index/published/` | The public record: layout, envelope digests, and the recompute-and-match verifier `./reproduce` runs |
+| `src/gpu_index/common/` | Shared primitives: HTTP transport, the object store, slot grids, JSON diffing |
+| `scripts/` | The operational entry points: capture, panel compute, period rates, published-record verification |
+| `reproduce` | One-command verification of the published record (see above) |
+| `tests/` | The suite: unit tests, live-captured fixtures, and the golden artifacts that pin published bytes |
 | `config/` | Panels, parameters, and the chip catalog. Parameters are configuration, not code; every published record embeds the parameter set that produced it |
 | `METHODOLOGY.md` | The full methodology specification |
-| `docs/` | Supporting design documents |
+| `docs/` | Supporting design documents, per-lane mint records (`docs/mints/`), and [docs/architecture.md](docs/architecture.md) |
+
+Note: `src/gpu_index/index/sources.py` and `composite.py` are the FROZEN
+daily lane, retained so the retired daily series stays replayable — not a
+live duplication of the observatory collectors.
+
+## Architecture
+
+Four packages, layered `common <- observatory <- index <- published`, with
+two declared waiver edges (the vast collector shares the calc lane's
+order-book parser; the panel screens share the catalog's label machinery).
+The package map, the dependency arrows, the frozen-lane rationale, and the
+three contributor seams are in [docs/architecture.md](docs/architecture.md);
+`tests/unit/test_import_boundaries.py` enforces the arrows in CI.
 
 ## Licensing
 
