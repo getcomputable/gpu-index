@@ -200,7 +200,7 @@
       "skus": [
         "B300"
       ],
-      "notes": "publishes on-demand and monthly-commit tiers; eligible_tiers admits on-demand only (the section 15 reconciliation at this mint), so the on-demand rate prints from genesis in the v7 replay and the monthly-commit row is tier-ineligible (the frozen daily series kept it eligible)"
+      "notes": "publishes on-demand and monthly-commit tiers; eligible_tiers admits on-demand only (the tier-screen reconciliation (methodology section 5) at this mint), so the on-demand rate prints from genesis in the v7 replay and the monthly-commit row is tier-ineligible (the frozen daily series kept it eligible)"
     }
   ]
 }

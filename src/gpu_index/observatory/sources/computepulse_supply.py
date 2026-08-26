@@ -25,7 +25,7 @@ fresh/price/capacity/soonest), so sort is left unset (server default
 "fresh").
 
 Identity and honesty pins (each exists because the live surface could
-drift into silently lying):
+drift into silently misreporting):
 
   - visibility: meta.visibility must equal the openapi const
     "published_public_fields_only" -- the envelope's own statement that

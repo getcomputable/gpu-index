@@ -1078,7 +1078,7 @@ def render_report(
         f"<style>{_CSS}</style></head><body>",
         '<div class="viz-root">',
         f"<header><h1>{_esc(basket_label)}</h1>",
-        f'<div class="sub">internal dashboard &#183; methodology '
+        f'<div class="sub">ops dashboard &#183; methodology '
         f"{_esc(methodology)} &#183; window {window_txt}</div>",
         _header_chips(latest, pointer, now),
         "</header>",

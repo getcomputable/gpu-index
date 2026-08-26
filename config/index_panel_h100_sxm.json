@@ -186,7 +186,7 @@
           "HGX"
         ]
       },
-      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA HGX H100' on-demand (GPU Clusters caption; Dedicated Inference lookalike rejected at collection) -- HGX on the provider's own label. Reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation, see calc.description)"
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA HGX H100' on-demand (GPU Clusters caption; Dedicated Inference lookalike rejected at collection) -- HGX on the provider's own label. Reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the tier-screen reconciliation (methodology section 5), see calc.description)"
     },
     {
       "source_id": "hyperstack",

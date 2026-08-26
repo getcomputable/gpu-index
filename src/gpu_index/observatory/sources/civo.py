@@ -59,7 +59,7 @@ CMS ids on every cell), recorded VERBATIM as a weak signal, never ground
 truth. Joined onto /pricing observations by parsed (gpu_count, chip token,
 memory GB) -- the surfaces share the product-detail vocabulary but are NOT
 byte-identical (/pricing says "8 x NVIDIA H200 - 141GB HBM3e", the hub
-omits "HBM3e"; live 2026-08-25 the hub's H200 row even claims 80GB, so it
+omits "HBM3e"; live 2026-08-25 the hub's H200 row claims 80GB, so it
 lands in partial_errors unmatched, never guessed onto the 141GB row).
 Matched observations gain extra availability_status/availability_source;
 rows without a status cell gain NOTHING (the pre-order Vera Rubin page has

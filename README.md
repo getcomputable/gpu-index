@@ -17,22 +17,33 @@ are collected ahead of panel seating.
 
 ```
 git clone https://github.com/getcomputable/gpu-index
+cd gpu-index
+pip install -e .
 ./reproduce h100 2026-08-24
 ```
+
+(httpx is the only runtime dependency.)
 
 `./reproduce <h100|h200|b300|b200> <date>` verifies the published record:
 recompute the index from the published per-provider inputs and weights and
 match it exactly; verify every file's digest. A UTC day (YYYY-MM-DD) covers all of that
 day's observations, and YYYY-MM-DDTHH targets a single one. It reads the record
-from a local downloaded copy (GPU_INDEX_DATA_DIR, default ./data) or straight
-from the public front (set GPU_INDEX_PUBLIC_BASE_URL), and for every
-observation prints the recomputed value next to the published value with a
+from a local downloaded copy (GPU_INDEX_DATA_DIR, default ./data) when it holds
+the requested day, otherwise straight from the public front: the official
+record host https://data.getcomputable.com by default; set
+GPU_INDEX_PUBLIC_BASE_URL to point at another copy. The record's layout at
+that host: latest.json (the newest observation per lane),
+observations/YYYY/MM/DD.json (one UTC day, all lanes), and
+series/{24h,7d,30d,90d}.json (aggregate history rows). For every
+observation the verifier prints the recomputed value next to the published value with a
 MATCH or MISMATCH verdict: each published observation carries the per-provider
 receipts (price, standard deviation, liveness weight, status) its value and
 stability band were computed from, and the verifier rebuilds the same
 weighted-median-of-votes aggregate from exactly those inputs. Every file also embeds a digest of its own canonical content,
 which is recomputed and checked on every read. Exit 0 means everything
-matched; exit 1 means a mismatch or a digest failure. Where the published
+matched; exit 1 means a mismatch or a digest failure; exit 2 means it could
+not verify (the record source is unreachable, or nothing is published for the
+requested date). It never exits 0 without verifying. Where the published
 disclosure policy withholds a provider's recent prices, the affected
 observation says so and is verified by digest only.
 

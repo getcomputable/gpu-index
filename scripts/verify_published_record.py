@@ -24,8 +24,9 @@ and say so; they do not fail the run.
 
 Exit codes: 0 every checked observation matched (digest OK; degraded
 observations are reported but do not fail), 1 any MISMATCH or digest
-FAIL, 2 nothing to verify (no published day file for the date, or no
-observation for the SKU/stamp) or usage error.
+FAIL, 2 could not verify (the record source is unreachable, no published
+day file for the date, or no observation for the SKU/stamp) or usage
+error. Never 0 without verifying something.
 """
 
 from __future__ import annotations
@@ -36,11 +37,14 @@ import re
 import sys
 from pathlib import Path
 
+import httpx
+
 _ROOT = Path(__file__).resolve().parent.parent
 for _p in (str(_ROOT / "src"), str(_ROOT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from gpu_index.common.bucket import BucketPublishError  # noqa: E402
 from gpu_index.published.artifacts import (  # noqa: E402
     ArtifactDigestError,
     PublishedRecordError,
@@ -122,13 +126,25 @@ def main(argv=None) -> int:
 
     try:
         reader = PublishedRecordReader()
-    except PublishedRecordError as exc:
+    except (PublishedRecordError, BucketPublishError) as exc:
         print(f"published record: {exc}", file=sys.stderr)
         return 2
     key = day_key(date)
     print(f"published record: {key} via {reader.describe()}")
     try:
         envelope = reader.read_day(date)
+    except (httpx.HTTPError, BucketPublishError, OSError) as exc:
+        # Fail LOUDLY, never silently: an unreachable record source is
+        # "could not verify" (exit 2), one actionable line -- never a
+        # traceback and never a 0 that verified nothing.
+        print(
+            f"could not verify: the published record is unreachable via "
+            f"{reader.describe()} ({exc}) -- set GPU_INDEX_PUBLIC_BASE_URL "
+            "to a reachable record front, or download the record and point "
+            "GPU_INDEX_DATA_DIR at the copy",
+            file=sys.stderr,
+        )
+        return 2
     except ArtifactDigestError as exc:
         print(f"digest FAIL: {exc}", file=sys.stderr)
         print(

@@ -23,13 +23,13 @@ config/), and the open pipeline runs those baked config files directly.
 Panel membership is the parameter; liveness weights within the panel are
 computed (see METHODOLOGY.md section 8). Adding or removing a panel provider is a governance
 decision taken at panel review, with the reasoning documented in the
-methodology change log. Merging a provider's collector into this repository
-does not by itself make that provider a panel member.
+methodology change log (CHANGELOG.md). Merging a provider's collector into
+this repository does not by itself make that provider a panel member.
 
 ## Roles and contact
 
 Maintainers review code and operate the published pipeline. Methodology and
-panel changes are decided by Computable and recorded in the change log with
-effective dates. Questions and error reports: index@getcomputable.com. A
+panel changes are decided by Computable and recorded in the change log
+(CHANGELOG.md) with effective dates. Questions and error reports: index@getcomputable.com. A
 report about a published value is answered with the replay evidence for that
 value.
