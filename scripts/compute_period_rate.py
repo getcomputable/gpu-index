@@ -14,7 +14,7 @@ report for a half-open period [--start, --end):
     cause (missed / dark / quarantined / unpublished);
   - the fill-rule period rate (L = 72), with per-gap fill windows and
     per-stamp provenance (observed | filled | dropped_genesis) so a
-    carried value is always distinguishable from an observed one;
+    filled value is always distinguishable from an observed one;
   - the band verdict against the RECOMMENDED CONTRACT DEFAULTS
     (settles / review / determination) -- defaults a contract may
     replace; the rate computes identically either way.

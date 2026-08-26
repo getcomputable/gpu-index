@@ -14,7 +14,7 @@ contract in Python WITHOUT importing anything from that repo:
     payload, while the files themselves are pretty-printed);
   - ``verify``: per-observation recompute — rebuild the three sd-votes
     per contributing provider from the published receipts and re-derive
-    the index value and dispersion with the panel engine's own vote math
+    the index value and stability band with the panel engine's own vote math
     (``gpu_index.index.panel.median_stddev_composite``), matching the
     published numbers exactly;
   - ``reader``: the store-backed reader (local directory download of the

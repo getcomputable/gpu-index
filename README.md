@@ -1,7 +1,8 @@
 # Computable GPU Index (CGI)
 
-An open price index for GPU compute: open collection code, open aggregate values,
-open methodology, reproducible by anyone.
+An open price index for GPU compute, built on five properties: verifiable,
+reproducible, fault-tolerant, outlier-resistant, transparent. Open collection
+code, open aggregate values, open methodology, reproducible by anyone.
 
 CGI publishes a USD price per GPU-hour for specified accelerators, computed from
 published on-demand rental rates of a fixed, disclosed panel of providers. The
@@ -9,8 +10,8 @@ methodology, the collection code, the panel inputs, and every published value li
 in the open. See [METHODOLOGY.md](METHODOLOGY.md) for the full specification.
 
 **Status: pre-launch.** Live panels: B300 (since 2026-08-10), B200 (since
-2026-08-16), H100 and H200 (since 2026-08-23). Additional accelerators are
-collected ahead of panel seating.
+2026-08-16), H100-SXM and H200-SXM (since 2026-08-23). Additional accelerators
+are collected ahead of panel seating.
 
 ## Reproduce a published value
 
@@ -27,9 +28,9 @@ from a local downloaded copy (GPU_INDEX_DATA_DIR, default ./data) or straight
 from the public front (set GPU_INDEX_PUBLIC_BASE_URL), and for every
 observation prints the recomputed value next to the published value with a
 MATCH or MISMATCH verdict: each published observation carries the per-provider
-receipts (price, dispersion, weight, status) its value was computed from, and
-the verifier rebuilds the same weighted-median-of-votes aggregate from exactly
-those inputs. Every file also embeds a digest of its own canonical content,
+receipts (price, standard deviation, liveness weight, status) its value and
+stability band were computed from, and the verifier rebuilds the same
+weighted-median-of-votes aggregate from exactly those inputs. Every file also embeds a digest of its own canonical content,
 which is recomputed and checked on every read. Exit 0 means everything
 matched; exit 1 means a mismatch or a digest failure. Where the published
 disclosure policy withholds a provider's recent prices, the affected
@@ -56,7 +57,7 @@ venue prices are not panel inputs.
 | Path | What it is |
 |---|---|
 | `src/gpu_index/observatory/` | Collection: per-provider price collectors and the snapshot recorder |
-| `src/gpu_index/index/` | Calculation: screens, per-provider statistics, the median-of-votes aggregation, dynamic weighting |
+| `src/gpu_index/index/` | Calculation: screens, per-provider statistics, the median-of-votes aggregation, liveness weighting |
 | `config/` | Panels, parameters, and the chip catalog. Parameters are configuration, not code; every published record embeds the parameter set that produced it |
 | `METHODOLOGY.md` | The full methodology specification |
 | `docs/` | Supporting design documents |

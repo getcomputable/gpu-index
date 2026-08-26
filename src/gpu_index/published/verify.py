@@ -15,8 +15,8 @@ design, so the artifact alone recomputes it):
     for that set);
   - each passing source votes its weight at price and price +/- sd
     (three votes), and the index is the weighted median of all votes;
-    the published dispersion is the larger distance from the index to
-    the 25th/75th weighted vote percentiles.
+    the published stability band is the larger distance from the index
+    to the 25th/75th weighted vote percentiles.
 
 The vote math is IMPORTED from the panel engine
 (``gpu_index.index.panel.median_stddev_composite``) — the same function
@@ -34,7 +34,7 @@ composite) does not impair the recompute and full verification proceeds.
 
 No-print observations (value null) are checked for consistency instead:
 the passing set must be below ``calc_params.min_sources_to_publish``
-(the same claim floor the panel applies), and — when every receipt is
+(the same minimum-panel rule the panel applies), and — when every receipt is
 disclosed — the published no-print reason must re-derive from the
 receipts (projector.ts:367-374).
 """
@@ -96,7 +96,7 @@ def _finite_number(value: Any) -> bool:
 
 def recompute_observation(observation: dict) -> ObservationCheck:
     """Recompute one published observation from its own receipts and
-    match the published index value and dispersion exactly."""
+    match the published index value and stability band exactly."""
     sku = observation.get("sku")
     observed_at = observation.get("observed_at")
     status = observation.get("status")
@@ -195,8 +195,8 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             ),
         )
 
-    # The claim floor, verbatim from the panel engine: a composite exists
-    # iff the passing set reaches min_sources_to_publish.
+    # The minimum-panel rule, verbatim from the panel engine: a composite
+    # exists iff the passing set reaches min_sources_to_publish.
     composite = (
         median_stddev_composite(passing, vote_stddevs)
         if len(passing) >= min_to_publish
@@ -242,7 +242,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
         )
 
     # status == "ok": the recompute must land exactly on the published
-    # value and dispersion (same rounding: the engine publishes both at
+    # value and stability band (same rounding: the engine publishes both at
     # round(x, 6) and the receipts carry the exact same floats back).
     if composite is None:
         return ObservationCheck(

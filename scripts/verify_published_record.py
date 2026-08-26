@@ -12,8 +12,8 @@ requested observation,
     the compact canonical JSON of the parsed payload; the file itself is
     pretty-printed by design);
   - rebuilds the per-provider sd-votes from the published receipts and
-    recomputes the index value and dispersion with the panel engine's
-    own vote math, matching the published numbers exactly.
+    recomputes the index value and stability band with the panel
+    engine's own vote math, matching the published numbers exactly.
 
 Observations whose contributing receipts are withheld by the disclosure
 policy (price_disclosure "withheld") degrade to digest-verification only

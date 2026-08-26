@@ -64,7 +64,7 @@ Exclusion is by panel construction, not by filter. The panel is an explicit enum
 | USD price | Populated only for USD-listed prices |
 | Raw value and unit | The published figure and what it priced |
 | GPU count basis | The divisor, from the provider's own page |
-| Tier | on-demand / spot / preemptible / reserved / committed / serverless |
+| Tier | on-demand / spot / preemptible / reserved / committed / monthly-commit / serverless / from-floor |
 | Region, notes | As published |
 | Quality flags | Plausibility, rejection reasons |
 | Marketplace identity | Offer, machine, host ids; verification status |
@@ -75,7 +75,7 @@ Exclusion is by panel construction, not by filter. The panel is an explicit enum
 
 **Chip identity is derived from the label**, so a later revision to identification re-applies across all history. Matching is boundary-aware: `B200` never matches inside `GB200`, `H20` never inside `H200`, `A10` never inside `A100`. An unmatched label records no chip and is surfaced for review — never guessed.
 
-## 5. Index eligibility
+## 5. Screening
 
 Collection records everything; the index uses a screened subset. All screens **flag**; none delete.
 
@@ -99,7 +99,7 @@ Collection mechanics: **Appendix A**. Per-provider extraction: **Appendix B**.
 
 ## 6. Observation cadence
 
-An index value and a weight vector are published for **each hourly observation**. There is no designated fixing hour: the series is the hourly series, and every value carries the parameter set used to compute it.
+An index value, a stability band, and a liveness weight vector are published for **each hourly observation**. There is no designated fixing hour: the series is the hourly series, and every value carries the parameter set used to compute it.
 
 An hour with no usable record publishes as an explicit missing-observation entry — never skipped, never interpolated.
 
@@ -107,7 +107,7 @@ An hour with no usable record publishes as an explicit missing-observation entry
 
 **How the time-average limits one hour.** Each of the `N` hours in a period enters the average at weight `1/N`, so an hour wrong by `D` moves the period rate by `D/N` — arithmetic, not a safeguard. At an hourly cadence a month is `N ≈ 730`, so a single hour printing at twice its true level moves the period rate by about **0.14%**. A weekly period is `N ≈ 168`, about **0.6%**. Against a single-point fixing (`N = 1`), where the same bad hour moves settlement by the full **100%**, this is the substantive difference between an averaged index and a snapshot, and it is why the cadence is hourly rather than daily: a daily print over a month is `N = 30`, and one bad day carries **3.3%**.
 
-**Period aggregation is a contract term, not an index parameter.** A contract referencing this index states its own period, and the period rate is the **time-average of the hourly index values within it, with any missing hour carried forward** (§6.1). The index's obligation is to publish the hourly series plus the coverage record that lets any consumer apply that rule and see what it rested on. No period length is specified here; that is a term of the referencing contract.
+**Period aggregation is a contract term, not an index parameter.** A contract referencing this index states its own period, and the period rate is the **time-average of the hourly index values within it, with any missing hour filled from the hours preceding it** (§6.1). The index's obligation is to publish the hourly series plus the coverage record that lets any consumer apply that rule and see what it rested on. No period length is specified here; that is a term of the referencing contract.
 
 ## 6.1 Missing hours and the period rate
 
@@ -126,7 +126,7 @@ Filling from preceding hours invents no price movement, which is why it beats th
 | Band | Coverage | Longest gap | Consequence |
 |---|---|---|---|
 | Settles | ≥ 98% | ≤ 2% of period | Period rate stands as computed |
-| Review | 90–98% | — | Calculation agent certifies before settlement, recording whether the carried values materially affected the result. The rate is not recomputed |
+| Review | 90–98% | — | Calculation agent certifies before settlement, recording whether the filled values materially affected the result. The rate is not recomputed |
 | Determination | < 90% | > 2% of period | Calculation agent determines the rate in good faith from the filled series and the coverage report, reasons recorded |
 
 In hours, the 98% and 2% lines are 3 h weekly, 15 h monthly, 44 h quarterly; the 90% line is 17 h, 73 h, 219 h. Ordinary operation settles without review — 98% allows roughly half a day of scattered outage a month.
@@ -190,16 +190,16 @@ for each passing provider i:
     vote (price_i)         weight w_i
     vote (price_i + sd_i)  weight w_i
 
-index      = weighted median of all votes
-dispersion = larger distance from the index to the
-             25th / 75th weighted vote percentiles
+index          = weighted median of all votes
+stability band = larger distance from the index to the
+                 25th / 75th weighted vote percentiles
 ```
 
 sd is the provider's own recent price variability — the §8 window — with the same $0.05 floor.
 
 A stable provider votes tightly and concentrates its influence; a volatile one spreads its votes and dilutes its own. Because the result is a median, no single provider can pull the index past where the vote mass sits. The floor stops staleness impersonating conviction: a frozen price would otherwise cast three identical votes claiming certainty it never demonstrated.
 
-Dispersion widens when providers disagree, giving a usable read on how much confidence the published value deserves.
+The stability band widens when providers disagree, giving a usable read on how much confidence the published value deserves.
 
 **Robustness** — eight providers, one repricing +30%, all else fixed:
 
@@ -214,11 +214,11 @@ The weighted average is still published as a diagnostic. It is not the index.
 
 ---
 
-# PART III — WEIGHTING
+# PART III — LIVENESS WEIGHTS
 
 ## 10. Principle
 
-Weights are **derived from measured behaviour**. Membership is negotiated; allocation across members is computed.
+Liveness weights are **derived from measured behavior**. Membership is negotiated; allocation across members is computed.
 
 **A provider earns weight to the extent its recent price movements anticipate subsequent movement in the rest of the panel.** Two constraints:
 
@@ -242,7 +242,7 @@ Both require real observations at both endpoints; a return spanning a currency c
 
 `w_j` is the weight vector pinned at the sample's day, held fixed at both endpoints and summed over providers with observations at both — so weight drift and membership churn cannot register as panel movement. The denominators cancel, so the vector needs no normalization.
 
-`clamp` bounds every return at ±0.5 (≈ ±65%; the largest genuine repricing observed is ~11%). This is load-bearing because scoring history deliberately includes prices the §8 check rejected — without a bound, one absurd-but-real observation would distort every *other* provider's window without limit.
+`clamp` bounds every return at ±0.5 log (roughly +65% / -39%; the largest genuine repricing observed is ~11%). This is load-bearing because scoring history deliberately includes prices the §8 check rejected — without a bound, one absurd-but-real observation would distort every *other* provider's window without limit.
 
 ### 11.2 Signal and outcome
 
@@ -275,7 +275,7 @@ Samples decay exponentially toward the cutoff, half-life 30 days:
 a(τ) = 2^( -(T - τ) / 30d )
 ```
 
-### 11.4 Fit and score
+### 11.4 Fit and liveness score
 
 Per provider and forward horizon, features are standardized by their `a`-weighted moments over the window, then fitted by ridge with an unpenalized intercept:
 
@@ -287,7 +287,7 @@ min over α, β:
 
 Standardizing makes `λ` mean the same thing for a 6h feature and a 2d one. A feature with no variation over the window is neutralized to zero — the routine case for a frozen list price.
 
-The score is that fit measured in-sample, against the same weighted measure:
+The liveness score is that fit measured in-sample, against the same weighted measure:
 
 ```
 R²      = 1 - Σ a(τ)(y - ŷ)² / Σ a(τ)(y - ȳ)²
@@ -311,7 +311,7 @@ then, while any w_i > w_max:
     excess over the remainder in proportion to s_i
 ```
 
-Every provider receives the **floor `w_min`** first — 2.5%, lowered to 1.25% on the broad H-series panels so that 19–22 floors do not consume the discretionary share (Appendix C.3) — and the remainder distributes by share. **Both bounds are uniform within a panel — no per-provider values, and no weight requires a human decision.** Allocation runs in full precision and rounds once; the rounded vector is the published weight.
+Every provider receives the **floor `w_min`** first — 2.5%, lowered to 1.25% on the broad H-series panels so that 19–22 floors do not consume the discretionary share (Appendix C.3) — and the remainder distributes by share. **Both bounds are uniform within a panel — no per-provider values, and no weight requires a human decision.** Allocation runs in full precision and rounds once; the rounded vector is the published liveness weight.
 
 **γ controls how sharply score differences become weight differences.** Four providers scoring 0.20 / 0.10 / 0.05 / 0.00:
 
@@ -519,7 +519,7 @@ Counts above — history window, warm-up, currency confirmation — are in **obs
 
 **H-series panels** (seated 23 Aug 2026; seat-by-seat evidence and the form-factor screens in `docs/hseries_panel_proposal.md` and `docs/hourly_panel_engine_design.md`; the full membership, weights, and per-seat variant rules are the panel configuration files and publish inside every record):
 
-| Panel | Members | Claim floor | Weight floor | Construction |
+| Panel | Members | Minimum panel | Weight floor | Construction |
 |---|---|---|---|---|
 | H100-SXM | 16 | 5 | 2.5% | H100 SXM5 80 GB only — per-seat form-factor rules, fail closed |
 | H200-SXM | 13 | 5 | 2.5% | H200 SXM 141 GB only — per-seat form-factor rules, fail closed |
@@ -547,7 +547,7 @@ Identical on every panel except the weight floor. No per-provider values.
 | **Minimum variation** | **1e-12** | **The panel must have moved for prediction to be a meaningful question.** Below this variance in what is predicted, the score is undefined rather than computed from nothing. Set above price-rounding noise (~1e-14), below any real movement |
 | **Minimum panel for transition** | **5** | **Whole-panel, one time: providers that must report at the observation where the index permanently switches to derived weights.** Distinct from minimum observations — that asks "does this provider have enough history?", this asks "is this observation broad enough to change the methodology?" |
 | Attendance floor | 50% | Share of scheduled observations a provider must reach to gate the transition (§13) |
-| Movement cap | ±65% | Bounds any single observation's influence; largest real move observed ~11% |
+| Movement cap | ±0.5 log (roughly +65% / -39%) | Bounds any single observation's influence; largest real move observed ~11% |
 
 γ and shrinkage are **initial priors, not fitted values** — review scheduled at ~60 days of prints; revisiting either is a versioned change.
 

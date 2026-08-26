@@ -1295,8 +1295,8 @@ def main() -> int:
         weight_calc = payload.get("weight_calc") or {}
         if weight_calc.get("switched_on"):
             warn(
-                f"{stamp_iso}: dynamic weighting SWITCHED ON -- weights "
-                "leave the config fallback for predictive allocation from "
+                f"{stamp_iso}: computed liveness weights SWITCHED ON -- "
+                "the panel leaves its opening weights permanently from "
                 "this observation forward"
             )
         if weight_calc.get("degenerate_allocation"):

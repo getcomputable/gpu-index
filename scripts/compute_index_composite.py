@@ -783,9 +783,9 @@ def main() -> int:
                 # first day the switch quorum held — the series leaves the
                 # fallback (opening) weights permanently.
                 warn(
-                    f"{day_str}: dynamic weighting SWITCHED ON — weights "
-                    "leave the opening-weights fallback for predictive "
-                    "allocation from this day forward"
+                    f"{day_str}: computed liveness weights SWITCHED ON -- "
+                    "the panel leaves its opening weights permanently from "
+                    "this day forward"
                 )
             if weight_calc.get("degenerate_allocation"):
                 warn(

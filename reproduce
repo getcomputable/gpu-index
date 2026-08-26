@@ -15,7 +15,7 @@
 # the public HTTPS front via GPU_INDEX_PUBLIC_BASE_URL -- the run is a
 # recompute-and-match (scripts/verify_published_record.py): every file's
 # envelope digest is verified, and each observation's index value and
-# dispersion are recomputed from the published receipts and matched
+# stability band are recomputed from the published receipts and matched
 # exactly. Exit 0 all-match / 1 any mismatch or digest FAIL; withheld
 # sources degrade an observation to digest-only with a distinct message.
 #
