@@ -43,6 +43,17 @@ raw collection record) remains available via `./reproduce --producer <sku>
 <date>`; the retired daily series via `./reproduce --frozen b300|b200 <date>`;
 and configured non-SKU panel lanes via `./reproduce --lane <panel_id>`.
 
+One bound on what the public record alone can re-derive: liveness weights are
+fitted over a 90-day history of samples whose forward outcomes extend up to 2
+days past each sample, so re-deriving a day's weight vector from published
+observations needs at least 100 days of published history before it (90 + 2,
+plus slack for window edges). Per-observation recompute-and-match is
+unaffected, because it consumes only the observation's own receipts, which
+embed the weights as published. But while a lane's observable published
+window is shorter than 100 days, the weight vector itself is verifiable
+against the record only as far back as the window reaches; the day-mode
+verifier prints a non-fatal warning when that is the case.
+
 ## Conflict of interest statement
 
 CGI is published by Computable, which operates a GPU compute marketplace. That is

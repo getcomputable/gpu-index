@@ -34,3 +34,9 @@ tagging.
 6. **Tag and signed release notes**: tag the release commit, and publish
    release notes signed by a maintainer covering API changes, methodology
    mints, and data-license notes (LICENSE-DATA.md) where relevant.
+7. **Disclosure window covers the weighting lookback**: the published
+   window must expose at least `MIN_DISCLOSURE_WINDOW_DAYS` (100 = 90d
+   lookback + 2d forwards + slack; `src/gpu_index/published/verify.py`)
+   of observable history per lane, or the README's stated bound and the
+   day-mode verifier warning must remain in place saying exactly what a
+   shorter window withholds.

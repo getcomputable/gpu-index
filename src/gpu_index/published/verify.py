@@ -53,6 +53,44 @@ VERDICT_MATCH = "match"
 VERDICT_MISMATCH = "mismatch"
 VERDICT_DEGRADED = "degraded"
 
+# The published disclosure window must cover the weighting methodology's
+# lookback, or the reproducibility claim for the WEIGHTS degrades.
+# Derivation: liveness weights are fitted over a 90-day history of
+# samples whose forward outcomes extend up to 2 days past each sample
+# (METHODOLOGY.md Part III), so re-deriving one day's weight vector from
+# published observations needs 90 + 2 = 92 days of published history
+# before it; 100 leaves slack for edge effects at the window boundaries.
+# Per-observation recompute-and-match is unaffected either way: it
+# consumes only each observation's own receipts, which embed the
+# liveness weights as published. What a shorter window costs is the
+# ability to re-derive the weight vector itself from the public record.
+MIN_DISCLOSURE_WINDOW_DAYS = 100  # 90d lookback + 2d forward + slack
+
+
+def disclosure_window_warning(
+    *, sku: str, verified_date: str, probe_date: str
+) -> str:
+    """Non-fatal warning text for a full-history check over a published
+    window shorter than ``MIN_DISCLOSURE_WINDOW_DAYS``.
+
+    The caller has probed the record source for the day file
+    ``MIN_DISCLOSURE_WINDOW_DAYS - 1`` days before ``verified_date`` and
+    found it unavailable, so the observable published history for the
+    lane is shorter than the bound. The warning never fails a run.
+    """
+    return (
+        f"{sku} {verified_date}: the published day file "
+        f"{MIN_DISCLOSURE_WINDOW_DAYS - 1} days back ({probe_date}) is "
+        "not observable from this record source, so the observable "
+        "published history is shorter than the "
+        f"{MIN_DISCLOSURE_WINDOW_DAYS}-day disclosure bound (90d "
+        "weighting lookback + 2d forward outcomes + slack). The "
+        "recompute-and-match above is unaffected: it consumes only each "
+        "observation's own receipts, which embed the liveness weights "
+        "as published. What the shorter window withholds is re-deriving "
+        "the weight vector itself from the public record for this day"
+    )
+
 # Receipt-derived no-print reasons (projector.ts noPrintReason, :367-374).
 _RECEIPT_DERIVED_REASONS = (
     "no_eligible_sources",

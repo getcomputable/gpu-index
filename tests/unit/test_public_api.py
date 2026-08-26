@@ -167,7 +167,8 @@ PUBLIC_NAMES = {
         "make_client", "series_key",
     },
     "gpu_index.published.verify": {
-        "ObservationCheck", "PublishedRecordError", "field_diffs",
+        "ObservationCheck", "PublishedRecordError",
+        "disclosure_window_warning", "field_diffs",
         "median_stddev_composite", "recompute_observation",
         "select_observations",
     },

@@ -31,6 +31,7 @@ observation for the SKU/stamp) or usage error.
 from __future__ import annotations
 
 import argparse
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -47,8 +48,10 @@ from gpu_index.published.artifacts import (  # noqa: E402
 )
 from gpu_index.published.reader import PublishedRecordReader  # noqa: E402
 from gpu_index.published.verify import (  # noqa: E402
+    MIN_DISCLOSURE_WINDOW_DAYS,
     VERDICT_DEGRADED,
     VERDICT_MATCH,
+    disclosure_window_warning,
     recompute_observation,
     select_observations,
 )
@@ -61,6 +64,29 @@ def _value_label(value, band) -> str:
     if value is None:
         return "NO-PRINT"
     return f"{value} (band {band})"
+
+
+def _window_warning(reader, sku: str, date: str):
+    """One probe read at the disclosure-window bound; never fatal.
+
+    A whole-day run is the CLI's full-history check, so it also reports
+    whether the observable published history behind the verified day
+    covers the weighting lookback (MIN_DISCLOSURE_WINDOW_DAYS). The
+    probe is a single day-file read; any probe failure is swallowed --
+    this warning must never fail or block a verification run.
+    """
+    probe_date = (
+        datetime.date.fromisoformat(date)
+        - datetime.timedelta(days=MIN_DISCLOSURE_WINDOW_DAYS - 1)
+    ).isoformat()
+    try:
+        if reader.read_day(probe_date) is not None:
+            return None
+    except Exception:
+        return None  # probe unreadable: claim nothing either way
+    return disclosure_window_warning(
+        sku=sku, verified_date=date, probe_date=probe_date
+    )
 
 
 def main(argv=None) -> int:
@@ -187,6 +213,10 @@ def main(argv=None) -> int:
         f"summary: {total} observation(s): {matched} MATCH, "
         f"{mismatched} MISMATCH, {degraded} degraded"
     )
+    if stamp is None:
+        window_note = _window_warning(reader, sku, date)
+        if window_note is not None:
+            print(f"WARNING: {window_note}")
     if mismatched:
         return 1
     if degraded:
