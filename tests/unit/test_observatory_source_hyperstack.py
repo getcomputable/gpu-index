@@ -11,20 +11,40 @@ spot 5), the CPU-pricing table that end-fences the spot slice, the 'B300s
 are coming' banner, and the priceless nav/footer lookalike labels
 (GB200 NVL72, GB300 NVL72, HGX B200) that must never print.
 
+Stock fixture: tests/fixtures/observatory/hyperstack/gpu-stock.json --
+the live https://gpu-stock.hyperstack-docs.workers.dev payload captured
+2026-08-25 20:15Z, kept WHOLE (3,037 bytes -- already small, no trim):
+3 regions, 17 model rows (US-1 1 / CANADA-1 15 / NORWAY-1 1), with every
+edge shape live that day: saturated "10+"/"100+" floors, the floor-vs-
+configurations disagreement (H100-80G-PCIe available "1" but 1x:2),
+'-spot' models, planned_*_days both null and the string "0", and the
+sparse single-model US-1/NORWAY-1 regions (absence is not zero stock).
+
 House style: (1) parse the recorded fixture, (2) pin exact prints incl.
 this source's edge cases (spec-less reserved/spot rows, lookalike labels,
 unpriced rows), (3) prove the framework normalization maps the real
-labels, (4) prove the fail-closed anchor fences raise on reshape.
+labels, (4) prove the fail-closed anchor fences raise on reshape, and
+(5) prove the stock side channel is fail-open: its fences fire on
+hostile reshapes, and its death lands as a partial_error while the
+price prints are untouched.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from gpu_index.observatory.catalog import load_sku_catalog, match_sku
-from gpu_index.observatory.sources.hyperstack import SOURCE_ID, parse_hyperstack
+from gpu_index.observatory.sources.hyperstack import (
+    SOURCE_ID,
+    STOCK_URL,
+    URL,
+    collect,
+    parse_gpu_stock,
+    parse_hyperstack,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = (
@@ -34,6 +54,14 @@ FIXTURE = (
     / "observatory"
     / "hyperstack"
     / "gpu-pricing.html"
+)
+STOCK_FIXTURE = (
+    REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "observatory"
+    / "hyperstack"
+    / "gpu-stock.json"
 )
 
 
@@ -303,3 +331,185 @@ def test_foreign_vendor_priced_row_skips_loudly():
         "spot table: 1 of 2 price cells matched no pinnable NVIDIA row -- "
         "new vendor or reshaped row skipped, not guessed"
     ]
+
+
+# ---------------------------------------------------------------------------
+# gpu-stock side channel (availability accrual, fixture captured 2026-08-25)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def stock():
+    return parse_gpu_stock(STOCK_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _stock_row(stock, region, model):
+    matched = [m for m in stock["regions"][region] if m["model"] == model]
+    assert len(matched) == 1, f"expected exactly one {region} {model} row"
+    return matched[0]
+
+
+def test_gpu_stock_happy_path_pins(stock):
+    assert stock["url"] == STOCK_URL
+    assert stock["worker_fetched_at"] == "2026-08-25T20:15:59.101Z"
+    assert {r: len(rows) for r, rows in stock["regions"].items()} == {
+        "US-1": 1,
+        "CANADA-1": 15,
+        "NORWAY-1": 1,
+    }
+    # Floor-vs-configurations disagreement recorded raw, both sides:
+    # 'available' is the guaranteed floor, configurations the point-in-time
+    # deployable VM counts -- interpretation is downstream's.
+    pcie = _stock_row(stock, "CANADA-1", "H100-80G-PCIe")
+    assert pcie["available"] == "1"
+    assert pcie["configurations"] == {"1x": 2, "2x": 0, "4x": 0, "8x": 0,
+                                      "10x": 0}
+    assert pcie["planned_7_days"] == "0"  # the STRING "0", not int
+    assert pcie["planned_100_days"] == "0"
+    # Saturated floors stay verbatim strings.
+    spot = _stock_row(stock, "CANADA-1", "H100-80G-PCIe-spot")
+    assert spot["available"] == "100+"
+    assert spot["configurations"]["1x"] == 232
+    assert _stock_row(stock, "US-1", "A100-80G-SXM4")["available"] == "10+"
+    # planned_*_days is usually null -- nulls survive verbatim.
+    assert spot["planned_30_days"] is None
+    # Sparse regions: NORWAY-1 published a single model; absence of the
+    # rest is NOT zero stock and nothing may be invented for them.
+    assert [m["model"] for m in stock["regions"]["NORWAY-1"]] == [
+        "RTX-A4000"
+    ]
+    assert _stock_row(stock, "CANADA-1", "B300-SXM")["available"] == "0"
+
+
+def test_gpu_stock_rows_are_verbatim_grain(stock):
+    """Every row carries exactly the six published fields; 'available' is
+    always the raw string floor and planned_* strings-or-null."""
+    for rows in stock["regions"].values():
+        for row in rows:
+            assert list(row) == [
+                "model",
+                "available",
+                "planned_7_days",
+                "planned_30_days",
+                "planned_100_days",
+                "configurations",
+            ]
+            assert isinstance(row["available"], str)
+            for key in ("planned_7_days", "planned_30_days",
+                        "planned_100_days"):
+                assert row[key] is None or isinstance(row[key], str)
+            assert isinstance(row["configurations"], dict)
+
+
+def _stock_payload():
+    return json.loads(STOCK_FIXTURE.read_text(encoding="utf-8"))
+
+
+def test_gpu_stock_available_as_int_raises():
+    """Hostile reshape: the worker starts serving numeric 'available'.
+    Blind recording would silently change the saturation semantics
+    ("100+" vs 100) mid-history -- the fence must refuse."""
+    payload = _stock_payload()
+    payload["stocks"][0]["models"][0]["available"] = 10
+    with pytest.raises(RuntimeError, match="raw string floor"):
+        parse_gpu_stock(json.dumps(payload))
+
+
+def test_gpu_stock_planned_as_int_raises():
+    payload = _stock_payload()
+    payload["stocks"][0]["models"][0]["planned_7_days"] = 0
+    with pytest.raises(RuntimeError, match="neither null nor a string"):
+        parse_gpu_stock(json.dumps(payload))
+
+
+def test_gpu_stock_missing_top_level_keys_raises():
+    with pytest.raises(RuntimeError, match="'stocks' list missing"):
+        parse_gpu_stock(json.dumps({"fetched_at": "2026-08-25T00:00:00Z"}))
+    payload = _stock_payload()
+    del payload["fetched_at"]
+    with pytest.raises(RuntimeError, match="'fetched_at' missing"):
+        parse_gpu_stock(json.dumps(payload))
+
+
+def test_gpu_stock_entry_missing_models_raises():
+    payload = _stock_payload()
+    del payload["stocks"][0]["models"]
+    with pytest.raises(RuntimeError, match="region/stock-type/models"):
+        parse_gpu_stock(json.dumps(payload))
+
+
+def test_gpu_stock_duplicate_region_raises():
+    payload = _stock_payload()
+    payload["stocks"].append(payload["stocks"][0])
+    with pytest.raises(RuntimeError, match="more than once"):
+        parse_gpu_stock(json.dumps(payload))
+
+
+def test_gpu_stock_configurations_reshape_raises():
+    payload = _stock_payload()
+    payload["stocks"][0]["models"][0]["configurations"] = [1, 2, 4]
+    with pytest.raises(RuntimeError, match="'configurations' is"):
+        parse_gpu_stock(json.dumps(payload))
+
+
+def _fake_fetch(stock_body=None, stock_exc=None):
+    html = FIXTURE.read_text(encoding="utf-8")
+
+    def fake(url, timeout):
+        if url == URL:
+            return html
+        assert url == STOCK_URL, f"unexpected fetch: {url}"
+        if stock_exc is not None:
+            raise stock_exc
+        return stock_body
+
+    return fake
+
+
+def test_collect_wires_stock_into_book_stats(monkeypatch):
+    monkeypatch.setattr(
+        "gpu_index.observatory.sources.hyperstack.fetch",
+        _fake_fetch(stock_body=STOCK_FIXTURE.read_text(encoding="utf-8")),
+    )
+    out = collect()
+    assert len(out["observations"]) == 30
+    assert "partial_errors" not in out
+    gpu_stock = out["book_stats"]["gpu_stock"]
+    assert gpu_stock["url"] == STOCK_URL
+    assert gpu_stock["worker_fetched_at"] == "2026-08-25T20:15:59.101Z"
+    assert len(gpu_stock["regions"]["CANADA-1"]) == 15
+
+
+def test_collect_stock_fetch_death_is_fail_open(monkeypatch):
+    """The worker going dark (renamed/removed/origin-gated -- expected
+    eventually, it is docs infra) must land as a partial_error tripwire
+    with every price print intact."""
+    monkeypatch.setattr(
+        "gpu_index.observatory.sources.hyperstack.fetch",
+        _fake_fetch(stock_exc=OSError("connection refused")),
+    )
+    out = collect()
+    assert len(out["observations"]) == 30
+    assert out["partial_errors"] == [
+        "gpu-stock worker unreachable/reshaped -- price print unaffected: "
+        "connection refused"
+    ]
+    assert "book_stats" not in out
+
+
+def test_collect_stock_reshape_is_fail_open(monkeypatch):
+    """A reshaped payload trips the fail-closed stock fence, which collect
+    converts to the same fail-open partial_error -- never a raise, never a
+    guessed record."""
+    monkeypatch.setattr(
+        "gpu_index.observatory.sources.hyperstack.fetch",
+        _fake_fetch(stock_body='{"stocks": "gone", "fetched_at": "x"}'),
+    )
+    out = collect()
+    assert len(out["observations"]) == 30
+    assert len(out["partial_errors"]) == 1
+    assert out["partial_errors"][0].startswith(
+        "gpu-stock worker unreachable/reshaped -- price print unaffected: "
+    )
+    assert "'stocks' list missing" in out["partial_errors"][0]
+    assert "book_stats" not in out

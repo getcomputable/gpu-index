@@ -16,6 +16,9 @@ Edge cases preserved:
   - h100_listings.json: reserved tier rows; Cyfuture AI INR-native
     provider_scrape row (source_updated_at null); SXM/PCIe variants.
   - mi325x_listings.json: genuinely empty book (data [], total 0).
+  - b300_available_probe.json: REAL ?gpu=nvidia-b300&available=true&limit=1
+    body captured live 2026-08-25, FULL and untouched (1 row, page.total 3)
+    -- the whole-book available_total probe envelope.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from pathlib import Path
 import pytest
 
 from gpu_index.observatory.catalog import load_sku_catalog, match_sku
+from gpu_index.observatory.sources import computepulse
 from gpu_index.observatory.sources.computepulse import (
     MAX_PAGES_PER_GPU,
     SOURCE_ID,
@@ -346,6 +350,82 @@ def test_collect_fails_closed_without_options():
         collect(options={"gpus": ["nvidia-b300"], "limit_per_gpu": 0})
     with pytest.raises(RuntimeError, match="limit_per_gpu"):
         collect(options={"gpus": ["nvidia-b300"], "limit_per_gpu": 201})
+
+
+def _one_slug_collect(monkeypatch, probe_behavior):
+    """collect() over the real single-page b300 fixture with the
+    available_total probe answered by probe_behavior(url) -- returns
+    (result, requested_urls)."""
+    urls = []
+
+    def fake_fetch(url, timeout=None):
+        urls.append(url)
+        if "available=true" in url:
+            return probe_behavior(url)
+        assert "sort=price_asc" in url
+        return (FIXTURES / "b300_listings.json").read_text()
+
+    monkeypatch.setattr(computepulse, "fetch", fake_fetch)
+    monkeypatch.setattr(computepulse.time, "sleep", lambda s: None)
+    out = collect(options={"gpus": ["nvidia-b300"], "limit_per_gpu": 200})
+    return out, urls
+
+
+def test_collect_records_whole_book_available_total(monkeypatch, b300):
+    """Happy path recomputed from the fixtures: the probe's page.total (3,
+    live 2026-08-25) lands next to listings_total; the probe URL uses the
+    server-side available filter with limit=1 and NO sort param."""
+    out, urls = _one_slug_collect(
+        monkeypatch,
+        lambda url: (FIXTURES / "b300_available_probe.json").read_text(),
+    )
+    assert len(urls) == 2  # one price page (next_offset null) + one probe
+    assert urls[1].endswith("?gpu=nvidia-b300&available=true&limit=1")
+    assert "sort" not in urls[1]
+    assert out["book_stats"]["nvidia-b300"] == {
+        "listings_total": 98,
+        "available_total": 3,
+        "pages_fetched": 1,
+        "raw_rows": 9,
+        "rows_recorded": len(b300["observations"]),
+        "fetch_truncated": False,
+    }
+    assert len(out["observations"]) == len(b300["observations"])
+    assert "partial_errors" not in out
+
+
+def test_probe_fetch_failure_never_darks_the_price_lane(monkeypatch, b300):
+    """FAIL-OPEN BY RULING: the probe's transport blowing up records
+    available_total null + a partial note -- every price row still lands
+    and the slug never counts as failed."""
+    def boom(url):
+        raise OSError("connection reset by peer")
+
+    out, _ = _one_slug_collect(monkeypatch, boom)
+    assert len(out["observations"]) == len(b300["observations"])
+    stats = out["book_stats"]["nvidia-b300"]
+    assert stats["available_total"] is None
+    assert stats["listings_total"] == 98
+    assert out["partial_errors"] == [
+        "nvidia-b300: available_total probe failed "
+        "(OSError: connection reset by peer) -- whole-book availability "
+        "count missing this capture; price rows unaffected"
+    ]
+
+
+def test_probe_poisoned_envelope_is_fail_open_too(monkeypatch, b300):
+    """The probe body flunking the envelope pins (seed_fallback -- canned
+    data) must fail open exactly like a transport error: the pin's refusal
+    text lands in the note, the price rows are untouched."""
+    out, _ = _one_slug_collect(
+        monkeypatch, lambda url: _body([_row()], status="seed_fallback")
+    )
+    assert len(out["observations"]) == len(b300["observations"])
+    assert out["book_stats"]["nvidia-b300"]["available_total"] is None
+    (note,) = out["partial_errors"]
+    assert note.startswith("nvidia-b300: available_total probe failed")
+    assert "seeded/unknown fallback" in note
+    assert "price rows unaffected" in note
 
 
 def test_real_labels_normalize_through_catalog(b300, rtx4090, h100):

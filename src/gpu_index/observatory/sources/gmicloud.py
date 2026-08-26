@@ -40,10 +40,39 @@ Semantics:
     pinned so a default-locale change can never swap the page under us.
     The per-card availability badge (the div immediately before the h3:
     'AVAILABLE NOW' / 'Limited Availability') rides in extra.
+
+Region capacity metadata (added 2026-08-25): the console API's public IDC
+roster (IDC_URL, no auth, no params, ~3.1KB; the console host has no UA
+fence, unlike www) rides in book_stats as counts + exceptions. Live 200
+JSON 2026-08-25: 27 entries -- one 'global' pseudo-entry plus 26 real
+datacenters (15x Iowa, 2x Denver, Ohio, Oregon, 3x TW, 2x SG, 1x JP), all
+"status":"available". GMI's own API docs (api-reference/idcs/
+list-all-idcs.md) document the status enum 'available | full |
+maintenance' as capacity vocabulary, but zero variance has ever been
+observed -- treat the first non-available print as a semantics-calibration
+event, not automatically a market signal. Semantics fences:
+  - the idcId=='global' pseudo-entry is EXCLUDED from every count and
+    flagged separately (global_pseudo_status, verbatim) so it can never
+    mask a real-DC 'full';
+  - statuses outside the documented enum are recorded verbatim in
+    unexpected_statuses, never coerced;
+  - docs note the roster excludes datacenters 'marked as hidden', so it
+    can shrink/grow with zero capacity meaning -- counts are recorded,
+    roster churn is never an error;
+  - region-level only: an IDC going 'full' does not say which GPU model
+    is exhausted (chip x region state is key-gated -- not built); no join
+    to price rows exists today (page prices are region='global'); idcId
+    is the forward join key if products endpoints are ever unlocked.
+Fail-SOFT by ruling: any IDC fetch/parse failure appends ONE partial_error
+and drops book_stats -- the price rows are this collector's product and
+must never be darkened by metadata; parse fences below stay fail-closed
+WITHIN the availability parse. The pricing fail-closed pins above are
+untouched; badge and tier/price semantics unchanged.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -53,6 +82,14 @@ from gpu_index.observatory.observation import DEFAULT_TIMEOUT, observation, resu
 SOURCE_ID = "gmicloud"
 
 URL = "https://www.gmicloud.ai/en/pricing"
+IDC_URL = "https://console.gmicloud.ai/api/v1/idcs"
+
+# GMI's documented IDC status enum (capacity vocabulary per their API
+# docs). Anything outside it is recorded verbatim, never coerced.
+_IDC_STATUSES = ("available", "full", "maintenance")
+# The roster's non-datacenter pseudo-entry -- excluded from counts and
+# flagged separately so it can never mask a real-DC 'full'.
+_IDC_GLOBAL_ID = "global"
 
 _UNIT_TOKEN = "/GPU-hour"
 _CARD_PREFIX = "NVIDIA "
@@ -181,15 +218,88 @@ def parse_gmicloud(html: str) -> Tuple[List[Dict[str, Any]], List[str]]:
     return rows, errors
 
 
+def parse_idcs(body: str) -> Dict[str, Any]:
+    """Pure parse: console /api/v1/idcs JSON -> book_stats dict.
+
+    Fail-closed WITHIN this parse -- every fence raises. collect() turns
+    any raise (or a fetch failure) into ONE partial_error and drops
+    book_stats entirely, so region metadata never darkens the price lane.
+    """
+    try:
+        doc = json.loads(body)
+    except ValueError as exc:
+        raise RuntimeError(f"idcs body is not JSON ({exc})")
+    if not isinstance(doc, dict) or not isinstance(doc.get("idcs"), list):
+        raise RuntimeError(
+            "idcs payload lacks a top-level 'idcs' list -- endpoint "
+            "reshaped; refusing to extract"
+        )
+    idcs = doc["idcs"]
+    if not idcs:
+        raise RuntimeError(
+            "idcs list is empty -- even the 'global' pseudo-entry is gone, "
+            "so the surface reshaped rather than the roster shrank"
+        )
+    for n, entry in enumerate(idcs):
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("idcId"), str)
+            or not isinstance(entry.get("status"), str)
+        ):
+            raise RuntimeError(
+                f"idcs entry #{n} lacks string idcId/status -- entry shape "
+                "changed; refusing to count capacity states"
+            )
+
+    # The 'global' pseudo-entry is not a datacenter: excluded from every
+    # count below, flagged verbatim so a real-DC 'full' is never averaged
+    # away behind it (and its own drift stays visible).
+    real = [e for e in idcs if e["idcId"] != _IDC_GLOBAL_ID]
+    pseudo = [e for e in idcs if e["idcId"] == _IDC_GLOBAL_ID]
+
+    counts: Dict[str, int] = {}
+    unexpected: List[str] = []
+    for entry in real:
+        status = entry["status"]
+        counts[status] = counts.get(status, 0) + 1
+        if status not in _IDC_STATUSES and status not in unexpected:
+            unexpected.append(status)
+    return {
+        # Counts + exceptions: small snapshots today (zero variance ever
+        # observed), full verbatim detail the day variance appears.
+        "idc_total": len(real),
+        "idc_status_counts": counts,
+        "idcs_not_available": [
+            e for e in real if e["status"] != "available"
+        ],
+        "unexpected_statuses": unexpected,
+        "global_pseudo_status": (
+            pseudo[0]["status"] if pseudo else None
+        ),
+    }
+
+
 def collect(
     timeout: float = DEFAULT_TIMEOUT, options: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     html = fetch(URL, timeout=timeout)
     observations, partial_errors = parse_gmicloud(html)
+    # Region capacity metadata, fetched only AFTER the pricing parse
+    # succeeded. Fail-SOFT by ruling: one partial_error, book_stats
+    # dropped -- never a darkened price lane.
+    book_stats: Optional[Dict[str, Any]] = None
+    try:
+        book_stats = parse_idcs(fetch(IDC_URL, timeout=timeout))
+    except Exception as exc:  # metadata-only surface -- fail-soft
+        partial_errors.append(
+            f"idcs: region capacity fetch/parse failed, book_stats "
+            f"dropped ({exc})"
+        )
     return result(
         SOURCE_ID,
         method="html-regex",
         url=URL,
         observations=observations,
         partial_errors=partial_errors or None,
+        book_stats=book_stats,
     )

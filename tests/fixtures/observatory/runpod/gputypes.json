@@ -8,7 +8,21 @@
     "securePrice": 2.39,
     "communityPrice": 0.5,
     "secureSpotPrice": 2.39,
-    "communitySpotPrice": 0.5
+    "communitySpotPrice": 0.5,
+    "secureCloud": true,
+    "communityCloud": false,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": null,
+     "minimumBidPrice": null,
+     "uninterruptablePrice": null
+    },
+    "lp8": {
+     "stockStatus": null
+    },
+    "lp1s": {
+     "stockStatus": null
+    }
    },
    {
     "id": "NVIDIA A100-SXM4-40GB",
@@ -17,7 +31,21 @@
     "securePrice": 0,
     "communityPrice": 1,
     "secureSpotPrice": 0,
-    "communitySpotPrice": 1
+    "communitySpotPrice": 1,
+    "secureCloud": false,
+    "communityCloud": true,
+    "maxGpuCount": 2,
+    "lowestPrice": {
+     "stockStatus": "Low",
+     "minimumBidPrice": 1,
+     "uninterruptablePrice": 1
+    },
+    "lp8": {
+     "stockStatus": null
+    },
+    "lp1s": {
+     "stockStatus": null
+    }
    },
    {
     "id": "NVIDIA B200",
@@ -26,7 +54,21 @@
     "securePrice": 6.79,
     "communityPrice": 5.98,
     "secureSpotPrice": 6.79,
-    "communitySpotPrice": 5.98
+    "communitySpotPrice": 5.98,
+    "secureCloud": true,
+    "communityCloud": true,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": "Low",
+     "minimumBidPrice": 5.98,
+     "uninterruptablePrice": 5.98
+    },
+    "lp8": {
+     "stockStatus": null
+    },
+    "lp1s": {
+     "stockStatus": "Low"
+    }
    },
    {
     "id": "NVIDIA B300 SXM6 AC",
@@ -35,7 +77,21 @@
     "securePrice": 7.89,
     "communityPrice": 6.94,
     "secureSpotPrice": 7.89,
-    "communitySpotPrice": 6.94
+    "communitySpotPrice": 6.94,
+    "secureCloud": true,
+    "communityCloud": true,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": "Low",
+     "minimumBidPrice": 6.94,
+     "uninterruptablePrice": 6.94
+    },
+    "lp8": {
+     "stockStatus": null
+    },
+    "lp1s": {
+     "stockStatus": "Low"
+    }
    },
    {
     "id": "NVIDIA GeForce RTX 3070",
@@ -44,7 +100,21 @@
     "securePrice": 0,
     "communityPrice": 0.13,
     "secureSpotPrice": 0,
-    "communitySpotPrice": 0.13
+    "communitySpotPrice": 0.13,
+    "secureCloud": false,
+    "communityCloud": true,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": "Low",
+     "minimumBidPrice": 0.13,
+     "uninterruptablePrice": 0.13
+    },
+    "lp8": {
+     "stockStatus": "Low"
+    },
+    "lp1s": {
+     "stockStatus": null
+    }
    },
    {
     "id": "NVIDIA GeForce RTX 4090",
@@ -53,7 +123,21 @@
     "securePrice": 0.74,
     "communityPrice": 0.34,
     "secureSpotPrice": 0.74,
-    "communitySpotPrice": 0.34
+    "communitySpotPrice": 0.34,
+    "secureCloud": true,
+    "communityCloud": true,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": "Medium",
+     "minimumBidPrice": 0.34,
+     "uninterruptablePrice": 0.34
+    },
+    "lp8": {
+     "stockStatus": null
+    },
+    "lp1s": {
+     "stockStatus": "Medium"
+    }
    },
    {
     "id": "NVIDIA H100 80GB HBM3",
@@ -62,7 +146,21 @@
     "securePrice": 3.29,
     "communityPrice": 2.69,
     "secureSpotPrice": 3.29,
-    "communitySpotPrice": 2.69
+    "communitySpotPrice": 2.69,
+    "secureCloud": true,
+    "communityCloud": true,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": "Low",
+     "minimumBidPrice": 2.69,
+     "uninterruptablePrice": 2.69
+    },
+    "lp8": {
+     "stockStatus": "Low"
+    },
+    "lp1s": {
+     "stockStatus": "Low"
+    }
    },
    {
     "id": "NVIDIA H200",
@@ -71,7 +169,21 @@
     "securePrice": 4.59,
     "communityPrice": 3.59,
     "secureSpotPrice": 4.59,
-    "communitySpotPrice": 3.59
+    "communitySpotPrice": 3.59,
+    "secureCloud": true,
+    "communityCloud": true,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": "Medium",
+     "minimumBidPrice": 3.59,
+     "uninterruptablePrice": 3.59
+    },
+    "lp8": {
+     "stockStatus": "Low"
+    },
+    "lp1s": {
+     "stockStatus": "Medium"
+    }
    },
    {
     "id": "NVIDIA L40S",
@@ -80,7 +192,138 @@
     "securePrice": 0.99,
     "communityPrice": 0.79,
     "secureSpotPrice": 0.99,
-    "communitySpotPrice": 0.79
+    "communitySpotPrice": 0.79,
+    "secureCloud": true,
+    "communityCloud": true,
+    "maxGpuCount": 8,
+    "lowestPrice": {
+     "stockStatus": "Low",
+     "minimumBidPrice": 0.79,
+     "uninterruptablePrice": 0.79
+    },
+    "lp8": {
+     "stockStatus": null
+    },
+    "lp1s": {
+     "stockStatus": "Low"
+    }
+   }
+  ],
+  "dataCenters": [
+   {
+    "id": "AP-IN-1",
+    "name": "AP-IN-1",
+    "listed": true,
+    "gpuAvailability": [
+     {
+      "gpuTypeId": "NVIDIA H100 80GB HBM3",
+      "available": true,
+      "stockStatus": "Low"
+     }
+    ]
+   },
+   {
+    "id": "AP-IN-2",
+    "name": "AP-IN-2",
+    "listed": false,
+    "gpuAvailability": [
+     {
+      "gpuTypeId": "NVIDIA H100 80GB HBM3",
+      "available": false,
+      "stockStatus": null
+     }
+    ]
+   },
+   {
+    "id": "CA-MTL-2",
+    "name": "CA-MTL-2",
+    "listed": false,
+    "gpuAvailability": []
+   },
+   {
+    "id": "EU-NL-1",
+    "name": "EU-NL-1",
+    "listed": true,
+    "gpuAvailability": [
+     {
+      "gpuTypeId": "NVIDIA B300 SXM6 AC",
+      "available": true,
+      "stockStatus": "Low"
+     },
+     {
+      "gpuTypeId": "NVIDIA L40S",
+      "available": false,
+      "stockStatus": null
+     },
+     {
+      "gpuTypeId": "NVIDIA H100 80GB HBM3",
+      "available": false,
+      "stockStatus": null
+     }
+    ]
+   },
+   {
+    "id": "EU-RO-1",
+    "name": "EU-RO-1",
+    "listed": true,
+    "gpuAvailability": [
+     {
+      "gpuTypeId": "NVIDIA GeForce RTX 4090",
+      "available": true,
+      "stockStatus": "Low"
+     },
+     {
+      "gpuTypeId": "NVIDIA B200",
+      "available": true,
+      "stockStatus": "Low"
+     },
+     {
+      "gpuTypeId": "AMD Instinct MI300X OAM",
+      "available": false,
+      "stockStatus": null
+     }
+    ]
+   },
+   {
+    "id": "EUR-IS-1",
+    "name": "EUR-IS-1",
+    "listed": true,
+    "gpuAvailability": [
+     {
+      "gpuTypeId": "NVIDIA GeForce RTX 4090",
+      "available": true,
+      "stockStatus": "Low"
+     },
+     {
+      "gpuTypeId": "NVIDIA B300 SXM6 AC",
+      "available": true,
+      "stockStatus": "Low"
+     }
+    ]
+   },
+   {
+    "id": "US-TX-6",
+    "name": "US-TX-6",
+    "listed": false,
+    "gpuAvailability": [
+     {
+      "gpuTypeId": "NVIDIA B200",
+      "available": false,
+      "stockStatus": null
+     }
+    ]
+   },
+   {
+    "id": "US-WA-2",
+    "name": "US-WA-2",
+    "listed": true,
+    "gpuAvailability": [
+     {
+      "gpuTypeId": "NVIDIA B300 SXM6 AC",
+      "available": true,
+      "stockStatus": "Low"
+     }
+    ]
    }
   ]
  }

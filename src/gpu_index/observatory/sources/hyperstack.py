@@ -29,10 +29,36 @@ price cell inside its own section slice. Section anchors are required
 UNIQUE and in page order; a missing or duplicated anchor raises rather
 than guessing (a second render of a table would otherwise double-print
 every row; a renamed header would silently lose a tier's history).
+
+Second, FAIL-OPEN fetch (availability accrual, live 2026-08-25 20:15Z):
+STOCK_URL is Hyperstack's own docs-dashboard Cloudflare Worker
+(gpu-stock.hyperstack-docs.workers.dev) proxying the authenticated
+/v1/core/stocks API -- per region (US-1/CANADA-1/NORWAY-1) x per GPU
+model (separate '-spot' models), a saturated 'available' GPU-count floor,
+planned 7/30/100-day stock, and deployable VM counts per configuration
+size (1x/2x/4x/8x/10x). Recorded VERBATIM, snapshot-level, in
+book_stats["gpu_stock"] -- never joined onto the price rows: stock uses
+flavor-family names (H100-80G-PCIe / H100-80G-PCIe-NVLink / B200-SXM)
+while the price tables use marketing labels, and collectors never claim
+a sku; the stock regions are real datacenters while the price rows keep
+the coarser 'EU-heavy' constant. Downstream join keys: model token,
+'-spot' suffix -> tier=spot, region. Semantics pinned live 2026-08-25:
+'available' is a never-over-reported FLOOR string ("0", "3", "10+",
+"100+") that saturates and can disagree with configurations (live:
+H100-80G-PCIe available "1" but 1x:2) -- never int() it; planned_*_days
+are nullable strings (usually null, sometimes "0"); model lists are
+sparse per region (US-1 published only A100-80G-SXM4) so ABSENCE of a
+model is not zero stock -- only explicit "0" rows are zeros. The worker
+is docs-team convenience infra (CORS pinned to docs.hyperstack.cloud),
+not a contractual API: it can be renamed, removed or origin/token-gated
+any day, so parse_gpu_stock fences fail closed WITHIN the stock parse
+and collect() converts any stock fetch/shape failure into a
+partial_error tripwire -- stock death can NEVER dark the price lane.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -46,6 +72,15 @@ URL = "https://www.hyperstack.cloud/gpu-pricing"
 # Hyperstack's fleet is Europe/Canada-heavy -- same label the basket lane
 # records.
 REGION = "EU-heavy"
+# Live-stock side channel: the public docs-dashboard worker (see module
+# docstring). One GET per hourly run; replies cache-control: no-store and
+# self-caches upstream briefly (x-data-age header).
+STOCK_URL = "https://gpu-stock.hyperstack-docs.workers.dev"
+
+# The planned-stock fields recorded verbatim per model row -- nullable
+# STRINGS (usually null, sometimes "0"), never ints.
+_STOCK_PLANNED_FIELDS = ("planned_7_days", "planned_30_days",
+                         "planned_100_days")
 
 _TAGS_RE = re.compile(r"<[^>]+>")
 _GAPS_RE = re.compile(r"(?:\||\s|&nbsp;|\xa0)+")
@@ -225,15 +260,129 @@ def parse_hyperstack(
     return rows, partial_errors
 
 
+def parse_gpu_stock(body: str) -> Dict[str, Any]:
+    """Fail-closed parse of the stock worker's payload into the
+    book_stats["gpu_stock"] value: {"url", "worker_fetched_at",
+    "regions": {region: [six-field model rows, verbatim]}}. Every fence
+    raises rather than guessing -- collect() converts the raise into a
+    fail-open partial_error so the price lane never sees it."""
+    payload = json.loads(body)
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            "hyperstack gpu-stock: payload is not a JSON object -- worker "
+            "reshaped; refusing to guess"
+        )
+    stocks = payload.get("stocks")
+    fetched_at = payload.get("fetched_at")
+    if not isinstance(stocks, list) or not stocks:
+        raise RuntimeError(
+            "hyperstack gpu-stock: top-level 'stocks' list missing or "
+            "empty -- worker reshaped; refusing to record a silent hole"
+        )
+    if not isinstance(fetched_at, str) or not fetched_at:
+        raise RuntimeError(
+            "hyperstack gpu-stock: 'fetched_at' missing or not a string -- "
+            "worker reshaped; refusing to record undated stock"
+        )
+    regions: Dict[str, List[Dict[str, Any]]] = {}
+    for entry in stocks:
+        if not isinstance(entry, dict):
+            raise RuntimeError(
+                "hyperstack gpu-stock: stock entry is not an object -- "
+                "worker reshaped; refusing to guess"
+            )
+        region = entry.get("region")
+        models = entry.get("models")
+        if (
+            not isinstance(region, str)
+            or not region
+            or "stock-type" not in entry
+            or not isinstance(models, list)
+        ):
+            raise RuntimeError(
+                "hyperstack gpu-stock: stock entry missing region/"
+                "stock-type/models -- worker reshaped; refusing to guess"
+            )
+        if region in regions:
+            raise RuntimeError(
+                f"hyperstack gpu-stock: region {region!r} appears more than "
+                "once -- merging duplicates would overwrite rows; refusing "
+                "to pick one"
+            )
+        rows: List[Dict[str, Any]] = []
+        for model in models:
+            if not isinstance(model, dict):
+                raise RuntimeError(
+                    "hyperstack gpu-stock: model row is not an object -- "
+                    "worker reshaped; refusing to guess"
+                )
+            name = model.get("model")
+            available = model.get("available")
+            configurations = model.get("configurations")
+            if not isinstance(name, str) or not name:
+                raise RuntimeError(
+                    "hyperstack gpu-stock: model row without a model name "
+                    "-- worker reshaped; refusing to guess"
+                )
+            # 'available' is a saturated floor STRING ("0", "3", "10+",
+            # "100+") -- a non-string here is a semantics change, not a
+            # convenience; refuse rather than coerce.
+            if not isinstance(available, str):
+                raise RuntimeError(
+                    f"hyperstack gpu-stock: {name!r} 'available' is not "
+                    "the raw string floor -- worker reshaped; refusing to "
+                    "coerce a saturating count"
+                )
+            if not isinstance(configurations, dict):
+                raise RuntimeError(
+                    f"hyperstack gpu-stock: {name!r} 'configurations' is "
+                    "not an object -- worker reshaped; refusing to guess"
+                )
+            row: Dict[str, Any] = {"model": name, "available": available}
+            for key in _STOCK_PLANNED_FIELDS:
+                value = model.get(key)
+                if value is not None and not isinstance(value, str):
+                    raise RuntimeError(
+                        f"hyperstack gpu-stock: {name!r} {key!r} is neither "
+                        "null nor a string -- worker reshaped; refusing to "
+                        "coerce"
+                    )
+                row[key] = value
+            row["configurations"] = configurations
+            rows.append(row)
+        # An empty models list is recorded verbatim -- absence of a model
+        # (or of every model) is NOT zero stock; only explicit "0" rows
+        # are zeros.
+        regions[region] = rows
+    return {
+        "url": STOCK_URL,
+        "worker_fetched_at": fetched_at,
+        "regions": regions,
+    }
+
+
 def collect(
     timeout: float = DEFAULT_TIMEOUT, options: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     html = fetch(URL, timeout=timeout)
     observations, partial_errors = parse_hyperstack(html)
+    # Availability side channel, strictly fail-open: the docs worker is
+    # dashboard infra, not a contractual API -- its death or reshape lands
+    # as a partial_error tripwire and must NEVER dark the price lane above.
+    book_stats: Optional[Dict[str, Any]] = None
+    try:
+        stock_body = fetch(STOCK_URL, timeout=timeout)
+        book_stats = {"gpu_stock": parse_gpu_stock(stock_body)}
+    except Exception as exc:
+        partial_errors.append(
+            "gpu-stock worker unreachable/reshaped -- price print "
+            f"unaffected: {exc}"
+        )
     return result(
         SOURCE_ID,
         method="html-regex",
         url=URL,
         observations=observations,
         partial_errors=partial_errors or None,
+        book_stats=book_stats,
     )

@@ -159,6 +159,13 @@
       "notes": "Public no-auth /api/listings, per-chip queries from options.gpus (2-page cap per slug; the h100/a100 books exceed it — the cheapest ~400 are recorded with a loud partial note). LEADS, NOT PRINTS: rows are mostly verification_level 0 / human_verified false — recorded with that metadata intact in extra so consumers can screen; first_party false. amd-mi325x is a genuinely empty book today, kept as a watch slot."
     },
     {
+      "source_id": "computepulse_supply",
+      "display_name": "Compute Pulse supply (capacity-offer marketplace)",
+      "source_type": "aggregator",
+      "first_party": false,
+      "notes": "Public no-auth /api/supply?intent=selling&include_ended=false -- seller-declared capacity-offer classifieds republished by the aggregator (meta.notice verbatim: discovery records, not guaranteed quotes; sellers can be Anonymous). The availability window IS the payload: available_now / availability_state / available_from / available_until plus min_bookable_gpus / min_duration_hours / interconnect ride verbatim in extra. No billing_type on this surface -- tier is DERIVED by ruling (min_duration_hours >= 720 -> monthly-commit, else on-demand) with the derivation recorded per row. Unpriced offers (price null = not stated; a real Anonymous 8x H100 row exists) are counted in book_stats (offers_unpriced / offers_available_now), never $0 rows. Whole selling book fits one page today (25 offers live 2026-08-25); no sort param -- supply 400s on the listings sort enum."
+    },
+    {
       "source_id": "deepinfra",
       "display_name": "Deep Infra",
       "source_type": "direct_principal",
@@ -213,6 +220,13 @@
       "source_type": "direct_principal",
       "first_party": true,
       "notes": "Homepage #pricing live-offers table (Next.js ISR ~5min; render timestamp in extra) — live on-demand USD 'From / GPU / hr' FLOOR prices. Pins: unique id=pricing anchor + byte-exact thead + the literal table-footer marker naming LIVE OFFERS / CLOUD.SESTERCE.COM / USD / ON-DEMAND (middle-dot separated on the page; currency+tier pin, fails closed if USD or ON-DEMAND drops out). Rows parse from the single pinned tbody only (marquee duplicates and the stale CLI-demo capacity strip are skipped + counted)."
+    },
+    {
+      "source_id": "sesterce_console",
+      "display_name": "Sesterce console (cloud.sesterce.com live-offers book)",
+      "source_type": "direct_principal",
+      "first_party": true,
+      "notes": "Public /compute marketplace page server-renders the FULL key-gated /gpu-cloud/instances/offers book into its Next.js RSC flight payload (no auth, no JS; cache-control no-store, fresh per request). Join-then-scan of self.__next_f.push chunks; fail-closed pins: exactly one \"filteredOffers\":[ page-wide (RSC reference strings never match), balanced-bracket slice, json.loads-or-raise, $undefined-inside-slice raises. One observation per offer: sku_identifier = raw gpuName, per-GPU = instance-total hourlyPrice / gpuCount (float artifacts kept in raw_value); verbatim per-region availability booleans + instance_id/deployment_type/cloud_name (anonymized upstream tag) in extra; gpuCount<1 CPU tiers and zero prices skipped + counted; standing partial_error names homepage-advertised chips (B200/B300) absent from the book; book_stats records the offer count per capture (server-side default-filter tripwire). Sibling of sesterce -- the homepage floor table runs on its own ISR clock and the two surfaces are never reconciled at collect time."
     },
     {
       "source_id": "tensorpool",
