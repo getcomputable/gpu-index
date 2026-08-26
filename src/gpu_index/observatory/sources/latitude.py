@@ -26,7 +26,20 @@ Shape verified live 2026-08-22:
   - an unavailable region publishes null/0 prices (United Kingdom on
     g4-rtx6kpro-large today): null/0 = tier not offered, skipped, never a
     $0 print. A priced region can still be stock_level "unavailable"
-    (published list price; stock is metadata, recorded in extra).
+    (published list price; stock is metadata, recorded in extra);
+  - each region row also carries, between its name anchor and its
+    stock_level: deploys_instantly (OS slugs deployable instantly),
+    locations.available (site codes where the plan can deploy at all) and
+    locations.in_stock (site codes with inventory right now) -- recorded
+    VERBATIM in extra. Site-level beats region-level: live SUBSET cases
+    exist where a region is priced and stocked but only some of its sites
+    hold inventory. These are availability METADATA, never a price gate:
+    a missing/reshaped locations map or deploys list notes a
+    partial_error and the priced observation still records (stock_level
+    stays the primary region-shape tripwire). The apparent rules
+    (site-in-in_stock inherits the region grade; empty deploys_instantly
+    co-occurs with "unavailable") are correlation, not contract -- raw
+    fields only, derive nothing.
 
 The yearly figure in the pricing triple is deliberately NOT recorded as a
 tier -- the lane config's contract for this source is hourly +
@@ -62,7 +75,20 @@ _GPU_SPEC_RE = re.compile(
 _GPU_ANY_RE = re.compile(r'"gpu":(\{[^{}]*\}|null)')
 _INTERCONNECT_RE = re.compile(r'"interconnect":(?:null|"([^"]*)")')
 _REGION_START_RE = re.compile(r'\{"name":"([^"]+)","deploys_instantly"')
+_STOCK_MARKER = '"stock_level":'
 _STOCK_RE = re.compile(r'"stock_level":"([^"]+)"')
+# Per-site availability metadata riding between the region anchor and
+# stock_level (verbatim field order live). The captured group must be a
+# FLAT list of quoted strings, whole-shape: object/numeric/nested items
+# fail the match entirely (a partial_error), never fabricate site codes
+# or an affirmative empty list out of a reshaped payload.
+_STR_LIST = r'(?:"[^"]*"(?:,"[^"]*")*)?'
+_LOCATIONS_RE = re.compile(
+    r'"locations":\{"available":\[(' + _STR_LIST + r')\],'
+    r'"in_stock":\[(' + _STR_LIST + r')\]\}'
+)
+_DEPLOYS_RE = re.compile(r'"deploys_instantly":\[(' + _STR_LIST + r')\]')
+_QUOTED_ITEM_RE = re.compile(r'"([^"]*)"')
 _PRICING_KEY = '"pricing":{'
 # One per-currency block inside pricing: {hour, month, year}, each a plain
 # number or null.
@@ -79,6 +105,11 @@ HOURS_PER_MONTH = 730  # latitude's own monthly/hourly convention
 # same figure the basket lane uses).
 _BLOB_WINDOW = 8000
 _OS_LIST_MARKER = "available_operating_systems"
+
+
+def _quoted_items(group: str) -> List[str]:
+    """Items of a flat JSON string list, verbatim (site codes, OS slugs)."""
+    return _QUOTED_ITEM_RE.findall(group)
 
 
 def _num(text: str) -> Optional[float]:
@@ -162,7 +193,7 @@ def parse_latitude(html: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         # read is otherwise invisible (absorbed into its neighbor's
         # segment), so a marker/match mismatch is the tripwire for a
         # PARTIALLY reshaped regions list.
-        n_stock_markers = plain.count('"stock_level":')
+        n_stock_markers = plain.count(_STOCK_MARKER)
         if n_stock_markers != len(region_starts):
             partial_errors.append(
                 f"{slug}: {n_stock_markers} stock_level markers vs "
@@ -178,8 +209,21 @@ def parse_latitude(html: str) -> Tuple[List[Dict[str, Any]], List[str]]:
             )
             seg = plain[rm.start() : seg_end]
             region_name = rm.group(1)
-            stock_m = _STOCK_RE.search(seg)
             pricing_at = seg.find(_PRICING_KEY)
+            # This row's OWN stock_level is the FIRST marker in the segment
+            # and must precede the row's own pricing map (published field
+            # order: name, deploys_instantly, locations, stock_level,
+            # pricing). A first marker sitting past pricing_at belongs to
+            # an absorbed unreadable neighbor row, and a first marker whose
+            # value is not a quoted string is this row's stock reshaped --
+            # both are "missing stock_level". Searching the whole segment
+            # instead would let an absorbed row donate its stock grade and
+            # site lists to this region's name.
+            marker_at = seg.find(_STOCK_MARKER)
+            own_marker = 0 <= marker_at and (
+                pricing_at == -1 or marker_at < pricing_at
+            )
+            stock_m = _STOCK_RE.match(seg, marker_at) if own_marker else None
             if not stock_m or pricing_at == -1:
                 missing = "stock_level" if not stock_m else "pricing"
                 partial_errors.append(
@@ -187,6 +231,26 @@ def parse_latitude(html: str) -> Tuple[List[Dict[str, Any]], List[str]]:
                     "skipped"
                 )
                 continue
+            # Per-site availability metadata sits between the region anchor
+            # and this row's own stock_level. Bound the search there: an
+            # unreadable neighbor row absorbed into this segment can never
+            # donate its site lists to this region's name (same rule as the
+            # brace-matched pricing map below). A miss is a partial_error,
+            # never fatal -- the priced observation still records.
+            head = seg[: stock_m.start()]
+            loc_m = _LOCATIONS_RE.search(head)
+            if not loc_m:
+                partial_errors.append(
+                    f"{slug}/{region_name}: region row missing a readable "
+                    "locations map -- site availability not recorded"
+                )
+            deploys_m = _DEPLOYS_RE.search(head)
+            if not deploys_m:
+                partial_errors.append(
+                    f"{slug}/{region_name}: region row missing a readable "
+                    "deploys_instantly list -- instant-deploy flag not "
+                    "recorded"
+                )
             # Brace-match the pricing map so triples are read ONLY from this
             # region's own pricing -- an unreadable neighboring row absorbed
             # into this segment must never donate its prices to this
@@ -226,6 +290,13 @@ def parse_latitude(html: str) -> Tuple[List[Dict[str, Any]], List[str]]:
                 "plan_name": plan_name,
                 "stock_level": stock_m.group(1),
             }
+            # Verbatim per-site lists; keys stay ABSENT on a miss (noted
+            # above), never fabricated.
+            if loc_m:
+                extra["locations_available"] = _quoted_items(loc_m.group(1))
+                extra["locations_in_stock"] = _quoted_items(loc_m.group(2))
+            if deploys_m:
+                extra["deploys_instantly"] = _quoted_items(deploys_m.group(1))
             if interconnect:
                 extra["interconnect"] = interconnect
             for cur, hour_s, month_s, _year_s in triples:

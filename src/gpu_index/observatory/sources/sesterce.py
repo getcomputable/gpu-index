@@ -48,6 +48,11 @@ section's static 'Sesterce CLI' marketing terminal shows a 4-chip capacity
 strip whose figures conflict with the live table (stale marketing copy, no
 currency/tier pin) -- deliberately skipped and counted in partial_errors.
 Only rows from the pinned tbody are recorded.
+
+Sibling surface (2026-08-25): the console's full live-offers book -- the
+data behind this table's derived stats -- is collected separately by
+sesterce_console.py from cloud.sesterce.com/compute; the two surfaces run
+on different render clocks and are never reconciled at collect time.
 """
 
 from __future__ import annotations

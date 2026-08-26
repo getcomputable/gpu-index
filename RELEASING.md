@@ -25,7 +25,9 @@ tagging.
 4. **Upstream duty (maintainers)**: before any breaking release, run the
    private downstream consumer's test suite against the release candidate.
    A breaking release does not ship until that suite is green or the
-   breakage is coordinated with its owners.
+   breakage is coordinated with its owners. The engine and collector
+   sources were last re-synced to the private upstream at pin
+   a783285e48a5 (2026-08-26; previous pin 071b0049).
 5. **Golden regeneration is explicit and local only**: regenerate with
    `GPU_INDEX_UPDATE_GOLDEN=1 pytest tests/unit/test_golden_artifact.py
    tests/unit/test_panel_golden_artifact.py` (with `CI` unset), then

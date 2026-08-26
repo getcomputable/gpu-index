@@ -2,11 +2,15 @@
 # Copyright 2026 Computable
 """OVHcloud -- public no-auth order-catalog JSON, both billing subsidiaries.
 
-Two GETs per capture (fetch count fixed by the configured subsidiary list,
-capped at MAX_SUBSIDIARIES): the FR book on api.ovh.com (bills EUR; the
-full GPU lineup incl. H100/H200/A100) and the SEPARATE US legal entity's
-book on api.us.ovhcloud.com (bills USD; L4/L40S/V100S only -- a genuinely
-smaller lineup, not a parse failure). The two entities publish different
+Four GETs per capture: two cloud price catalogs (fetch count fixed by the
+configured subsidiary list, capped at MAX_SUBSIDIARIES) plus two dedicated-
+server availability books (fixed, see below -- a deliberate renegotiation
+of the original two-GET budget for the availability-accrual
+lane). The cloud catalogs: the FR
+book on api.ovh.com (bills EUR; the full GPU lineup incl. H100/H200/A100)
+and the SEPARATE US legal entity's book on api.us.ovhcloud.com (bills USD;
+L4/L40S/V100S only -- a genuinely smaller lineup, not a parse failure).
+The two entities publish different
 lineups AND different prices, so every observation is pinned to its book:
 ``locale.currencyCode`` and ``locale.subsidiary`` from the same response
 must equal the per-endpoint expectation or the whole book RAISES -- prices
@@ -58,6 +62,49 @@ Price semantics verified live 2026-08-22:
     decides (today it maps to the Turing RTX_5000 entry, which sits below
     RTX_5000_ADA exactly to keep this label off the Ada part).
 
+Baremetal GPU availability (availability accrual, live evidence 2026-08-25): two more
+GETs per capture read the dedicated-server availability books -- the EU
+entity's on api.ovh.com (8,973 entries, 169 with a "gpu" hardware part,
+4.33 MB) and the US entity's on api.us.ovhcloud.com (15,129 entries, 319
+gpu, 6.34 MB -- 76% of the transport cap, so both books ride the same
+_BODY_CAP_WARN_FRACTION tripwire as the FR catalog). Fetched UNFILTERED:
+the server-side ?gpu= filter is verified working but drift-blind (a
+filtered fetch can never surface a NEW gpu part name), so we filter
+client-side on a truthy "gpu" key. Two landing channels:
+
+  - book_stats["dedicated_gpu_availability"][EU|US] holds the verbatim
+    GPU rows (fqn, planCode, gpu, datacenters[{datacenter, availability}])
+    so nothing is dropped when a part has no cloud twin (V100S, RX6700XT
+    today);
+  - cloud observations whose blobs.technical.gpu.model matches a parsed
+    baremetal part model (L4 and L40S today; gpu-{N}x{vendor}-{model}
+    [-{mem}g] -> gpu_count + label, tesla-v100s -> V100S) get
+    extra.dedicated_gpu_availability -- per-part {gpu_part, gpu_count,
+    plan_codes, per_datacenter: {dc: {state: config count}}}, EU-vs-US
+    deduped by fqn+datacenter BEFORE the rollup (the US book carries
+    -eu/-ca plan variants) -- plus an explicit
+    extra.dedicated_availability_product_line = "baremetal": this signal
+    covers BAREMETAL GPU only; the Public Cloud GPU flavors priced above
+    have NO availability surface at all (OVH staff confirmed none exists
+    even authenticated), so baremetal stock must never be read as
+    cloud-instance stock.
+
+Availability-state semantics are inferred from OVH's order funnel, NOT
+documented in the response: 1H-low/1H-high ~ deliverable within ~1h at
+low/high stock depth; NNNH lead-time buckets (72H, 240H, 720H, 1440H all
+live 2026-08-25); plus unavailable/comingSoon/unknown. "unknown" dominates
+the eu-west-par-a/b/c local-zone rows (145 of 522 EU GPU dc-states) --
+recorded verbatim, the consumer decides whether unknown means unavailable.
+A string outside this vocabulary is noted in partial_errors (once per
+distinct string per book) and still recorded, never failed. Empty
+datacenters lists are REAL (all 94 23scalegpu0*-v1-eu US L4 configs live
+2026-08-25): recorded verbatim, zero rollup contribution, no note. The
+whole availability channel is fail-open per the lane ruling -- fetch or
+parse failure of either book lands in partial_errors and drops that book
+only, price rows are never gated -- while WITHIN the parse the book-level
+fences stay fail-closed (non-list payload, zero gpu rows, duplicate fqn
+all RAISE into that book's partial_error).
+
 Transport trap: the FR body is ~8.14 MB -- 97% of gpu_index.common.http's
 MAX_RESPONSE_BYTES (8 MiB). Catalog growth of ~3% will make the fetch
 refuse the body and fail this source loudly (fail-closed, never truncated);
@@ -100,8 +147,48 @@ DEFAULT_SUBSIDIARIES = (
 
 # Fetch-count fence: each subsidiary is one ~2-8 MB GET; more than 4 books
 # is a deliberate renegotiation of the lane's fetch budget, not a config
-# tweak.
+# tweak. (The two fixed dedicated-availability GETs below sit outside this
+# fence -- adding them WAS the availability-accrual renegotiation.)
 MAX_SUBSIDIARIES = 4
+
+# One fixed extra GET per billing entity: the dedicated-server (baremetal)
+# availability book. EU lives on api.ovh.com (the same host that serves
+# the FR cloud catalog -- one book for the whole EU entity), US on the
+# separate US legal entity's host. Deliberately NOT configurable and NOT
+# filtered server-side (?gpu= works but is drift-blind -- it can never
+# surface a new gpu part name); the "gpu" key is filtered client-side.
+DEDICATED_AVAILABILITY_BOOKS = (
+    (
+        "EU",
+        "https://api.ovh.com/v1/dedicated/server/datacenter/availabilities",
+    ),
+    (
+        "US",
+        "https://api.us.ovhcloud.com/1.0/dedicated/server/datacenter"
+        "/availabilities",
+    ),
+)
+
+# Availability vocabulary seen live 2026-08-25 (semantics inferred, see
+# module docstring). Anything outside this set AND outside the NNNH
+# lead-time family is noted in partial_errors (once per distinct string
+# per book) and still recorded verbatim -- new vocabulary must surface,
+# never fail the parse.
+KNOWN_AVAILABILITY_STATES = frozenset(
+    {"1H-low", "1H-high", "unavailable", "comingSoon", "unknown"}
+)
+# 72H on GPU rows; 240H/720H/1440H live on non-GPU US rows 2026-08-25.
+_LEAD_TIME_STATE_RE = re.compile(r"^[0-9]+H$")
+
+# gpu hardware-part label: gpu-{N}x{vendor}-{model}[-{mem}g]. Parsed into
+# (gpu_count, model label) -- the label is the join key against the cloud
+# book's blobs.technical.gpu.model (l4 -> L4, l40s-48g -> L40S,
+# tesla-v100s -> V100S, radeon rx6700xt-12g -> RX6700XT); the part string
+# itself always rides verbatim. A new vendor token fails the parse into a
+# partial_error note (visible, non-fatal) rather than a guessed label.
+_GPU_PART_RE = re.compile(r"^gpu-([0-9]+)x(nvidia|radeon)-([a-z0-9-]+)$")
+_GPU_PART_MEM_SUFFIX_RE = re.compile(r"-[0-9]+g$")
+_GPU_PART_TESLA_PREFIX = "tesla-"
 
 PRICE_UNITS_PER_CURRENCY = 10 ** 8  # pricings[].price integer scale
 HOURS_PER_MONTH = 730.0  # lane-wide monthly normalization convention
@@ -331,6 +418,218 @@ def parse_ovh(
     return rows, skipped
 
 
+def _parse_gpu_part(part: str) -> Optional[Tuple[int, str]]:
+    """(gpu_count, model label) from a gpu hardware-part string, or None.
+
+    None means "keep the row verbatim in book_stats but do not join it to
+    cloud observations" -- an unrecognized part shape must never guess a
+    model label.
+    """
+    m = _GPU_PART_RE.match(part)
+    if not m:
+        return None
+    count = int(m.group(1))
+    if count < 1:
+        return None
+    tail = _GPU_PART_MEM_SUFFIX_RE.sub("", m.group(3))
+    if tail.startswith(_GPU_PART_TESLA_PREFIX):
+        tail = tail[len(_GPU_PART_TESLA_PREFIX):]
+    if not tail:
+        return None
+    return count, tail.upper()
+
+
+def parse_dedicated_availabilities(
+    body: str, *, book: str
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Pure parse of one dedicated-availability book down to its GPU rows.
+
+    Returns (gpu_rows, notes): gpu_rows carry exactly the four recorded
+    fields (fqn, planCode, gpu, datacenters[{datacenter, availability}])
+    verbatim; notes feed partial_errors. Availability is a metadata
+    channel -- collect() catches anything raised here so a reshape can
+    never dark the price lane -- but WITHIN the parse the book-level
+    fences are fail-closed: a payload that is not a list, has zero
+    gpu-part rows, or repeats an fqn RAISES rather than recording a
+    silently-empty or double-counted availability book.
+    """
+    payload = json.loads(body)
+    if not isinstance(payload, list):
+        raise RuntimeError(
+            f"ovh: dedicated {book} availability payload is not a JSON "
+            "list of config entries -- endpoint reshaped"
+        )
+    rows: List[Dict[str, Any]] = []
+    notes: List[str] = []
+    seen_fqns: set = set()
+    unknown_states: Dict[str, int] = {}
+    for entry in payload:
+        # Non-GPU configs carry no "gpu" key at all (live 2026-08-25:
+        # 8,804 of 8,973 EU entries) -- out of scope, not failures. A
+        # falsy value would be equally join-less and is skipped the same
+        # silent way; only a truthy NON-STRING part is a reshape note.
+        if not isinstance(entry, dict) or not entry.get("gpu"):
+            continue
+        gpu = entry["gpu"]
+        if not isinstance(gpu, str):
+            notes.append(
+                f"dedicated {book}: entry {entry.get('fqn')!r} carries a "
+                f"non-string gpu part {gpu!r} -- row skipped, no part "
+                "identity to record"
+            )
+            continue
+        fqn = entry.get("fqn")
+        plan_code = entry.get("planCode")
+        if (
+            not isinstance(fqn, str)
+            or not fqn
+            or not isinstance(plan_code, str)
+            or not plan_code
+        ):
+            notes.append(
+                f"dedicated {book}: gpu row (part {gpu!r}) without string "
+                "fqn/planCode -- row skipped, no config identity to pin"
+            )
+            continue
+        if fqn in seen_fqns:
+            raise RuntimeError(
+                f"ovh: dedicated {book} fqn {fqn!r} appears twice -- book "
+                "reshaped, refusing to double-count configs"
+            )
+        seen_fqns.add(fqn)
+        dcs = entry.get("datacenters")
+        if not isinstance(dcs, list):
+            notes.append(
+                f"dedicated {book}/{fqn}: datacenters is not a list -- "
+                "row skipped, refusing to guess states"
+            )
+            continue
+        dc_rows: List[Dict[str, str]] = []
+        reshaped = False
+        for dc in dcs:
+            name = dc.get("datacenter") if isinstance(dc, dict) else None
+            state = dc.get("availability") if isinstance(dc, dict) else None
+            if (
+                not isinstance(name, str)
+                or not name
+                or not isinstance(state, str)
+                or not state
+            ):
+                reshaped = True
+                break
+            if state not in KNOWN_AVAILABILITY_STATES and not (
+                _LEAD_TIME_STATE_RE.match(state)
+            ):
+                unknown_states[state] = unknown_states.get(state, 0) + 1
+            dc_rows.append({"datacenter": name, "availability": state})
+        if reshaped:
+            notes.append(
+                f"dedicated {book}/{fqn}: datacenters entries reshaped "
+                "(expected {datacenter, availability} string pairs) -- "
+                "row skipped, refusing to guess states"
+            )
+            continue
+        # Empty datacenters lists are REAL (94 US -v1-eu L4 configs live
+        # 2026-08-25) -- recorded verbatim, zero rollup contribution.
+        rows.append(
+            {
+                "fqn": fqn,
+                "planCode": plan_code,
+                "gpu": gpu,
+                "datacenters": dc_rows,
+            }
+        )
+    if not rows:
+        raise RuntimeError(
+            f"ovh: dedicated {book} availability book has ZERO gpu-part "
+            f"rows (of {len(payload)} entries) -- GPU baremetal lineup "
+            "pulled or 'gpu' vocabulary changed; refusing to record an "
+            "empty availability book silently"
+        )
+    for state in sorted(unknown_states):
+        notes.append(
+            f"dedicated {book}: availability state {state!r} "
+            f"(x{unknown_states[state]}) is outside the known vocabulary "
+            "-- recorded verbatim; extend the vocabulary deliberately"
+        )
+    return rows, notes
+
+
+def dedicated_gpu_summaries(
+    books: List[Tuple[str, List[Dict[str, Any]]]],
+) -> Tuple[Dict[str, List[Dict[str, Any]]], List[str]]:
+    """Rollup of parsed GPU rows: model label -> per-part summaries.
+
+    Dedupes EU-vs-US overlap by fqn+datacenter BEFORE the rollup (zero
+    overlapping fqns live 2026-08-25, but the US book carries -eu/-ca plan
+    variants so the fence stays; a deduped pair whose states disagree is
+    noted, first-seen kept). per_datacenter maps each datacenter to
+    {state: config count} -- counts, not one state, because sibling
+    configs of one part genuinely disagree (23scalegpu01-v2 ram-192g
+    gra="72H" vs ram-384g gra="1H-low" live) and picking a single state
+    would be a semantic ranking that belongs to the consumer.
+    """
+    seen: Dict[Tuple[str, str], str] = {}
+    notes: List[str] = []
+    parsed_parts: Dict[str, Optional[Tuple[int, str]]] = {}
+    summaries: Dict[str, Dict[str, Any]] = {}
+    plan_codes: Dict[str, set] = {}
+    for book, rows in books:
+        for row in rows:
+            part = row["gpu"]
+            if part not in parsed_parts:
+                parsed_parts[part] = _parse_gpu_part(part)
+                if parsed_parts[part] is None:
+                    notes.append(
+                        f"dedicated {book}: gpu part {part!r} does not "
+                        "parse as gpu-{N}x{vendor}-{model} -- kept "
+                        "verbatim in book_stats, excluded from the "
+                        "cloud-observation join"
+                    )
+            parsed = parsed_parts[part]
+            if parsed is None:
+                continue
+            count, model = parsed
+            summary = summaries.setdefault(
+                part,
+                {
+                    "gpu_part": part,
+                    "gpu_count": count,
+                    "model": model,
+                    "per_datacenter": {},
+                },
+            )
+            plan_codes.setdefault(part, set()).add(row["planCode"])
+            for dc in row["datacenters"]:
+                key = (row["fqn"], dc["datacenter"])
+                state = dc["availability"]
+                if key in seen:
+                    if seen[key] != state:
+                        notes.append(
+                            f"dedicated {book}/{row['fqn']}/"
+                            f"{dc['datacenter']}: duplicate "
+                            f"fqn+datacenter across books disagrees "
+                            f"({seen[key]!r} vs {state!r}) -- first-seen "
+                            "kept in the rollup"
+                        )
+                    continue
+                seen[key] = state
+                per_dc = summary["per_datacenter"].setdefault(
+                    dc["datacenter"], {}
+                )
+                per_dc[state] = per_dc.get(state, 0) + 1
+    by_model: Dict[str, List[Dict[str, Any]]] = {}
+    for part in sorted(summaries):
+        summary = summaries[part]
+        summary["plan_codes"] = sorted(plan_codes[part])
+        summary["per_datacenter"] = {
+            dc: dict(sorted(states.items()))
+            for dc, states in sorted(summary["per_datacenter"].items())
+        }
+        by_model.setdefault(summary.pop("model"), []).append(summary)
+    return by_model, notes
+
+
 def _subsidiary_specs(
     options: Optional[Dict[str, Any]],
 ) -> List[Tuple[str, str, str]]:
@@ -427,11 +726,68 @@ def collect(
                 "body_bytes": body_bytes,
             }
         )
+
+    # Dedicated-server (baremetal) GPU availability -- metadata channel,
+    # fail-open per book: a fetch or parse failure here becomes a
+    # partial_error and drops THAT book's availability only; the price
+    # observations above are already parsed and are never gated.
+    dedicated_rows: Dict[str, List[Dict[str, Any]]] = {}
+    for book, url in DEDICATED_AVAILABILITY_BOOKS:
+        try:
+            avail_body = fetch(url, timeout=timeout)
+        except Exception as exc:
+            partial_errors.append(
+                f"dedicated {book}: availability fetch failed ({exc}) -- "
+                "baremetal availability dropped this capture; price rows "
+                "unaffected"
+            )
+            continue
+        avail_bytes = len(avail_body.encode("utf-8"))
+        if avail_bytes > _BODY_CAP_WARN_FRACTION * MAX_RESPONSE_BYTES:
+            partial_errors.append(
+                f"dedicated {book}: availability body {avail_bytes} bytes "
+                f"is {100.0 * avail_bytes / MAX_RESPONSE_BYTES:.0f}% of "
+                f"the {MAX_RESPONSE_BYTES}-byte transport cap -- the "
+                "fetch will start failing outright if the book keeps "
+                "growing"
+            )
+        try:
+            gpu_rows, notes = parse_dedicated_availabilities(
+                avail_body, book=book
+            )
+        except Exception as exc:
+            partial_errors.append(
+                f"dedicated {book}: availability parse failed ({exc}) -- "
+                "baremetal availability dropped this capture; price rows "
+                "unaffected"
+            )
+            continue
+        partial_errors.extend(notes)
+        dedicated_rows[book] = gpu_rows
+    if dedicated_rows:
+        by_model, join_notes = dedicated_gpu_summaries(
+            [
+                (book, dedicated_rows[book])
+                for book, _ in DEDICATED_AVAILABILITY_BOOKS
+                if book in dedicated_rows
+            ]
+        )
+        partial_errors.extend(join_notes)
+        for obs in observations:
+            summaries = by_model.get(obs["sku_identifier"].strip().upper())
+            if summaries:
+                extra = obs.setdefault("extra", {})
+                extra["dedicated_gpu_availability"] = summaries
+                extra["dedicated_availability_product_line"] = "baremetal"
+
+    stats: Dict[str, Any] = {"subsidiaries": books}
+    if dedicated_rows:
+        stats["dedicated_gpu_availability"] = dedicated_rows
     return result(
         SOURCE_ID,
         method="api-json",
         url=specs[0][0],
         observations=observations,
         partial_errors=partial_errors or None,
-        book_stats={"subsidiaries": books},
+        book_stats=stats,
     )

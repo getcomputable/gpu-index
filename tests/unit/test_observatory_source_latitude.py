@@ -95,6 +95,60 @@ def test_b300_us_hourly_and_monthly_pins(rows):
     assert hourly["extra"]["stock_level"] == "unavailable"
     assert hourly["extra"]["interconnect"] == "800Gbps Dual Plane RoCE"
     assert hourly["memory_gb_label"] == 288
+    # Per-site availability, verbatim: unavailable region = zero sites in
+    # stock, empty instant-deploy list -- co-occurrence recorded raw,
+    # never derived.
+    assert hourly["extra"]["locations_available"] == [
+        "DAL", "LAX", "NYC", "CHI", "ASH", "MIA2", "LAX2", "SJC2", "ASH2",
+    ]
+    assert hourly["extra"]["locations_in_stock"] == []
+    assert hourly["extra"]["deploys_instantly"] == []
+
+
+def test_per_site_availability_recorded_verbatim(rows):
+    """Site-level beats region-level: a priced, stocked region can hold
+    inventory at only SOME of its sites -- the fixture's rtx6kpro rows are
+    live SUBSET cases."""
+    rtx = [
+        r
+        for r in rows
+        if r["extra"]["plan"] == "g4-rtx6kpro-large"
+        and r["currency"] == "USD"
+        and r["tier"] == "on-demand"
+    ]
+    by_region = {r["region"]: r["extra"] for r in rtx}
+    au = by_region["Australia"]
+    assert au["stock_level"] == "low"
+    assert au["locations_available"] == ["SYD", "SYD2"]
+    assert au["locations_in_stock"] == ["SYD2"]  # 1 of 2 sites
+    assert au["deploys_instantly"] == ["ubuntu24_ml_in_a_box"]
+    us = by_region["United States"]
+    assert len(us["locations_available"]) == 9
+    assert us["locations_in_stock"] == ["CHI"]  # 1 of 9 sites
+
+
+def test_missing_locations_map_is_noted_never_fatal():
+    """The per-site fields are availability METADATA: a region row without
+    a readable locations map records its priced observations anyway, with
+    the miss noted and the keys absent -- never fabricated."""
+    plain = (
+        '"slug":"g9-test-large","name":"g9.test.large","specs":{'
+        '"gpu":{"count":8,"type":"NVIDIA X100","vram_per_gpu":80,'
+        '"interconnect":null}},'
+        '"regions":[{"name":"United States","deploys_instantly":[],'
+        '"stock_level":"low","pricing":{"USD":{"hour":8,"month":2920,'
+        '"year":29200}}}],"available_operating_systems":[]'
+    )
+    rows, partial_errors = parse_latitude(_escaped(plain))
+    assert len(rows) == 2  # hourly + monthly still record
+    assert partial_errors == [
+        "g9-test-large/United States: region row missing a readable "
+        "locations map -- site availability not recorded"
+    ]
+    for r in rows:
+        assert "locations_available" not in r["extra"]
+        assert "locations_in_stock" not in r["extra"]
+        assert r["extra"]["deploys_instantly"] == []
 
 
 def test_h100_single_gpu_pins(rows):
@@ -208,6 +262,7 @@ def test_reshaped_currency_block_noted_not_silently_dropped():
         '"gpu":{"count":8,"type":"NVIDIA X100","vram_per_gpu":80,'
         '"interconnect":null}},'
         '"regions":[{"name":"United States","deploys_instantly":[],'
+        '"locations":{"available":["DAL"],"in_stock":[]},'
         '"stock_level":"low","pricing":{'
         '"USD":{"setup":10,"hour":8,"month":2920,"year":29200},'
         '"BRL":{"hour":40,"month":14600,"year":146000}}}],'
@@ -232,9 +287,12 @@ def test_unreadable_region_row_cannot_donate_prices_to_neighbor():
         '"interconnect":null}},'
         '"regions":['
         '{"name":"United States","deploys_instantly":[],'
+        '"locations":{"available":["DAL","CHI"],"in_stock":["CHI"]},'
         '"stock_level":"low","pricing":{'
         '"USD":{"hour":8,"month":2920,"year":29200}}},'
-        '{"label":"Ghost","stock_level":"low","pricing":{'
+        '{"label":"Ghost","deploys_instantly":["evil_os"],'
+        '"locations":{"available":["EVIL"],"in_stock":["EVIL"]},'
+        '"stock_level":"low","pricing":{'
         '"EUR":{"hour":99,"month":999,"year":9999}}}],'
         '"available_operating_systems":[]'
     )
@@ -242,10 +300,126 @@ def test_unreadable_region_row_cannot_donate_prices_to_neighbor():
     # The ghost row's EUR prices never print under "United States".
     assert {r["currency"] for r in rows} == {"USD"}
     assert all(r["region"] == "United States" for r in rows)
+    # ...and the ghost's site lists never donate either -- the per-site
+    # search is bounded to the segment head before this row's own
+    # stock_level.
+    assert all(
+        r["extra"]["locations_in_stock"] == ["CHI"]
+        and r["extra"]["locations_available"] == ["DAL", "CHI"]
+        and r["extra"]["deploys_instantly"] == []
+        for r in rows
+    )
     assert partial_errors == [
         "g9-test-large: 2 stock_level markers vs 1 readable region rows -- "
         "region shape partially changed, unreadable rows skipped"
     ]
+
+
+def test_own_stock_reshaped_skips_row_never_borrows_neighbor_stock():
+    """When this row's OWN stock_level value is unreadable, the row is a
+    loud skip -- the absorbed neighbor's readable stock_level and site
+    lists must never print under this region's name."""
+    plain = (
+        '"slug":"g9-test-large","name":"g9.test.large","specs":{'
+        '"gpu":{"count":8,"type":"NVIDIA X100","vram_per_gpu":80,'
+        '"interconnect":null}},'
+        '"regions":['
+        '{"name":"United States","deploys_instantly":["own_os"],'
+        '"locations":{"available":["DAL"],"in_stock":["DAL"]},'
+        '"stock_level":null,"pricing":{'
+        '"USD":{"hour":8,"month":2920,"year":29200}}},'
+        '{"label":"Ghost","deploys_instantly":["evil_os"],'
+        '"locations":{"available":["EVIL"],"in_stock":["EVIL"]},'
+        '"stock_level":"high","pricing":{'
+        '"EUR":{"hour":99,"month":999,"year":9999}}}],'
+        '"available_operating_systems":[]'
+    )
+    rows, partial_errors = parse_latitude(_escaped(plain))
+    assert rows == []
+    assert partial_errors == [
+        "g9-test-large: 2 stock_level markers vs 1 readable region rows -- "
+        "region shape partially changed, unreadable rows skipped",
+        "g9-test-large/United States: region row missing stock_level -- "
+        "skipped",
+    ]
+
+
+def test_missing_own_stock_key_skips_row_never_borrows_neighbor():
+    """When this row has NO stock_level at all and an absorbed neighbor
+    has one, the neighbor's marker sits past this row's own pricing map --
+    it must read as 'missing stock_level', never as this row's stock, and
+    the neighbor's site lists must not donate."""
+    plain = (
+        '"slug":"g9-test-large","name":"g9.test.large","specs":{'
+        '"gpu":{"count":8,"type":"NVIDIA X100","vram_per_gpu":80,'
+        '"interconnect":null}},'
+        '"regions":['
+        '{"name":"United States","deploys_instantly":[],'
+        '"pricing":{"USD":{"hour":8,"month":2920,"year":29200}}},'
+        '{"label":"Ghost","deploys_instantly":["evil_os"],'
+        '"locations":{"available":["EVIL"],"in_stock":["EVIL"]},'
+        '"stock_level":"low","pricing":{'
+        '"EUR":{"hour":99,"month":999,"year":9999}}}],'
+        '"available_operating_systems":[]'
+    )
+    rows, partial_errors = parse_latitude(_escaped(plain))
+    assert rows == []
+    assert partial_errors == [
+        "g9-test-large/United States: region row missing stock_level -- "
+        "skipped"
+    ]
+
+
+def test_non_flat_list_items_are_a_miss_never_fabricated():
+    """A list whose items are no longer flat strings must MISS whole (a
+    partial_error), never fabricate site codes from object keys or an
+    affirmative empty list from numeric items."""
+    plain = (
+        '"slug":"g9-test-large","name":"g9.test.large","specs":{'
+        '"gpu":{"count":8,"type":"NVIDIA X100","vram_per_gpu":80,'
+        '"interconnect":null}},'
+        '"regions":[{"name":"United States","deploys_instantly":[1,2],'
+        '"locations":{"available":[{"code":"MIA","live":true}],'
+        '"in_stock":[1,2]},'
+        '"stock_level":"low","pricing":{"USD":{"hour":8,"month":2920,'
+        '"year":29200}}}],"available_operating_systems":[]'
+    )
+    rows, partial_errors = parse_latitude(_escaped(plain))
+    assert len(rows) == 2  # priced observations still record
+    assert partial_errors == [
+        "g9-test-large/United States: region row missing a readable "
+        "locations map -- site availability not recorded",
+        "g9-test-large/United States: region row missing a readable "
+        "deploys_instantly list -- instant-deploy flag not recorded",
+    ]
+    for r in rows:
+        assert "locations_available" not in r["extra"]
+        assert "locations_in_stock" not in r["extra"]
+        assert "deploys_instantly" not in r["extra"]
+
+
+def test_null_deploys_is_noted_while_locations_still_record():
+    """The two per-site fields miss independently: deploys_instantly null
+    notes its own partial_error while the locations lists still record."""
+    plain = (
+        '"slug":"g9-test-large","name":"g9.test.large","specs":{'
+        '"gpu":{"count":8,"type":"NVIDIA X100","vram_per_gpu":80,'
+        '"interconnect":null}},'
+        '"regions":[{"name":"United States","deploys_instantly":null,'
+        '"locations":{"available":["DAL","CHI"],"in_stock":["DAL"]},'
+        '"stock_level":"low","pricing":{"USD":{"hour":8,"month":2920,'
+        '"year":29200}}}],"available_operating_systems":[]'
+    )
+    rows, partial_errors = parse_latitude(_escaped(plain))
+    assert len(rows) == 2
+    assert partial_errors == [
+        "g9-test-large/United States: region row missing a readable "
+        "deploys_instantly list -- instant-deploy flag not recorded"
+    ]
+    for r in rows:
+        assert r["extra"]["locations_available"] == ["DAL", "CHI"]
+        assert r["extra"]["locations_in_stock"] == ["DAL"]
+        assert "deploys_instantly" not in r["extra"]
 
 
 def test_gpu_count_zero_is_skipped_with_note():

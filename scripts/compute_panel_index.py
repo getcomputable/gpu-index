@@ -1095,13 +1095,32 @@ def main() -> int:
                 observation=stamp_iso,
             )
             if stored is None:
-                # LIST said published, GET says gone -- a race or a
-                # deleted object. Recompute is byte-deterministic and the
-                # append-only guard arbitrates, so fall through loudly.
-                warn(
-                    f"{stamp_iso}: listed as published but the artifact "
-                    "GET returned nothing -- treating as unpublished"
+                # LIST said published, GET says gone -- a transient race
+                # or a deleted object. One fresh retry, then REFUSE the
+                # firing (adversarial review): the old fall-through
+                # recomputed the stamp, which is safe only while every
+                # byte-shaping input is eternally identical -- an
+                # additive artifact field or a minted param change
+                # would make the recompute collide with the immutable
+                # original as BucketPublishError and wedge the lane. A
+                # transient miss heals on the next firing; a persistent
+                # one is an ops incident that must page, not a silent
+                # divergent re-publish.
+                stored = get_panel_composite(
+                    client,
+                    bucket,
+                    prefix=prefix,
+                    methodology_id=methodology_id,
+                    observation=stamp_iso,
                 )
+            if stored is None:
+                error(
+                    f"{stamp_iso}: listed as published but the artifact "
+                    "GET returned nothing twice -- refusing this firing "
+                    "rather than recomputing a published stamp (the next "
+                    "firing self-heals a transient miss)"
+                )
+                return 1
         if stored is not None:
             # Exclusion pin, per OBSERVATION: a published observation
             # pins its exclusion set under the same scope rule the
@@ -1207,6 +1226,18 @@ def main() -> int:
             keys = set(live_embedded) | set(last_published_params)
             keys.discard("manual_exclusions")  # has its own check above
             keys.discard("record_exclusions")  # pinned per observation too
+            # ADDITIVE-ADOPTION grace (one key, dated 2026-08-25): every
+            # published artifact predates
+            # availability_verified_sources, so the blanket compare would
+            # refuse to extend all six live series at the first
+            # post-deploy firing. The key is skipped ONLY while the
+            # baseline artifact lacks it entirely (pre-field artifact);
+            # once any artifact publishes WITH the key, the full compare
+            # owns it and a retune is a mint like any other param change.
+            # Remove this carve-out once all lanes' baselines carry the
+            # key.
+            if "availability_verified_sources" not in last_published_params:
+                keys.discard("availability_verified_sources")
             params_drift = sorted(
                 k
                 for k in keys

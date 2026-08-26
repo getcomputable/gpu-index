@@ -33,7 +33,9 @@ no honest row-skip here:
     silently truncate the book to one page;
   - every row: gpu_type (non-empty str), gpu_count (int >= 1),
     price_per_hour (number > 0), tier in {on_demand, spot}, region
-    (non-empty str), offering_id (non-empty str). offering_id is absent
+    (non-empty str), available (int >= 0 -- load-bearing now that
+    sold-out rows are recorded; 314/314 live rows pass on 2026-08-25),
+    offering_id (non-empty str). offering_id is absent
     from the published Pricing schema but present on 100% of live rows
     (272/272 on 2026-08-22) and is the stable per-offer identity
     (customer-identical offers are pre-merged server-side with
@@ -49,15 +51,32 @@ no honest row-skip here:
   - the tier enum includes "spot" but the live book is all on_demand
     today -- the pin accepts spot appearing;
   - pagination: at most MAX_PAGES pages (10 x 200 rows, far above the
-    272-row live book; hitting the fence RAISES -- a runaway cursor or an
+    314-row live book; hitting the fence RAISES -- a runaway cursor or an
     exploded book both deserve a loud error, never a silent truncation);
     a cursor that fails to advance raises; rows replayed across page
     boundaries (a keyset book can shift between fetches) are deduped by
     offering_id and counted in partial_errors.
 
-The default response omits zero-availability offers (include_unavailable
-defaults false) -- the right posture for recording offered prices; each
-row's available count rides in extra so book depth stays visible.
+The book is fetched with include_unavailable=true: sold-out offers ARE
+observations of the book, distinguished by extra.available == 0 (the
+default response omits exactly the available==0 rows -- verified live
+2026-08-25: 314 rows vs 249 default, difference 65 = the zero-available
+count). Sold-out rows keep their full shape and stable offering_id (the
+8x b300 held a0a48d83d5f6 across its stockout), so per-offer availability
+time series survive stockouts instead of gapping, and a fully stocked-out
+chip stays distinguishable from a delisted one. Two consequences:
+
+  - a sold-out row's price_per_hour is a LISTED price, not currently
+    transactable -- safe in this capture-only observatory, but any future
+    consumer computing an offered-price statistic from gpuai rows must
+    fence on extra.available > 0 first;
+  - include_unavailable is UNDOCUMENTED (the public reference documents
+    no /pricing query params); it is honored live but if the server ever
+    stopped honoring it we would get the default book back -- zero
+    available==0 rows, shape-identical, unpinnable. book_stats records
+    rows_zero_available per capture so that failure mode is scannable:
+    many consecutive captures at 0 while chips like b300 vanish from the
+    book entirely is the tripwire.
 """
 
 from __future__ import annotations
@@ -75,7 +94,8 @@ SOURCE_ID = "gpuai"
 URL_BASE = "https://api.gpu.ai/v1/pricing"
 # The API's own page clamp (openapi: limit maximum 200, default 50).
 API_MAX_LIMIT = 200
-# Runaway fence: 10 x 200 = 2000 rows >> the 272-row live book.
+# Runaway fence: 10 x 200 = 2000 rows >> the 314-row live book
+# (include_unavailable mode, 2026-08-25).
 MAX_PAGES = 10
 
 # API tier enum -> lane tier vocabulary, fail-closed.
@@ -125,6 +145,17 @@ def row_observation(row: Any) -> Dict[str, Any]:
             f"{gpu_type}: row without an offering_id -- the stable "
             "per-offer identity this time series keys on"
         )
+    available = row.get("available")
+    if (
+        not isinstance(available, int)
+        or isinstance(available, bool)
+        or available < 0
+    ):
+        raise _refuse(
+            f"{gpu_type}: available is not a non-negative integer -- "
+            "load-bearing since sold-out rows (available==0) became part "
+            "of the recorded book"
+        )
     community = row.get("community")
     if not isinstance(community, bool):
         raise _refuse(f"{gpu_type}: community flag is not a boolean")
@@ -150,7 +181,7 @@ def row_observation(row: Any) -> Dict[str, Any]:
     cls = capacity_class or ("community" if community else "secure")
     extra: Dict[str, Any] = {
         "capacity_class": cls,
-        "available": row.get("available"),
+        "available": available,
         "instant_boot": row.get("instant_boot"),
         "deployment_type": row.get("deployment_type"),
     }
@@ -214,7 +245,10 @@ def collect(
     cursor: Optional[str] = None
     pages = 0
     while True:
-        url = f"{URL_BASE}?limit={API_MAX_LIMIT}"
+        # include_unavailable brings the sold-out (available==0) rows into
+        # the book -- see the module docstring for the posture and the
+        # silent-revert tripwire.
+        url = f"{URL_BASE}?limit={API_MAX_LIMIT}&include_unavailable=true"
         if cursor is not None:
             url += "&cursor=" + urllib.parse.quote(cursor, safe="")
         page = parse_pricing_page(fetch(url, timeout=timeout))
@@ -238,8 +272,8 @@ def collect(
         if pages >= MAX_PAGES:
             raise RuntimeError(
                 f"gpuai: book still paginating after {MAX_PAGES} pages "
-                f"({raw_rows} rows fetched vs a 272-row live book on "
-                "2026-08-22) -- runaway cursor or an exploded book; "
+                f"({raw_rows} rows fetched vs a 314-row live book on "
+                "2026-08-25) -- runaway cursor or an exploded book; "
                 "refusing to record a silently truncated capture"
             )
         cursor = next_cursor
@@ -259,5 +293,12 @@ def collect(
             "pages_fetched": pages,
             "raw_rows": raw_rows,
             "rows_recorded": len(rows),
+            # Stockout breadth per capture -- ALSO the include_unavailable
+            # silent-revert tripwire (see module docstring): a long run of
+            # zeros here while chips vanish from the book means the
+            # undocumented param stopped being honored.
+            "rows_zero_available": sum(
+                1 for r in rows if r["extra"]["available"] == 0
+            ),
         },
     )

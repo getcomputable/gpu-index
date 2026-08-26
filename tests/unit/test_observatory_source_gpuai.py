@@ -10,13 +10,16 @@ collector records it raw), rows missing the optional environment key, and
 every lookalike label pair (h100_sxm/pcie/nvl, h200_sxm/nvl,
 a100_40gb/80gb, rtx_6000_ada vs rtx_pro_6000). pricing_page1.json keeps
 the REAL next_cursor string from the live page; pricing_page2.json is the
-book tail with next_cursor null.
+book tail with next_cursor null, plus three real sold-out rows (available
+0: 1x a100_80gb, 1x a40, 8x b200) appended verbatim from the live
+include_unavailable=true book on 2026-08-25.
 """
 
 from __future__ import annotations
 
 import copy
 import json
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -24,6 +27,7 @@ import pytest
 from gpu_index.observatory.catalog import load_sku_catalog, match_sku
 from gpu_index.observatory.sources.gpuai import (
     SOURCE_ID,
+    collect,
     parse_pricing_page,
     row_observation,
 )
@@ -97,6 +101,8 @@ def test_capacity_classes_recorded_separately(rows):
         "89ce2d94cfa2": ("community", 1, 5.32),
         "e8cf1fc47222": ("secure", 1, 6.79),
         "b25408688458": ("community", 8, 7.1275),
+        # Sold out (available 0) -- records beside the in-stock offers.
+        "e1f5ddfb9ebc": ("secure", 8, 5.4),
     }
 
 
@@ -142,13 +148,59 @@ def test_pagination_cursor_shape(pages):
     assert pages[0]["next_cursor"]
     assert pages[1]["next_cursor"] is None
     assert pages[0]["raw_row_count"] == 16
-    assert pages[1]["raw_row_count"] == 6
+    assert pages[1]["raw_row_count"] == 9
 
 
 def test_offer_identity_and_availability_metadata(rows):
     assert all(r["offer_id"] for r in rows)
     assert len({r["offer_id"] for r in rows}) == len(rows)
-    assert all(r["extra"]["available"] >= 1 for r in rows)
+    assert all(r["extra"]["available"] >= 0 for r in rows)
+    sold_out = {r["offer_id"] for r in rows if r["extra"]["available"] == 0}
+    assert sold_out == {"d02ea9e6ccf4", "0dd4c7c1c3aa", "e1f5ddfb9ebc"}
+
+
+def test_sold_out_row_records_as_listed_price():
+    """An available==0 row is an observation of the book -- full shape,
+    stable offering_id, price recorded (a LISTED price; consumers fence on
+    extra.available > 0 before any offered-price statistic)."""
+    page2 = json.loads(PAGE2.read_text())
+    row = next(
+        r for r in page2["data"] if r["offering_id"] == "d02ea9e6ccf4"
+    )
+    obs = row_observation(row)
+    assert obs["sku_identifier"] == "a100_80gb"
+    assert obs["extra"]["available"] == 0
+    assert obs["price_usd_gpu_hr"] == 1.07
+    assert obs["raw_value"] == "1.07"
+    assert obs["offer_id"] == "d02ea9e6ccf4"
+
+
+def test_collect_requests_include_unavailable_and_counts_stockouts(
+    monkeypatch,
+):
+    """The one-flag posture change: collect() must ask for the sold-out
+    rows on EVERY page fetch, cursor-bearing pages included -- silently
+    losing the param on later pages is exactly the unpinnable default-book
+    revert the module docstring warns about. book_stats carries the
+    silent-revert tripwire count."""
+    bodies = [PAGE1.read_text(), PAGE2.read_text()]
+    urls = []
+
+    def fake_fetch(url, timeout=None):
+        urls.append(url)
+        return bodies[len(urls) - 1]
+
+    monkeypatch.setattr("gpu_index.observatory.sources.gpuai.fetch", fake_fetch)
+    res = collect()
+    base = "https://api.gpu.ai/v1/pricing?limit=200&include_unavailable=true"
+    cursor = json.loads(PAGE1.read_text())["next_cursor"]
+    assert urls == [
+        base,
+        base + "&cursor=" + urllib.parse.quote(cursor, safe=""),
+    ]
+    assert res["book_stats"]["pages_fetched"] == 2
+    assert res["book_stats"]["rows_recorded"] == 25
+    assert res["book_stats"]["rows_zero_available"] == 3
 
 
 def test_empty_capacity_class_falls_back_to_community_flag():
@@ -192,6 +244,10 @@ def test_future_currency_field_refuses_unless_usd():
         ({"price_per_hour": 0}, "positive number"),
         ({"region": ""}, "region"),
         ({"capacity_class": "premium"}, "capacity_class"),
+        ({"available": -1}, "non-negative integer"),
+        ({"available": None}, "non-negative integer"),
+        ({"available": True}, "non-negative integer"),
+        ({"available": 2.0}, "non-negative integer"),
     ],
 )
 def test_row_pin_violations_refuse_the_capture(mutation, message):
@@ -241,6 +297,7 @@ def test_real_labels_normalize_through_catalog(rows):
     assert mapped["l40"] == "L40"
     assert mapped["l40s"] == "L40S"
     assert mapped["v100"] == "V100"
+    assert mapped["a40"] == "A40"
     # Nothing in this source's fixture should be unmapped -- if a new chip
     # appears live it records unmapped and the capture warns; this pin is
     # about the KNOWN labels staying mapped.

@@ -1699,3 +1699,79 @@ def test_cli_config_is_required(monkeypatch, capsys):
         cli.main()
     assert excinfo.value.code == 2
     capsys.readouterr()  # drop argparse's usage text
+
+
+# --------------------------------- availability adoption grace + GET-miss
+
+
+def test_d2_adoption_grace_then_full_ownership(monkeypatch, capsys, tmp_path):
+    """Deploy transition: every live artifact predates
+    calc.availability_verified_sources, so the D2 compare skips the key
+    while the baseline lacks it (extending must not dark six lanes) --
+    but once a keyed artifact is the baseline, a retune refuses like any
+    other param drift."""
+    cfg = _config()
+    cfg["calc"]["availability_verified_sources"] = ["bravo"]
+    cfg_path = _write_config(tmp_path, cfg)
+    client = FakeS3()
+    _seed_world(client)
+    cli = _wire_cli(monkeypatch, client, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    capsys.readouterr()
+
+    # Doctor the NEWEST artifact into a pre-field one (published before
+    # the key shipped): drop the key from its embedded calc_params.
+    newest = max(
+        k for k in client.objects if "/composites/" in k and not k.endswith("latest.json")
+    )
+    doctored = json.loads(client.objects[newest])
+    assert doctored["calc_params"].pop("availability_verified_sources") == ["bravo"]
+    client.objects[newest] = json.dumps(doctored).encode()
+
+    # Extending under the keyed live config must NOT refuse (grace).
+    cli = _wire_cli(monkeypatch, client, NOW2, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "calc_params drift" not in out
+
+    # The newest artifact now carries the key -> a retune refuses.
+    cfg["calc"]["availability_verified_sources"] = []
+    cfg_path2 = _write_config(tmp_path, cfg, name="retuned.json")
+    later = datetime(2026, 8, 12, 8, 35, tzinfo=timezone.utc)
+    cli = _wire_cli(monkeypatch, client, later, ["--config", str(cfg_path2), "--sync"])
+    assert cli.main() == 1
+    out = capsys.readouterr().out
+    assert "calc_params drift" in out
+    assert "availability_verified_sources" in out
+
+
+def test_listed_but_missing_artifact_refuses_the_firing(
+    monkeypatch, capsys, tmp_path
+):
+    """LIST says published, GET (twice) says gone -> the firing refuses
+    instead of recomputing a published stamp (adversarial review: a
+    recompute under any evolved byte-shaping input collides with the
+    immutable original and wedges the lane)."""
+    cfg_path = _write_config(tmp_path)
+    client = FakeS3()
+    _seed_world(client)
+    cli = _wire_cli(monkeypatch, client, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    capsys.readouterr()
+
+    target = min(
+        k for k in client.objects if "/composites/" in k and not k.endswith("latest.json")
+    )
+    real_get = client.get_object
+
+    def flaky_get(Bucket, Key):
+        if Key == target:
+            raise _NoSuchKey()
+        return real_get(Bucket=Bucket, Key=Key)
+
+    client.get_object = flaky_get
+    cli = _wire_cli(monkeypatch, client, NOW2, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 1
+    out = capsys.readouterr().out
+    assert "GET returned nothing twice" in out
+    assert "refusing this firing" in out

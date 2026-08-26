@@ -47,10 +47,34 @@ Cell honesty, all fail-closed:
   - the row scanner tolerates <tr> attributes, and a per-table census
     requires every priced cell to land inside a scanned row -- a reshaped
     row can never make its prices vanish silently.
+
+Availability annotation (second fetch, verified live 2026-08-25): the
+/ai/cloud-gpu hub page carries a chip-level 'Status' column in a CMS
+pricingTable block inside Next.js RSC flight data (self.__next_f.push
+script chunks; the payload is a JSON.stringify'd JS string, so quotes
+arrive as backslash-quote and '$$' means a literal '$'). One variant
+"status" cell per config row; 7 rows live, 24/24 statusText values ever
+observed read exactly "In stock" -- CMS-authored marketing state (Payload
+CMS ids on every cell), recorded VERBATIM as a weak signal, never ground
+truth. Joined onto /pricing observations by parsed (gpu_count, chip token,
+memory GB) -- the surfaces share the product-detail vocabulary but are NOT
+byte-identical (/pricing says "8 x NVIDIA H200 - 141GB HBM3e", the hub
+omits "HBM3e"; live 2026-08-25 the hub's H200 row even claims 80GB, so it
+lands in partial_errors unmatched, never guessed onto the 141GB row).
+Matched observations gain extra availability_status/availability_source;
+rows without a status cell gain NOTHING (the pre-order Vera Rubin page has
+ZERO statusText blocks -- absence means unlisted, not sold out). Prices
+are NEVER read from status rows: CMS cells carry all fields regardless of
+variant (the live B200 status cell holds an incongruous $1.09
+hourlyPrice). The availability parse is fail-closed internally (zero
+Status-columned tables = raise) but the whole fetch+annotate is fail-open
+at the collect() boundary -- a marketing-hub reshape lands in
+partial_errors and must never dark the /pricing lane.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -99,6 +123,234 @@ _CAPTION_MEM_RE = re.compile(r"\b(\d+GB)\b")
 _WS_RE = re.compile(r"\s+")
 
 _REGION = "unspecified"
+
+# ---- availability annotation (the /ai/cloud-gpu hub, second fetch) ----
+
+AVAILABILITY_URL = "https://www.civo.com/ai/cloud-gpu"
+_AVAILABILITY_SOURCE = "www.civo.com/ai/cloud-gpu"
+
+# One RSC flight-data chunk: the JS string literal in self.__next_f.push.
+# The literal is JSON.stringify output, so it decodes with json.loads and
+# ends at the first unescaped quote (the regex honors backslash pairs).
+_PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,\s*"((?:[^"\\]|\\.)*)"\]\)')
+# Escaped-level prefilter and unescaped-level block anchor. The CMS emits
+# minified JSON with blockType as the first key (verified live 2026-08-25;
+# beware the lookalike data-block-type HTML attribute nearby) -- any
+# formatting/ordering reshape trips the zero-tables fence, never a guess.
+_ESCAPED_MARKER = '\\"blockType\\":\\"pricingTable\\"'
+_BLOCK_ANCHOR = '{"blockType":"pricingTable"'
+# Join identity from an 'N x NVIDIA ...' detail string: stated GPU count,
+# chip token, memory GB. Parsed fields ONLY -- the two surfaces are never
+# compared as raw strings (they differ in suffixes like "HBM3e").
+_AVAIL_HEAD_RE = re.compile(r"^\s*(\d+)\s*x\s*NVIDIA\s+(\S+)")
+
+
+def _avail_key(detail: str) -> Optional[Tuple[int, str, int]]:
+    """(gpu_count, CHIP, memory_gb) from an 'N x NVIDIA ...' detail, or
+    None when any of the three pins is missing -- an unparseable identity
+    is never joined."""
+    head = _AVAIL_HEAD_RE.match(detail)
+    mem = _MODEL_MEM_RE.search(detail)
+    if not head or not mem:
+        return None
+    return (int(head.group(1)), head.group(2).upper(), int(mem.group(1)))
+
+
+def _obs_key(obs: Dict[str, Any]) -> Optional[Tuple[int, str, int]]:
+    extra = obs.get("extra") or {}
+    detail = extra.get("instance_detail")
+    if not isinstance(detail, str):
+        return None
+    key = _avail_key(detail)
+    if key is not None and key[0] != obs.get("gpu_count_basis"):
+        return None  # detail and count pin disagree -- never join a liar
+    return key
+
+
+def parse_civo_availability(
+    html: str,
+) -> Tuple[List[Dict[str, str]], List[str]]:
+    """Pure parse of the /ai/cloud-gpu hub -> (status_rows, partial_errors).
+
+    Fail-closed INTERNALLY: zero Status-columned pricingTable blocks (or a
+    structurally reshaped block) raises -- collect() decides what a raise
+    costs, and it never costs the price lane. Row-level oddities land in
+    partial_errors instead so one broken row cannot hide the rest.
+    """
+    decoder = json.JSONDecoder()
+    tables: List[Any] = []
+    for chunk in _PUSH_RE.findall(html):
+        if _ESCAPED_MARKER not in chunk:
+            continue  # cheap prefilter at the escaped level
+        payload = json.loads('"' + chunk + '"')
+        pos = payload.find(_BLOCK_ANCHOR)
+        while pos >= 0:
+            try:
+                block, end = decoder.raw_decode(payload, pos)
+            except ValueError as exc:
+                raise RuntimeError(
+                    "civo availability: pricingTable block at flight-data "
+                    f"offset {pos} is not decodable JSON -- RSC payload "
+                    "reshaped; refusing to scan"
+                ) from exc
+            tables.append(block)
+            pos = payload.find(_BLOCK_ANCHOR, end)
+    status_tables = [
+        t
+        for t in tables
+        if isinstance(t, dict)
+        and isinstance(t.get("headerRow"), list)
+        and any(
+            isinstance(h, dict) and h.get("headerText") == "Status"
+            for h in t["headerRow"]
+        )
+    ]
+    if not status_tables:
+        raise RuntimeError(
+            f"civo availability: found {len(tables)} pricingTable block(s) "
+            "but 0 with a Status headerRow column in the /ai/cloud-gpu RSC "
+            "flight data -- page reshaped or block pulled; refusing to "
+            "annotate"
+        )
+    status_rows: List[Dict[str, str]] = []
+    partial_errors: List[str] = []
+    for table in status_tables:
+        caption = table.get("caption")
+        rows = table.get("rows")
+        if not isinstance(rows, list):
+            raise RuntimeError(
+                f"civo availability: Status-columned table {caption!r} "
+                "lost its rows list -- block reshaped; refusing to scan"
+            )
+        for row in rows:
+            if not isinstance(row, dict) or row.get("rowVariant") != "cells":
+                continue  # non-cells row variants carry no status
+            cells = row.get("cells")
+            if not isinstance(cells, list):
+                partial_errors.append(
+                    f"availability: table {caption!r}: cells row without "
+                    "a cell list -- skipped"
+                )
+                continue
+            status_cells = [
+                c
+                for c in cells
+                if isinstance(c, dict) and c.get("variant") == "status"
+            ]
+            if not status_cells:
+                continue  # no status cell = unlisted, NOT sold out
+            head = cells[0] if isinstance(cells[0], dict) else {}
+            label = head.get("primaryText")
+            statuses = {c.get("statusText") for c in status_cells}
+            if len(statuses) != 1:
+                partial_errors.append(
+                    f"availability: hub row {label!r}: "
+                    f"{len(status_cells)} status cells disagree on "
+                    "statusText -- ambiguous, skipped"
+                )
+                continue
+            status = next(iter(statuses))
+            if not isinstance(status, str) or not status.strip():
+                partial_errors.append(
+                    f"availability: hub row {label!r}: status cell "
+                    "statusText missing or not text -- skipped"
+                )
+                continue
+            # RSC flight strings escape a literal leading '$' by doubling
+            # it (this very block's price cells carry '$$1.09' for the
+            # rendered '$1.09'); any OTHER leading '$' is a protocol form,
+            # never published text ('$undefined' sentinel, '$NN'
+            # string-dedup reference) -- record the decoded literal, and
+            # skip wire artifacts loudly instead of accruing them as
+            # availability history.
+            if status.startswith("$$"):
+                status = status[1:]
+            elif status.startswith("$"):
+                partial_errors.append(
+                    f"availability: hub row {label!r}: statusText "
+                    f"{status!r} is an RSC protocol form, not published "
+                    "text -- skipped"
+                )
+                continue
+            detail = head.get("secondaryText")
+            if (
+                head.get("variant") != "text"
+                or not isinstance(label, str)
+                or not isinstance(detail, str)
+            ):
+                partial_errors.append(
+                    f"availability: hub row with status {status!r} lost "
+                    "its leading text identity cell -- not joinable, "
+                    "skipped"
+                )
+                continue
+            # statusText VERBATIM -- no enum fence; only "In stock" has
+            # ever been observed (24/24 cells, 2026-08-25) and a new value
+            # is signal, not an error. Prices in these cells are IGNORED.
+            status_rows.append(
+                {"label": label, "detail": detail, "status": status}
+            )
+    if not status_rows and not partial_errors:
+        raise RuntimeError(
+            "civo availability: Status-columned pricingTable holds zero "
+            "status-celled rows -- block emptied; refusing to record "
+            "silence as health"
+        )
+    return status_rows, partial_errors
+
+
+def annotate_availability(
+    observations: List[Dict[str, Any]], status_rows: List[Dict[str, str]]
+) -> List[str]:
+    """Join hub status rows onto /pricing observations by parsed
+    (gpu_count, chip token, memory GB); returns partial_errors.
+
+    Mutates ONLY the two extra availability keys on matched observations
+    -- never prices, never identity. Unmatched or conflicting status rows
+    land in partial_errors, never guessed onto a lookalike (live
+    2026-08-25 the hub's H200 row claims 80GB against /pricing's 141GB,
+    and H100 SXM/PCIe share one identity -- agreement annotates once,
+    disagreement refuses)."""
+    partial_errors: List[str] = []
+    by_key: Dict[Tuple[int, str, int], Dict[str, Any]] = {}
+    for row in status_rows:
+        key = _avail_key(row["detail"])
+        if key is None:
+            partial_errors.append(
+                f"availability: hub row {row['label']!r} "
+                f"({row['detail']!r}): cannot parse (gpu_count, chip, "
+                "memory GB) identity -- not joined"
+            )
+            continue
+        entry = by_key.setdefault(
+            key, {"labels": [], "detail": row["detail"], "statuses": set()}
+        )
+        entry["labels"].append(row["label"])
+        entry["statuses"].add(row["status"])
+    for key, entry in by_key.items():
+        labels = ", ".join(repr(label) for label in entry["labels"])
+        if len(entry["statuses"]) != 1:
+            partial_errors.append(
+                f"availability: hub rows {labels} share identity {key} "
+                f"but disagree on status {sorted(entry['statuses'])} -- "
+                "conflicting, not recorded"
+            )
+            continue
+        status = next(iter(entry["statuses"]))
+        matched = [o for o in observations if _obs_key(o) == key]
+        if not matched:
+            partial_errors.append(
+                f"availability: hub row(s) {labels} "
+                f"({entry['detail']!r}) matched zero /pricing rows on "
+                f"(gpu_count, chip, memory GB) {key} -- status not "
+                "recorded"
+            )
+            continue
+        for obs in matched:
+            extra = obs.setdefault("extra", {})
+            extra["availability_status"] = status
+            extra["availability_source"] = _AVAILABILITY_SOURCE
+    return partial_errors
 
 
 def _gpu_section(html: str) -> str:
@@ -290,6 +542,21 @@ def collect(
 ) -> Dict[str, Any]:
     body = fetch(URL, timeout=timeout)
     observations, partial_errors = parse_civo_pricing(body)
+    # Availability is fail-open at THIS boundary only: a marketing-hub
+    # fetch failure or reshape (the parse above/inside stays fail-closed)
+    # must never dark the /pricing price lane -- it lands in
+    # partial_errors and the cycle's prices still record.
+    try:
+        hub_body = fetch(AVAILABILITY_URL, timeout=timeout)
+        status_rows, avail_errors = parse_civo_availability(hub_body)
+        partial_errors.extend(avail_errors)
+        partial_errors.extend(
+            annotate_availability(observations, status_rows)
+        )
+    except Exception as exc:  # noqa: BLE001 -- price lane must not dark
+        partial_errors.append(
+            f"availability annotation failed (price lane unaffected): {exc}"
+        )
     return result(
         SOURCE_ID,
         method="html",

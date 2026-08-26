@@ -54,6 +54,21 @@ drift into silently lying):
     only); an unmapped label is skipped + counted, never guessed into a
     tier.
 
+Whole-book availability count (added 2026-08-25): after each slug's price
+pages, one extra GET with the server-side filter ``available=true&limit=1``
+records page.total as book_stats[slug]["available_total"] -- the exact
+count of available-flagged listings across the WHOLE book, past the 2-page
+truncation cap (verified live 2026-08-25: nvidia-b300 total 3 under
+available=true; openapi documents the ``available`` boolean query param
+and the nullable per-row field). The probe reuses parse_listings_page, so
+the catalog_status/price_unit/pagination pins hold for the count too. It
+is FAIL-OPEN BY RULING: a probe failure (or a probe body flunking the
+envelope pins) records available_total null plus a partial_errors note and
+must never fail the slug -- availability capture may not gate or alter
+price collection. The count is book-generation-scoped like everything else
+on this API: compare available_total/listings_total within one capture,
+never diff across captures.
+
 Per-slug failures land in partial_errors; the source raises only when no
 slug produced rows and at least one genuinely failed (result() itself
 covers the all-empty case). A slug with zero listings is a countable note,
@@ -71,11 +86,12 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from gpu_index.common.http import fetch
 from gpu_index.observatory.observation import DEFAULT_TIMEOUT, observation, result
 
-# Up to MAX_PAGES_PER_GPU * len(options.gpus) calls per capture; space them
-# out of politeness to an unauthenticated public API (vast drew a live 429
-# from a rapid-fire burst on 2026-08-22 — don't find out this API's limit
-# the same way). ~8s added for the current 10-slug config, trivially inside
-# the per-source deadline.
+# Up to (MAX_PAGES_PER_GPU + 1) * len(options.gpus) calls per capture (the
+# +1 is the per-slug available_total probe); space them out of politeness
+# to an unauthenticated public API (vast drew a live 429 from a rapid-fire
+# burst on 2026-08-22 — don't find out this API's limit the same way).
+# ~15s added for the current 10-slug config, trivially inside the
+# per-source deadline.
 REQUEST_SPACING_SECONDS = 0.5
 
 SOURCE_ID = "computepulse"
@@ -374,11 +390,25 @@ def _validated_options(
     return list(slugs), limit
 
 
+def _fetch_available_total(slug: str, timeout: float) -> int:
+    """Whole-book available-flagged count for one slug: page.total under the
+    server-side ``available=true`` filter (limit=1 -- only the envelope is
+    wanted; the single row is discarded). Runs through parse_listings_page
+    so the count inherits the catalog_status/price_unit/pagination pins.
+    Raises on any failure; the CALLER converts that into a fail-open
+    partial_errors note -- availability must never gate price collection."""
+    query = urllib.parse.urlencode({"gpu": slug, "available": "true", "limit": 1})
+    page = parse_listings_page(fetch(f"{URL_BASE}?{query}", timeout=timeout), slug)
+    return page["total"]
+
+
 def _fetch_slug_book(
     slug: str, limit: int, timeout: float
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, int]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, int], Optional[str]]:
     """One slug's recorded book: up to MAX_PAGES_PER_GPU price_asc pages,
-    deduped by listing id. Returns (observations, stats, skips)."""
+    deduped by listing id, plus the whole-book available_total probe.
+    Returns (observations, stats, skips, avail_error) -- avail_error is the
+    fail-open partial_errors note when the probe failed, else None."""
     observations: List[Dict[str, Any]] = []
     seen_ids: Set[str] = set()
     skips: Dict[str, int] = {}
@@ -422,14 +452,29 @@ def _fetch_slug_book(
         offset = next_offset
     if dups:
         skips["duplicate_listing_id"] = dups
+    # Whole-book availability count -- one extra spaced GET per slug,
+    # FAIL-OPEN: a broken probe records null + a note, never a slug failure
+    # (availability capture may not dark the price lane -- ruling).
+    avail_error: Optional[str] = None
+    time.sleep(REQUEST_SPACING_SECONDS)
+    try:
+        available_total: Optional[int] = _fetch_available_total(slug, timeout)
+    except Exception as exc:  # noqa: BLE001 -- fail-open by ruling; note carries the cause
+        available_total = None
+        avail_error = (
+            f"{slug}: available_total probe failed "
+            f"({type(exc).__name__}: {exc}) -- whole-book availability "
+            "count missing this capture; price rows unaffected"
+        )
     stats = {
         "listings_total": total,
+        "available_total": available_total,
         "pages_fetched": pages_fetched,
         "raw_rows": raw_rows,
         "rows_recorded": len(observations),
         "fetch_truncated": truncated,
     }
-    return observations, stats, skips
+    return observations, stats, skips, avail_error
 
 
 def collect(
@@ -444,17 +489,25 @@ def collect(
         try:
             if i > 0:
                 time.sleep(REQUEST_SPACING_SECONDS)
-            slug_rows, stats, skips = _fetch_slug_book(slug, limit, timeout)
+            slug_rows, stats, skips, avail_error = _fetch_slug_book(
+                slug, limit, timeout
+            )
         except Exception as exc:  # noqa: BLE001 -- one slug's feed must not hide the rest
             failures.append(f"{slug}: {type(exc).__name__}: {exc}")
             continue
         book_stats[slug] = stats
+        if avail_error is not None:
+            # Fail-open by ruling: the availability probe's failure is a
+            # note, never a slug failure.
+            partial.append(avail_error)
         # Per-slug one-liner (config-derived strings and counts only --
         # remote strings are never printed raw from this module).
+        avail = stats["available_total"]
         print(
             f"  computepulse {slug}: {stats['raw_rows']} rows over "
             f"{stats['pages_fetched']} page(s), recording "
             f"{stats['rows_recorded']} of {stats['listings_total']} listings"
+            + ("" if avail is None else f" ({avail} book-wide available)")
         )
         if skips:
             partial.append(

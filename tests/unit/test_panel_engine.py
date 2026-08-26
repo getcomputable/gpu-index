@@ -2058,3 +2058,106 @@ def test_precomputed_calc_params_path_is_identical_and_fenced():
             pending_currencies={},
             compiled_screens=screens,
         )
+
+
+# ------------------------------------------- availability disclosure
+
+
+def test_availability_verified_sources_validation():
+    cfg = _config()
+    cfg["calc"]["availability_verified_sources"] = ["vast", "lium"]
+    validate_panel_config(cfg)  # members -> accepted
+    _reject("non-member id", lambda c: c["calc"].update(
+        availability_verified_sources=["vast", "shadeform"]
+    ))
+    _reject("duplicate entries", lambda c: c["calc"].update(
+        availability_verified_sources=["vast", "vast"]
+    ))
+    _reject("non-empty source_id strings", lambda c: c["calc"].update(
+        availability_verified_sources=["vast", ""]
+    ))
+    _reject("non-empty source_id strings", lambda c: c["calc"].update(
+        availability_verified_sources="vast"
+    ))
+
+
+def test_availability_verified_share_is_a_disclosure_aggregate():
+    # bravo is verified and passes -> the share is EXACTLY bravo's
+    # unrounded renormalized weight (0.2 / 0.7); vast is verified but has
+    # no print this hour -> contributes nothing. The list is a CALC key
+    # and MUST ride calc_params (sorted, canonical bytes) so a retune is
+    # a versioned change and published-stamp recompute stays
+    # byte-deterministic (adversarial review).
+    cfg = _config()
+    cfg["calc"]["availability_verified_sources"] = ["vast", "bravo"]
+    payload = _compute(cfg, _golden_snapshot(), _state())
+    assert payload["index"]["availability_verified_weight_share"] == 0.285714
+    assert payload["calc_params"]["availability_verified_sources"] == [
+        "bravo",
+        "vast",
+    ]
+
+
+def test_availability_verified_share_sums_multiple_passers():
+    # Two verified passing members: the share is the SUM of their
+    # unrounded renormalized weights ((0.3 + 0.2) / 0.7) -- the shipped
+    # prod shape on every H panel (vast + lium both passing). A
+    # sum->max/single-pick mutant fails here (adversarial review).
+    cfg = _config()
+    cfg["calc"]["availability_verified_sources"] = ["alpha", "bravo"]
+    payload = _compute(cfg, _golden_snapshot(), _state())
+    assert payload["index"]["availability_verified_weight_share"] == 0.714286
+
+
+def test_availability_verified_share_excludes_held_out_members():
+    # bravo PRINTS but is HELD OUT (EUR print, no FX rate supplied): a
+    # held-out verified member priced nothing and must contribute
+    # nothing -- counting printed-but-not-passing members would overstate
+    # the disclosure in exactly the hours the fences fired (adversarial
+    # review mutant).
+    cfg = _config()
+    cfg["calc"]["availability_verified_sources"] = ["bravo"]
+    snapshot = _snapshot(
+        [
+            _entry("alpha", [_obs("H100", "H100 SXM", 2.4, machine_id="a1")]),
+            _entry(
+                "bravo",
+                [_obs("H100", "H100", usd=None, native=2.3, currency="EUR")],
+            ),
+            _entry("charlie", [_obs("H100", "H100 SXM5 80GB", 2.6)]),
+        ]
+    )
+    payload = _compute(cfg, snapshot, _state())
+    by_sid = {s["source_id"]: s for s in payload["sources"]}
+    assert by_sid["bravo"]["status"] != "ok"
+    assert payload["index"]["availability_verified_weight_share"] == 0.0
+
+
+def test_availability_verified_share_all_passers_is_exactly_one():
+    # Every passer verified -> exactly 1.0, never 1.000002: the share
+    # derives from the UNROUNDED weights, not the published rounded
+    # renormalized_weights (adversarial review: six 0.166667s sum past
+    # 1.0).
+    cfg = _config()
+    cfg["calc"]["availability_verified_sources"] = [
+        "alpha",
+        "bravo",
+        "charlie",
+    ]
+    payload = _compute(cfg, _golden_snapshot(), _state())
+    assert payload["index"]["availability_verified_weight_share"] == 1.0
+
+
+def test_availability_verified_share_zero_is_float_and_dark_absent():
+    # No configured list -> an honest FLOAT 0.0 on the wire (a bare JSON
+    # integer 0 would flip the field's wire type across observations).
+    payload = _compute(_config(), _golden_snapshot(), _state())
+    share = payload["index"]["availability_verified_weight_share"]
+    assert share == 0.0
+    assert isinstance(share, float)
+    assert '"availability_verified_weight_share": 0.0' in json.dumps(
+        payload["index"], indent=1
+    )
+    # Missed hour -> no index -> no share anywhere in the artifact.
+    missed = _compute(_config(), None, _state())
+    assert missed["index"] is None
