@@ -37,10 +37,9 @@ Shape verified live 2026-08-22:
     without price fields -- neither is a price surface; no rows are ever
     invented for them.
 
-Transport note: Cloudflare 403s the bare Python-urllib UA; the framework
-explicit framework UA in gpu_index.common.http is what this collector
-sends (this host is UA-sensitive), so no
-per-source headers are needed.
+Transport note: Cloudflare 403s the bare Python-urllib UA; the explicit
+framework UA in gpu_index.common.http is what this collector sends
+(this host is UA-sensitive), so no per-source headers are needed.
 """
 
 from __future__ import annotations
