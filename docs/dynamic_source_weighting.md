@@ -10,7 +10,7 @@ Every design rule below (R-*) is a deliberate, recorded choice pinned at
 mint time. Code:
 `src/gpu_index/index/weights.py`, integrated in
 `src/gpu_index/index/composite.py::compute_day`
-and the composite CLI. See also METHODOLOGY.md Part III.
+and the composite CLI. See also METHODOLOGY.md section 8.
 
 ---
 

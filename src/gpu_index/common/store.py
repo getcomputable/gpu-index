@@ -377,7 +377,7 @@ def upload_composite(
 
 # ------------------------------------------------------ panel composites
 #
-# The hourly panel lanes (METHODOLOGY.md, stage 4)
+# The hourly panel lanes (METHODOLOGY.md section 9.1)
 # reuse the composite keyspace discipline VERBATIM at observation
 # resolution: the key day segment is the fixed-width observation stamp
 # 'YYYY-MM-DDTHH' (zero-padded hour), so lexicographic order == the

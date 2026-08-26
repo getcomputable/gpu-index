@@ -57,7 +57,7 @@ VERDICT_DEGRADED = "degraded"
 # lookback, or the reproducibility claim for the WEIGHTS degrades.
 # Derivation: liveness weights are fitted over a 90-day history of
 # samples whose forward outcomes extend up to 2 days past each sample
-# (METHODOLOGY.md Part III), so re-deriving one day's weight vector from
+# (METHODOLOGY.md section 8), so re-deriving one day's weight vector from
 # published observations needs 90 + 2 = 92 days of published history
 # before it; 100 leaves slack for edge effects at the window boundaries.
 # Per-observation recompute-and-match is unaffected either way: it

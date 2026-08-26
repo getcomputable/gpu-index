@@ -25,7 +25,7 @@ METHODOLOGY.md; the R*/D* labels below are pinned rule names):
   - R4 eager compute: day D publishes at the first run where D's canonical
     16:00Z snapshot exists, or nearest-slot promotion once the canonical
     window has closed; published composites are never revised;
-  - the per-source outlier fence (METHODOLOGY.md §8): per-source mu±kσ over
+  - the per-source outlier fence (METHODOLOGY.md §6.4): per-source mu±kσ over
     the trailing 20 observations; a failing print is held out same-day but
     still enters the window (genuine repricings cost exactly one day).
     calc_v3: under ``filter_terms: recorded_currency`` the window and the
@@ -50,7 +50,7 @@ METHODOLOGY.md; the R*/D* labels below are pinned rule names):
     renormalized to sum 1.0; zero passers → an explicit basket_dark record.
     calc_v4: under ``composite_statistic: median_ci_votes`` (a PINNED wire
     value; a later terminology change renamed only code and docs) the day
-    instead prices as the median-of-votes aggregate (METHODOLOGY.md §9) —
+    instead prices as the median-of-votes aggregate (METHODOLOGY.md §7.1) —
     each passing source votes its weight at price and price +/- its
     standard deviation (its own trailing-window sigma in filter terms,
     floored at ``filter_sigma_floor`` — a frozen list price must not
@@ -71,7 +71,7 @@ B200 lane differences (all pinned in its config):
     passers than the floor publishes an explicit basket_dark artifact with
     index null — the same dark-day shape as zero passers;
   - per-source statistics via calc.source_statistics (the order-book rule,
-    METHODOLOGY.md §7: vast prices as the volume-weighted median of
+    METHODOLOGY.md §6.2: vast prices as the volume-weighted median of
     rentable on-demand per-GPU asks across verified US/CA hosts, never the
     lowest print);
   - calc.fx_lane "none" for USD-only baskets: no ECB machinery; a non-USD
@@ -434,7 +434,7 @@ def daily_source_observation(
 
 
 def us_ca_verified_host(verification: Any, region: Any) -> bool:
-    """The order-book population screen (METHODOLOGY.md §7): a VERIFIED host in a US/CA
+    """The order-book population screen (METHODOLOGY.md §6.2): a VERIFIED host in a US/CA
     region (country = the token after the region string's last comma —
     vast geolocations read 'Oregon, US', ', CA', 'Taiwan, TW').
 
@@ -474,7 +474,7 @@ def vast_vwm_verified_us_ca(
     sku: str,
     interruptible_tiers: Sequence[str],
 ) -> Optional[Dict[str, Any]]:
-    """The vast order-book statistic (METHODOLOGY.md §7) — specified, not
+    """The vast order-book statistic (METHODOLOGY.md §6.2) — specified, not
     inherited: the volume-weighted median of rentable on-demand asks across
     VERIFIED US/CA hosts, per-GPU, from the captured deduped book (cheapest
     offer per machine). The capture records the FULL verified-US/CA
@@ -629,7 +629,7 @@ def resolve_slot_prints(
 def filter_observation(
     chosen: Dict[str, Any], *, filter_terms: str = DEFAULT_FILTER_TERMS
 ) -> Optional[Tuple[float, str]]:
-    """The (price, currency) the §8 filter operates on for a print,
+    """The (price, currency) the §6.4 filter operates on for a print,
     or None when the print's filter input is UNTRUSTED (ruling D1).
 
     Under "recorded_currency" (calc_v3, R-native) an FX-converted
@@ -713,7 +713,7 @@ def advance_window(
     source_id: str,
     observation: Optional[Tuple[float, str]],
 ) -> None:
-    """Advance one source's filter state with today's print (§8 rule:
+    """Advance one source's filter state with today's print (§6.4 rule:
     accepted AND held-out prints both enter their window, so the filter
     adapts) under the D1 fail-closed currency rules:
 
@@ -770,10 +770,10 @@ def evaluate_filter(
     sigma_floor: float = DEFAULT_FILTER_SIGMA_FLOOR,
     currency: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """The §8 fence verdict for one print against ITS OWN trailing window.
+    """The §6.4 fence verdict for one print against ITS OWN trailing window.
 
     ``window_history`` holds every REAL prior print — accepted AND held-out
-    (§8 rule: a confirmed repricing enters the window so the filter
+    (§6.4 rule: a confirmed repricing enters the window so the filter
     adapts). Do NOT "fix" this by excluding held-out prints; that breaks
     the adaptation rule. σ is the POPULATION standard deviation (pstdev) —
     a pinned calc_v1 methodology choice.
@@ -1322,7 +1322,7 @@ def compute_day(
             ):
                 verdict["manual_verify"] = True
 
-    # Window rule (METHODOLOGY.md §8): every real print enters its source's window — accepted or
+    # Window rule (METHODOLOGY.md §6.4): every real print enters its source's window — accepted or
     # held out — so genuine repricings adapt within days. calc_v3 (D1):
     # window prints are in the filter's terms (the recorded currency);
     # untrusted prints and unconfirmed cross-currency prints never enter

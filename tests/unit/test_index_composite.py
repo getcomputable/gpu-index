@@ -308,7 +308,7 @@ def test_filter_accepts_within_band_and_holds_out_beyond():
 def test_filter_sigma_zero_repricing_costs_days_then_adapts():
     """Step-function list prices at sigma_floor 0 (legacy default): a big
     reprice from a constant series is held out (flagged sigma_zero), enters
-    the window per the §8 rule, and gets accepted once the window has
+    the window per the §6.4 rule, and gets accepted once the window has
     absorbed enough of the new level. calc_v3 retired the sigma_zero
     accept-iff-deviation==0 SPECIAL CASE; at floor 0 the general band test
     (deviation <= 0) is the identical rule, so legacy series replay

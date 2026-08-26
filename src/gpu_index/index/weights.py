@@ -3,7 +3,7 @@
 """Dynamic predictive source weighting for the index baskets.
 
 Implements the dynamic weighting methodology (docs/dynamic_source_weighting.md;
-METHODOLOGY.md Part III) for
+METHODOLOGY.md section 8) for
 annex_a_v0_2_calc_v5 / annex_a2_v0_3_calc_v4: each
 constituent's index weight derives from how well its recent EXCESS price
 movements predict subsequent movement in the rest of the basket —
@@ -525,7 +525,7 @@ def allocate_weights(
     weight_max: float,
     source_caps: Optional[Dict[str, float]] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    """Softmax allocation (METHODOLOGY.md §12) plus the risk-cap layer: softmax(gamma * Q)
+    """Softmax allocation (METHODOLOGY.md §8.6) plus the risk-cap layer: softmax(gamma * Q)
     shares over the eligible set, everyone floored at weight_min, the
     remainder distributed by share, then caps applied by iteratively
     capping violators at cap_i = min(weight_max, source_caps[i]) and
