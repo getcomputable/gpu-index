@@ -20,7 +20,7 @@ than the cap records its cheapest window with a loud partial_errors note
 (page.total keeps the full book size honest in book_stats).
 
 Identity and honesty pins (each exists because the live surface could
-drift into silently lying):
+drift into silently misreporting):
 
   - row attribution: a recorded row's own links.gpu URL must end with
     "/gpu/<queried slug>" -- the aggregator's structured claim that the row

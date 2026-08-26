@@ -87,8 +87,9 @@ failure or reshape can never dark the proven bare-metal price lane; the
 parse fences within each VM surface stay fail-closed and surface through
 the same partial_errors channel.
 
-Do NOT scrape the marketing /pricing page (a decoy: cards say "Contact for
-pricing"; $1.99 lives only in meta tags/FAQ prose), and do NOT use
+Do NOT scrape the marketing /pricing page (it carries no numeric prices;
+cards say "Contact for pricing"; $1.99 lives only in meta tags/FAQ
+prose), and do NOT use
 /api/v1/bare-metal/detailed-locations or /api/v1/billing/hourly-rate (both
 account-scoped).
 """
