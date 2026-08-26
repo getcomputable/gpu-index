@@ -2,7 +2,7 @@
   "schema_version": 1,
   "basket_id": "b300_annex_a_v0_2",
   "description": "B300 index basket — raw per-source price-point capture. The daily composite is computed separately by the compute CLI under calc.methodology_id below. Every parameter is config, not code; see METHODOLOGY.md.",
-  "methodology_doc": "docs/annex_a_b300_index_basket.md",
+  "methodology_doc": "Annex A (B300 index basket) is published with the contract documents and is not part of this repository; this config pins every parameter of the frozen series.",
   "target_sku": "B300",
   "capture_slots_utc": [4, 10, 16, 22],
   "canonical_slot_utc": 16,

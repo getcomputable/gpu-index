@@ -2,7 +2,7 @@
   "schema_version": 1,
   "basket_id": "b200_annex_a2_v0_3",
   "description": "B200 index basket — per-source price capture plus the daily composite, on the same machinery as the B300 lane (shared collectors and calculator code, separate keyspace and methodology). The composite publishes under calc.methodology_id below; USD only (calc.fx_lane none). Every parameter is config, not code; see METHODOLOGY.md.",
-  "methodology_doc": "docs/annex_a2_b200_index_basket.md",
+  "methodology_doc": "Annex A2 (B200 index basket) is published with the contract documents and is not part of this repository; this config pins every parameter of the frozen series.",
   "target_sku": "B200",
   "basket_role": "b200_basket",
   "capture_slots_utc": [4, 10, 16, 22],
