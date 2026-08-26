@@ -16,10 +16,11 @@ or a migration invariant:
     fx lane, and record stitching per the section 1 table;
   - prefixes never collide (pairwise distinct; nesting is refused by the
     loader itself);
-  - the migrated B300/B200 lanes carry the daily configs'
-    manual_exclusions VERBATIM (a published daily exclusion is a pinned
-    fact of the record; the hourly lane must hold out the same
-    (date, source) pairs, byte-for-byte);
+  - the migrated B300/B200 lanes hold out the daily configs'
+    manual_exclusions (date, source) pairs exactly, with every reason
+    set to the ONE public-safe neutral string (the panel lanes are
+    public-bound: reasons ride panel_calc_params into every published
+    artifact's bytes);
   - membership matches design section 8 (counts, weights, statistics,
     and the fail-closed variant-rule posture: every SXM seat carries a
     variant rule; broad panels carry none and no reject_tokens);
@@ -37,6 +38,14 @@ import pytest
 from gpu_index.index.panel_config import load_panel_config
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# The one public-safe manual-exclusion reason on public-bound panel
+# lanes -- byte-exact (reasons ride panel_calc_params into every
+# published artifact's bytes, so this exact string is the record).
+NEUTRAL_EXCLUSION_REASON = (
+    "capture defect: recorded print known wrong by rule; "
+    "true print not captured"
+)
 
 # The section 1 lane table, verbatim.
 LANES = {
@@ -225,21 +234,32 @@ def test_record_stitching_matches_the_design_table(configs):
             assert grids[0]["slot_hours_utc"] == list(range(24)), rel
 
 
-def test_migrated_lanes_carry_daily_manual_exclusions_verbatim(configs):
+def test_migrated_lanes_carry_daily_manual_exclusion_pairs_neutral_reasons(
+    configs,
+):
     """The daily lanes' manual_exclusions are pinned facts of published
-    history; the hourly mints must hold out the same (date, source)
-    pairs with the same reasons, BYTE-FOR-BYTE (an edited reason string
-    is an edited audit record)."""
+    history: the hourly mints must hold out the same (date, source)
+    pairs. The REASON strings ride panel_calc_params into every
+    published artifact's bytes on a PUBLIC-BOUND lane, so each panel
+    reason is the one neutral public-safe string, byte-exact --
+    internal audit narrative (ticket ids, host ids, recorded prices)
+    must never appear here."""
     for panel_rel, daily_rel in (
         ("config/index_panel_b300.json", "config/index_basket.json"),
         ("config/index_panel_b200.json", "config/index_basket_b200.json"),
     ):
         daily = json.loads((REPO_ROOT / daily_rel).read_text())
         panel = configs[panel_rel]
-        assert (
-            panel["calc"]["manual_exclusions"]
-            == daily["calc"]["manual_exclusions"]
-        ), panel_rel
+        panel_excl = panel["calc"]["manual_exclusions"]
+        daily_excl = daily["calc"]["manual_exclusions"]
+        assert [
+            (e["date"], e["source_id"]) for e in panel_excl
+        ] == [
+            (e["date"], e["source_id"]) for e in daily_excl
+        ], panel_rel
+        assert [e["reason"] for e in panel_excl] == [
+            NEUTRAL_EXCLUSION_REASON
+        ] * len(panel_excl), panel_rel
 
 
 def test_migrated_lane_statistics_per_rulings(configs):
