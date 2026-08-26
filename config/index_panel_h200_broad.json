@@ -141,7 +141,7 @@
         "H200",
         "H200_NVL"
       ],
-      "notes": "reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation, see calc.description)"
+      "notes": "reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the tier-screen reconciliation (methodology section 5), see calc.description)"
     },
     {
       "source_id": "hyperstack",
@@ -151,7 +151,7 @@
         "H200",
         "H200_NVL"
       ],
-      "notes": "reserved 'Starting from' floor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation)"
+      "notes": "reserved 'Starting from' floor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the tier-screen reconciliation (methodology section 5))"
     },
     {
       "source_id": "crusoe",

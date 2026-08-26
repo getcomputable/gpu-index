@@ -155,7 +155,7 @@
         "H100_PCIE",
         "H100_NVL"
       ],
-      "notes": "reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation, see calc.description)"
+      "notes": "reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the tier-screen reconciliation (methodology section 5), see calc.description)"
     },
     {
       "source_id": "hyperstack",
@@ -166,7 +166,7 @@
         "H100_PCIE",
         "H100_NVL"
       ],
-      "notes": "broad print is its unqualified 'NVIDIA H100' row; reserved 'Starting from' floor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation)"
+      "notes": "broad print is its unqualified 'NVIDIA H100' row; reserved 'Starting from' floor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the tier-screen reconciliation (methodology section 5))"
     },
     {
       "source_id": "crusoe",
@@ -271,7 +271,7 @@
         "H100_PCIE",
         "H100_NVL"
       ],
-      "notes": "its monthly-commit rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the section 15 reconciliation, see calc.description); the on-demand rows print"
+      "notes": "its monthly-commit rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the tier-screen reconciliation (methodology section 5), see calc.description); the on-demand rows print"
     },
     {
       "source_id": "ovh",
