@@ -7,8 +7,9 @@ public HTTPS front, or S3) and every read digest-verifies before
 returning. The CLI is the public face ./reproduce execs by default:
 per observation it prints recomputed vs published with MATCH/MISMATCH
 and the file digest verdict; exit 0 all-match, 1 any mismatch or digest
-FAIL, 2 nothing to verify; withheld-degraded observations get a distinct
-message without failing the run.
+FAIL, 2 could not verify (nothing published for the request, or the
+record source is unreachable); withheld-degraded observations get a
+distinct message without failing the run.
 
 The CLI is loaded via importlib (tests/unit is not a package), the same
 pattern the panel verify CLI tests use.
@@ -197,6 +198,66 @@ def test_cli_withheld_degrades_with_distinct_message_and_exit_zero(
     assert "NOTE:" in out
     assert "0 MISMATCH" in out
     assert " MISMATCH digest OK" not in out
+
+
+def test_cli_unreachable_front_exits_two_with_one_actionable_line(
+    record_env, monkeypatch, cli, capsys
+):
+    # An unreachable record source must be "could not verify" (exit 2)
+    # with an actionable message -- never a traceback, and never exit 0
+    # having verified nothing (the F1 fail-loudly ruling).
+    class _DeadFrontReader:
+        def describe(self):
+            return "public HTTPS front https://data.getcomputable.com"
+
+        def read_day(self, date):
+            raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(
+        cli, "PublishedRecordReader", lambda *a, **k: _DeadFrontReader()
+    )
+    assert _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25") == 2
+    err = capsys.readouterr().err
+    assert "could not verify" in err
+    assert "unreachable" in err
+    assert "GPU_INDEX_PUBLIC_BASE_URL" in err
+    assert "GPU_INDEX_DATA_DIR" in err
+    assert "Traceback" not in err
+
+
+def test_cli_broken_front_non_200_exits_two_not_a_traceback(
+    record_env, monkeypatch, cli, capsys
+):
+    from gpu_index.common.bucket import BucketPublishError
+
+    class _BrokenFrontReader:
+        def describe(self):
+            return "public HTTPS front https://data.getcomputable.com"
+
+        def read_day(self, date):
+            raise BucketPublishError(
+                "public read backend: GET .../25.json returned HTTP 503"
+            )
+
+    monkeypatch.setattr(
+        cli, "PublishedRecordReader", lambda *a, **k: _BrokenFrontReader()
+    )
+    assert _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25") == 2
+    err = capsys.readouterr().err
+    assert "could not verify" in err
+    assert "HTTP 503" in err
+
+
+def test_cli_conflicting_backend_env_exits_two(monkeypatch, cli, capsys):
+    # Two read backends configured at once is a config refusal in the
+    # transport; the CLI turns it into exit 2, not a traceback.
+    monkeypatch.setenv(
+        "GPU_INDEX_PUBLIC_BASE_URL", "https://record.example.com/cgi"
+    )
+    monkeypatch.setenv("GPU_INDEX_S3_ENDPOINT", "https://s3.example.com")
+    assert _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25") == 2
+    err = capsys.readouterr().err
+    assert "mutually exclusive" in err
 
 
 def test_cli_missing_day_file_exits_two_pointing_at_producer(

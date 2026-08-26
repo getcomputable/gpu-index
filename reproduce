@@ -10,22 +10,26 @@
 #   ./reproduce --frozen <b300|b200>  <YYYY-MM-DD>
 #
 # Default: the PUBLISHED record (the public projection: observation day
-# files under observations/YYYY/MM/DD.json). When one is reachable -- a
-# local downloaded copy under GPU_INDEX_DATA_DIR (default ./data), or
-# the public HTTPS front via GPU_INDEX_PUBLIC_BASE_URL -- the run is a
-# recompute-and-match (scripts/verify_published_record.py): every file's
-# envelope digest is verified, and each observation's index value and
-# stability band are recomputed from the published receipts and matched
-# exactly. Exit 0 all-match / 1 any mismatch or digest FAIL; withheld
-# sources degrade an observation to digest-only with a distinct message.
+# files under observations/YYYY/MM/DD.json) -- a recompute-and-match run
+# (scripts/verify_published_record.py): every file's envelope digest is
+# verified, and each observation's index value and stability band are
+# recomputed from the published receipts and matched exactly. The record
+# is read from a local downloaded copy under GPU_INDEX_DATA_DIR (default
+# ./data) when it holds the requested day; otherwise from the public
+# HTTPS front -- GPU_INDEX_PUBLIC_BASE_URL when set, defaulting to the
+# official record host https://data.getcomputable.com. Exit 0 all-match /
+# 1 any mismatch or digest FAIL / 2 could not verify (front unreachable,
+# or no published artifacts for the date) -- the default NEVER exits 0
+# without verifying something; withheld sources degrade an observation
+# to digest-only with a distinct message.
 #
-# When no published record is reachable, and always under --producer,
-# the run replays the PRIVATE producer record instead (internal ops:
-# the panel engine, scripts/compute_panel_index.py; h100 -> h100_sxm,
-# h200 -> h200_sxm, b300, b200). There, an observation already present
-# in the local producer record auto-routes to --verify-published (a
-# byte-for-byte recompute against the stored artifact) and anything
-# unpublished derives dry-run; nothing is written either way.
+# Under --producer, the run replays the PRIVATE producer record instead
+# (internal ops: the panel engine, scripts/compute_panel_index.py;
+# h100 -> h100_sxm, h200 -> h200_sxm, b300, b200). There, an observation
+# already present in the local producer record auto-routes to
+# --verify-published (a byte-for-byte recompute against the stored
+# artifact) and anything unpublished derives dry-run; nothing is written
+# either way.
 #
 # --lane runs any configured panel lane by its panel_id, including the
 # broad lanes (h100_broad, h200_broad), which exist but are not public
@@ -40,12 +44,12 @@ usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
        reproduce --lane <panel_id> <YYYY-MM-DD[THH]>
        reproduce --frozen <b300|b200> <YYYY-MM-DD>
 
-  <sku>             public SKU. Defaults to verifying the PUBLISHED
-                    record (recompute-and-match) when one is reachable
-                    (a local copy under GPU_INDEX_DATA_DIR, or
-                    GPU_INDEX_PUBLIC_BASE_URL); otherwise replays the
-                    producer record (h100 -> h100_sxm, h200 -> h200_sxm,
-                    b300, b200)
+  <sku>             public SKU. Verifies the PUBLISHED record
+                    (recompute-and-match): a local copy under
+                    GPU_INDEX_DATA_DIR when it holds the requested day,
+                    else the public front (GPU_INDEX_PUBLIC_BASE_URL,
+                    default https://data.getcomputable.com). Exit 0
+                    all-match, 1 mismatch/digest FAIL, 2 could not verify
   --producer        force the internal producer-record replay/verify
   --lane <panel_id> run any configured panel lane, e.g. h100_broad or
                     h200_broad (configured lanes that are not public SKUs)
@@ -120,17 +124,23 @@ else
     *) echo "unknown sku '$1' (expected h100, h200, b300, or b200; other lanes run via --lane <panel_id>)" >&2; exit 2 ;;
   esac
 
-  # Default: the PUBLISHED record (recompute-and-match), when reachable.
-  # A configured public front is intent; a local copy is probed by the
-  # requested day's file. --producer forces the internal replay below.
+  # Default: the PUBLISHED record (recompute-and-match), always. A local
+  # copy is probed by the requested day's file; a configured public front
+  # is intent; with neither, the official record host is the default, so
+  # a clean clone verifies the live record out of the box. The verifier
+  # exits 2 with an actionable message when nothing is verifiable -- the
+  # default never falls through to the producer replay silently (that
+  # replay verifies nothing published; it is reachable only via the
+  # explicit --producer flag, which forces the internal replay below).
   if [ "$PRODUCER" -eq 0 ]; then
     DAY=${DATE%%T*}
     DAY_FILE="$DATA_DIR/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
-    if [ -n "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] || [ -f "$DAY_FILE" ]; then
-      PUB_SKU=$(printf '%s' "$ARG" | tr '[:lower:]' '[:upper:]')
-      exec "$PY" "$ROOT/scripts/verify_published_record.py" \
-        --sku "$PUB_SKU" --date "$DATE"
+    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ]; then
+      export GPU_INDEX_PUBLIC_BASE_URL="https://data.getcomputable.com"
     fi
+    PUB_SKU=$(printf '%s' "$ARG" | tr '[:lower:]' '[:upper:]')
+    exec "$PY" "$ROOT/scripts/verify_published_record.py" \
+      --sku "$PUB_SKU" --date "$DATE"
   fi
 fi
 

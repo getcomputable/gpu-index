@@ -2,18 +2,20 @@
 # Copyright 2026 Computable
 """./reproduce routing: published record first, producer lanes behind it.
 
-The launch promise is `./reproduce h100 <date>`. The DEFAULT consumes
-the PUBLISHED record when one is reachable (a local copy holding the
-requested day file, or GPU_INDEX_PUBLIC_BASE_URL), routing to the
-recompute-and-match verifier (verify_published_record.py). Otherwise,
-and always under --producer, the public SKU maps to its live hourly
-panel lane: h100 -> h100_sxm, h200 -> h200_sxm, b300 -> b300,
-b200 -> b200, routed to the PANEL engine (compute_panel_index.py).
-A date without an hour covers the whole UTC day; with THH it targets one
-observation; anything already in the local producer record auto-routes
-to --verify-published. The broad lanes exist but are NOT public SKUs and
-require the explicit --lane flag; --frozen keeps the retired daily-lane
-behavior.
+The launch promise is `./reproduce h100 <date>`. The DEFAULT always
+consumes the PUBLISHED record, routing to the recompute-and-match
+verifier (verify_published_record.py): a local copy holding the
+requested day file, else the public front -- GPU_INDEX_PUBLIC_BASE_URL
+when set, defaulting to the official record host
+https://data.getcomputable.com -- so a clean clone with no env verifies
+the live record instead of silently replaying nothing. Only under
+--producer does the public SKU map to its live hourly panel lane:
+h100 -> h100_sxm, h200 -> h200_sxm, b300 -> b300, b200 -> b200, routed
+to the PANEL engine (compute_panel_index.py). A date without an hour
+covers the whole UTC day; with THH it targets one observation; anything
+already in the local producer record auto-routes to --verify-published.
+The broad lanes exist but are NOT public SKUs and require the explicit
+--lane flag; --frozen keeps the retired daily-lane behavior.
 
 These tests pin the ROUTING, not the engine (the engine's own suites do
 that): PYTHON is pointed at a shim that passes `-c` config reads through
@@ -43,10 +45,13 @@ def _lane_meta(config_name: str) -> tuple[str, str]:
 
 @pytest.fixture()
 def shim(tmp_path) -> Path:
+    # SHIM: pins the routed argv; SHIMENV: pins the public-front env the
+    # routed process would see (empty = local record copy / producer).
     path = tmp_path / "python-shim"
     path.write_text(
         "#!/usr/bin/env bash\n"
         'if [ "$1" = "-c" ]; then exec /usr/bin/env python3 "$@"; fi\n'
+        "printf 'SHIMENV:%s\\n' \"${GPU_INDEX_PUBLIC_BASE_URL:-}\"\n"
         "printf 'SHIM:%s\\n' \"$*\"\n"
     )
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -84,6 +89,15 @@ def _shim_lines(result) -> list:
     ]
 
 
+def _shim_env(result) -> str:
+    (line,) = [
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith("SHIMENV:")
+    ]
+    return line.removeprefix("SHIMENV:")
+
+
 def _publish(data_dir: Path, config_name: str, stamp: str) -> None:
     prefix, methodology = _lane_meta(config_name)
     artifact = data_dir / prefix / "composites" / methodology / f"{stamp}.json"
@@ -101,6 +115,20 @@ def _publish_public_day(data_dir: Path, date: str) -> None:
     target.write_text("{}\n")
 
 
+def test_default_with_no_env_verifies_against_the_official_front(
+    shim, data_dir
+):
+    # THE flagship command: a clean clone, no env, empty data dir must
+    # verify the live published record via the official host -- never
+    # fall through to the producer replay having verified nothing.
+    result = _run(shim, data_dir, "h100", "2026-08-24")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert "--sku H100 --date 2026-08-24" in line
+    assert _shim_env(result) == "https://data.getcomputable.com"
+
+
 def test_local_published_day_routes_to_the_published_verifier(
     shim, data_dir
 ):
@@ -110,11 +138,14 @@ def test_local_published_day_routes_to_the_published_verifier(
     (line,) = _shim_lines(result)
     assert "verify_published_record.py" in line
     assert "--sku H100 --date 2026-08-25T14" in line
+    # A local copy holding the day keeps the local backend: the official
+    # front is a fallback, not an override of the downloaded record.
+    assert _shim_env(result) == ""
 
 
 def test_public_base_url_routes_to_the_published_verifier(shim, data_dir):
     # A configured public front is intent: published mode even with an
-    # empty local data dir.
+    # empty local data dir, and the operator's URL wins over the default.
     result = _run(
         shim,
         data_dir,
@@ -126,6 +157,7 @@ def test_public_base_url_routes_to_the_published_verifier(shim, data_dir):
     (line,) = _shim_lines(result)
     assert "verify_published_record.py" in line
     assert "--sku B200 --date 2026-08-20" in line
+    assert _shim_env(result) == "https://record.example.com/cgi"
 
 
 def test_producer_flag_forces_the_internal_replay(shim, data_dir):
@@ -140,16 +172,18 @@ def test_producer_flag_forces_the_internal_replay(shim, data_dir):
     assert "--observation 2026-08-24T05 --dry-run" in line
 
 
-def test_published_day_for_another_date_does_not_capture_the_run(
+def test_published_day_for_another_date_falls_to_the_official_front(
     shim, data_dir
 ):
-    # The probe is day-specific: a published copy of some OTHER day must
-    # not route this date away from the producer replay.
+    # The probe is day-specific: a local copy of some OTHER day does not
+    # cover this date, so the run verifies via the public front instead
+    # (default host; still the published verifier, never the producer).
     _publish_public_day(data_dir, "2026-08-25")
     result = _run(shim, data_dir, "h100", "2026-08-24T05")
     assert result.returncode == 0, result.stderr
     (line,) = _shim_lines(result)
-    assert "compute_panel_index.py" in line
+    assert "verify_published_record.py" in line
+    assert _shim_env(result) == "https://data.getcomputable.com"
 
 
 def test_producer_flag_still_refuses_unknown_skus(shim, data_dir):
@@ -158,11 +192,11 @@ def test_producer_flag_still_refuses_unknown_skus(shim, data_dir):
     assert "unknown sku 'h300'" in result.stderr
 
 
-# ------------------------------------------------------ sku -> lane map
+# ------------------------------------------- sku -> lane map (producer)
 
 
 def test_h100_resolves_to_h100_sxm_panel_lane(shim, data_dir):
-    result = _run(shim, data_dir, "h100", "2026-08-24T05")
+    result = _run(shim, data_dir, "--producer", "h100", "2026-08-24T05")
     assert result.returncode == 0, result.stderr
     (line,) = _shim_lines(result)
     assert "compute_panel_index.py" in line
@@ -176,7 +210,7 @@ def test_h200_b300_b200_resolve_to_their_panel_lanes(shim, data_dir):
         ("b300", "index_panel_b300.json"),
         ("b200", "index_panel_b200.json"),
     ):
-        result = _run(shim, data_dir, sku, "2026-08-24T05")
+        result = _run(shim, data_dir, "--producer", sku, "2026-08-24T05")
         assert result.returncode == 0, result.stderr
         (line,) = _shim_lines(result)
         assert "compute_panel_index.py" in line
@@ -189,12 +223,12 @@ def test_unknown_sku_refuses(shim, data_dir):
     assert "unknown sku 'h300'" in result.stderr
 
 
-# ------------------------------------------- published -> verification
+# -------------------------------- published -> verification (producer)
 
 
 def test_published_observation_auto_routes_to_verify(shim, data_dir):
     _publish(data_dir, "index_panel_b200.json", "2026-08-16T22")
-    result = _run(shim, data_dir, "b200", "2026-08-16T22")
+    result = _run(shim, data_dir, "--producer", "b200", "2026-08-16T22")
     assert result.returncode == 0, result.stderr
     (line,) = _shim_lines(result)
     assert "compute_panel_index.py" in line
@@ -204,7 +238,7 @@ def test_published_observation_auto_routes_to_verify(shim, data_dir):
 def test_day_mode_verifies_published_then_derives_the_rest(shim, data_dir):
     _publish(data_dir, "index_panel_h200_sxm.json", "2026-08-20T03")
     _publish(data_dir, "index_panel_h200_sxm.json", "2026-08-20T07")
-    result = _run(shim, data_dir, "h200", "2026-08-20")
+    result = _run(shim, data_dir, "--producer", "h200", "2026-08-20")
     assert result.returncode == 0, result.stderr
     lines = _shim_lines(result)
     assert len(lines) == 3
@@ -214,7 +248,7 @@ def test_day_mode_verifies_published_then_derives_the_rest(shim, data_dir):
 
 
 def test_day_mode_on_a_clean_tree_is_one_derive_pass(shim, data_dir):
-    result = _run(shim, data_dir, "h100", "2026-08-24")
+    result = _run(shim, data_dir, "--producer", "h100", "2026-08-24")
     assert result.returncode == 0, result.stderr
     (line,) = _shim_lines(result)
     assert "index_panel_h100_sxm.json" in line
@@ -222,7 +256,7 @@ def test_day_mode_on_a_clean_tree_is_one_derive_pass(shim, data_dir):
 
 
 def test_day_mode_future_date_refuses(shim, data_dir):
-    result = _run(shim, data_dir, "h100", "2099-01-01")
+    result = _run(shim, data_dir, "--producer", "h100", "2099-01-01")
     assert result.returncode == 1
     assert "in the future" in result.stderr
 
