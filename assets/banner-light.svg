@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 160" width="960" height="160" role="img" aria-labelledby="title">
+  <!-- Typographic placeholder wordmark. To rebrand, swap this file and
+       banner-dark.svg in place; nothing else references them. -->
+  <title id="title">Computable GPU Index</title>
+  <text x="480" y="78" text-anchor="middle"
+        font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="46" letter-spacing="0.25" fill="#1A2420"><tspan font-weight="500">Computable</tspan><tspan font-weight="600"> GPU Index</tspan></text>
+  <polyline points="330,116 373,110 416,113 459,105 502,109 545,100 588,103 630,95"
+            fill="none" stroke="#0E6B4F" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+</svg>
