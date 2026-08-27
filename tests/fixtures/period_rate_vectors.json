@@ -4403,5 +4403,5 @@
     }
   ],
   "fill_lookback_hours": 72,
-  "note": "Shared section-6.1 fill/coverage/period-rate vectors. Statuses are [stamp, value, cause] triples; a scheduled stamp absent from the list is 'unpublished'. Expectations are HAND-COMPUTED from docs/index_methodology.md section 6.1 -- never regenerated from an implementation. The same file is mirrored in computable (packages/core panel-coverage tests); change it in both repos or neither."
+  "note": "Shared fill/coverage/period-rate vectors. Statuses are [stamp, value, cause] triples; a scheduled stamp absent from the list is 'unpublished'. Expectations are HAND-COMPUTED from the methodology's fill and coverage rules -- never regenerated from an implementation. A private downstream consumer pins the same digest over its own copy; change this file on both sides or neither."
 }

@@ -9,10 +9,10 @@ window-scales-with-gap, the 72-stamp cap, filled-hours-only windows that
 skip earlier holes and never treat a derived fill as evidence, the
 genesis drop, per-stamp cause attribution, exact-threshold band edges in
 integer arithmetic, the era-boundary window, and a whole-period gap
-resolving from before the period). The same JSON is mirrored into
-computable's packages/core coverage tests, so the two implementations
-can only drift by failing one of these suites -- change the file in both
-repos or neither.
+resolving from before the period). A private downstream consumer keeps
+its own copy of the same vectors, so the two implementations can only
+drift by failing one of these suites -- change the file in both or
+neither.
 
 Beyond the vectors: classify_artifact's fail-closed shape rules (an
 artifact violating its own invariants refuses, NaN/Infinity never reach
@@ -46,11 +46,11 @@ from gpu_index.index.period_rate import (
     period_report,
 )
 
-# Cross-repo tripwire: computable pins the SAME digest over its verbatim
-# copy (packages/core/src/panel-coverage-vectors.json), so either repo
-# editing its file alone fails its own suite and forces the paired
-# update. Changing the vectors means updating the digest in BOTH repos.
-VECTORS_SHA256 = "7a1f819f9d109cb53a8a0a3c92c20ce6b994b21a5f7c3c7a62ce083aee3e533f"
+# Cross-copy tripwire: a private downstream consumer pins the same digest
+# over its own copy, so either side editing its file alone fails its own
+# suite and forces the paired update. Changing the vectors means updating
+# the digest on both sides.
+VECTORS_SHA256 = "cb3ba79aaeed6abfd133242b202b6cbbd1fdd0b79727ac691465bd8f2142f29d"
 
 _VECTORS_PATH = (
     Path(__file__).resolve().parents[1] / "fixtures" / "period_rate_vectors.json"
