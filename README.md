@@ -1,11 +1,10 @@
-<!-- Wordmark banner: a deliberate typographic placeholder. To rebrand,
-     swap assets/banner-light.svg and assets/banner-dark.svg in place. -->
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
-    <img src="assets/banner-light.svg" alt="Computable GPU Index" width="600">
-  </picture>
-</p>
+<!-- Wordmark banner: a deliberate typographic placeholder, one file for
+     every theme. To rebrand, swap assets/banner.svg in place. -->
+<div align="center">
+
+![Computable GPU Index](assets/banner.svg)
+
+</div>
 
 <p align="center">
   <a href="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml"><img src="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
