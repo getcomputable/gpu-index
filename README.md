@@ -1,8 +1,10 @@
 <!-- Wordmark banner: a deliberate typographic placeholder. To rebrand,
      swap assets/banner-light.svg and assets/banner-dark.svg in place. -->
 <p align="center">
-  <img src="assets/banner-light.svg#gh-light-mode-only" alt="Computable GPU Index" width="600">
-  <img src="assets/banner-dark.svg#gh-dark-mode-only" alt="Computable GPU Index" width="600">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+    <img src="assets/banner-light.svg" alt="Computable GPU Index" width="600">
+  </picture>
 </p>
 
 <p align="center">
