@@ -89,9 +89,9 @@ def test_allocate_global_cap_redistributes_proportionally():
 
 
 def test_allocate_per_source_risk_cap_binds_below_global():
-    """The panel's blocking finding made mechanical: a thin-book source
-    with a negotiated haircut cannot ride predictiveness past its risk
-    cap, however dominant its score."""
+    """A thin-book source carrying its own lower per-source risk cap
+    cannot ride predictiveness past that cap, however dominant its
+    score."""
     weights, flags = allocate_weights(
         {"vast": 1.0, "b": 0.0, "c": 0.0, "d": 0.0, "e": 0.0},
         gamma=4.0,

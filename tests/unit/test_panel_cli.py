@@ -721,9 +721,9 @@ def test_cli_target_guards_and_publish_in_order(monkeypatch, capsys, tmp_path):
 def test_cli_malformed_observation_stamps_refuse_loudly(
     monkeypatch, capsys, tmp_path
 ):
-    """Testing-specialist fix: '2026-08-12Txx' (unparseable hour) and
-    '2026-13-01T05' (unparseable date) must print the refusal and exit 1
-    -- never traceback out of main() on an uncaught ValueError."""
+    """'2026-08-12Txx' (unparseable hour) and '2026-13-01T05'
+    (unparseable date) must print the refusal and exit 1 -- never
+    traceback out of main() on an uncaught ValueError."""
     cfg_path = _write_config(tmp_path)
     client = FakeS3()
     for bad in ("2026-08-12Txx", "2026-13-01T05"):

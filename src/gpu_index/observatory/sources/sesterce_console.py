@@ -3,12 +3,12 @@
 """Sesterce console -- cloud.sesterce.com/compute, the embedded live-offers
 book (sibling surface to sesterce.py's homepage floor table).
 
-One plain GET of the console's public marketplace page (no auth, no JS, no
-special headers; cache-control no-store, rendered fresh per request on
-Vercel -- unlike the homepage's ~5-min ISR, so the two surfaces can
-legitimately disagree within minutes). The page server-renders the FULL
-/gpu-cloud/instances/offers response -- the same data the key-gated API
-documented at docs.sesterce.com would return -- into its Next.js RSC flight
+One plain GET of the console's public marketplace page, read anonymously
+(no credentials, no JS, no special headers; cache-control no-store,
+rendered fresh per request on Vercel -- unlike the homepage's ~5-min ISR,
+so the two surfaces can legitimately disagree within minutes). The page
+server-renders the full /gpu-cloud/instances/offers response into its
+Next.js RSC flight
 payload (verified live 2026-08-25: 82 offers across 21 gpuNames, 253
 per-offer region entries of which 110 available=true). Each offer is a
 rentable config (chip x gpuCount x deploymentType) carrying an

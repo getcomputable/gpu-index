@@ -330,7 +330,9 @@ def main() -> int:
             "job": "github-actions" if _in_actions() else os.environ.get(
                 "BASKET_CAPTURER_JOB", "manual"
             ),
-            "hostname": os.environ.get("HOSTNAME"),
+            # The capture host is deliberately not recorded; the field
+            # stays for snapshot shape.
+            "hostname": None,
             "git_sha": os.environ.get("GITHUB_SHA"),
             "version": CAPTURER_VERSION,
         },

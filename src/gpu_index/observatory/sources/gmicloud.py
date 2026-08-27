@@ -3,10 +3,9 @@
 """GMI Cloud -- /en/pricing server-rendered GPU cards, list-floor prices.
 
 Page shape verified live 2026-08-22 (~101KB, single GET, no auth, no
-pagination; transport note: the default python-urllib UA is 403'd by this
-host while the framework's explicit UA (gpu_index.common.http) passes --
-the shared fetch
-already sends it). Five 'NVIDIA <chip>' h3 cards each carry a 'from $X.XX'
+pagination; the collector sends the project User-Agent defined in
+gpu_index.common.http).
+Five 'NVIDIA <chip>' h3 cards each carry a 'from $X.XX'
 span immediately followed by a '/GPU-hour' unit span; that three-anchor
 adjacency (NVIDIA h3 + 'from $' figure + unit span) is the ONLY price pin
 because '$2.00' appears 9x in the bytes (meta description, og/twitter
@@ -42,8 +41,8 @@ Semantics:
     'AVAILABLE NOW' / 'Limited Availability') rides in extra.
 
 Region capacity metadata (added 2026-08-25): the console API's public IDC
-roster (IDC_URL, no auth, no params, ~3.1KB; the console host has no UA
-fence, unlike www) rides in book_stats as counts + exceptions. Live 200
+roster (IDC_URL, no auth, no params, ~3.1KB) rides in book_stats as
+counts + exceptions. Live 200
 JSON 2026-08-25: 27 entries -- one 'global' pseudo-entry plus 26 real
 datacenters (15x Iowa, 2x Denver, Ohio, Oregon, 3x TW, 2x SG, 1x JP), all
 "status":"available". GMI's own API docs (api-reference/idcs/
@@ -60,9 +59,9 @@ event, not automatically a market signal. Semantics fences:
     can shrink/grow with zero capacity meaning -- counts are recorded,
     roster churn is never an error;
   - region-level only: an IDC going 'full' does not say which GPU model
-    is exhausted (chip x region state is key-gated -- not built); no join
-    to price rows exists today (page prices are region='global'); idcId
-    is the forward join key if products endpoints are ever unlocked.
+    is exhausted (no chip x region state is published on this surface);
+    no join to price rows exists today (page prices are region='global');
+    idcId is the forward join key if a chip-level surface ever publishes.
 Fail-SOFT by ruling: any IDC fetch/parse failure appends ONE partial_error
 and drops book_stats -- the price rows are this collector's product and
 must never be darkened by metadata; parse fences below stay fail-closed

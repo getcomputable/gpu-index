@@ -2,18 +2,20 @@
 # Copyright 2026 Computable
 """Observatory voltagepark collector -- fixture pins (live 2026-08-22/25).
 
-House style per the runpod exemplar: (1) parse the recorded fixture (REAL
-bytes from the live locations API, captured 2026-08-22 and re-verified
-byte-identical live 2026-08-25 -- one h100-sxm5-80gb row, both availability
-counts genuinely 0 while prices stayed published), (2) pin exact prints for
+House style per the runpod exemplar: (1) parse the recorded fixture (from
+the live locations API, captured 2026-08-22 and re-verified live
+2026-08-25 -- one h100-sxm5-80gb row, both availability
+counts genuinely 0 while prices stayed published; the location UUID is a
+SYNTHETIC stand-in, prices and field shapes are as recorded), (2) pin exact prints for
 the known rows incl. this source's edge cases, (3) prove the framework
 normalization maps this source's real label, plus the fail-closed pins:
 pagination activation, total-count mismatch, renamed price fields (with
 their numeric count-field lookalikes still present), and the
 string-vs-number price type flip the app schema allows.
 
-Availability fixtures (availability accrual), both REAL bytes captured live
-2026-08-25, untrimmed (the payloads are tiny):
+Availability fixtures (availability accrual), both captured live
+2026-08-25, untrimmed (the payloads are tiny). Location and preset UUIDs
+are SYNTHETIC stand-ins; prices, field shapes and counts are as recorded:
 
   - instant_deploy_presets.json -- all 4 published H100 VM presets
     (1x/2x/4x/8x; edge rows kept: the 8-GPU "15.120000" and 1-GPU
@@ -297,9 +299,9 @@ def test_vm_locations_rows_ride_verbatim_when_stock_lands():
     internal shape record verbatim -- the accrual must capture the first
     nonzero print, not fence it away."""
     row = {
-        "id": "a3111bd4-550a-47d0-838a-0a52bff2ae3f",
+        "id": "00000000-0000-4000-8000-000000000027",
         "available_presets": [
-            {"id": "404645e3-4677-4f48-b023-15baaa6621e1", "available_vms": 3}
+            {"id": "00000000-0000-4000-8000-000000000024", "available_vms": 3}
         ],
     }
     body = _vm_locations_body(

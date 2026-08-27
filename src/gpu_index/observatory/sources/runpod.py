@@ -59,13 +59,11 @@ remain the fail-closed core). New per-observation extra fields:
     chip has no matrix row (or the whole block failed), which must never be
     conflated with 0.
 
-graphql-spec.runpod.io claims Bearer auth is required for every query; live
-probes contradict it (everything above answers unauthenticated), so RunPod
-could legitimately close the gap any day -- by design that degrades to
-partial_errors on the stock subtrees while the price core keeps printing.
-The schema's numeric inventory fields (rentedCount, totalCount,
-availableGpuCounts, ...) are null on every unauthenticated combination
-probed; keyed collection would be a maintainer decision and is not built.
+The collector reads RunPod's public GraphQL endpoint anonymously, with no
+credentials. Any subtree that stops answering degrades to partial_errors
+while the price core keeps printing. The schema's numeric inventory fields
+(rentedCount, totalCount, availableGpuCounts, ...) come back null here, so
+nothing downstream reads them.
 """
 
 from __future__ import annotations

@@ -78,11 +78,10 @@ URL_BASE = "https://console.vast.ai/api/v0/bundles/"
 # the basket lane has run live since its hardening rewrite.
 FETCH_LIMIT = 50
 # The wide net fires up to 2*len(gpu_names) calls per capture (vs the
-# basket lane's 2-4), and a rapid-fire burst drew a live 429 on 2026-08-22.
-# Space the per-chip fetches so one capture stays inside vast's
-# unauthenticated per-minute budget; ~30s measured for the current 21-chip
-# config list (26 calls), well inside the configured 180s per-source
-# deadline (config/raw_observatory.json per_source_deadline_seconds).
+# basket lane's 2-4), so the per-chip fetches are spaced rather than sent
+# back to back; ~30s measured for the current 21-chip config list (26
+# calls), well inside the configured 180s per-source deadline
+# (config/raw_observatory.json per_source_deadline_seconds).
 REQUEST_SPACING_SECONDS = 0.75
 # Safety cap on population rows per chip -- IMPORTED from gpu_index.index.sources
 # (one home, maintainability review): the SAME bound the basket lane has

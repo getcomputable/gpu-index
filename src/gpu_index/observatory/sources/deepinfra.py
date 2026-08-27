@@ -18,7 +18,7 @@ LLMs' dedicated-GPU price -- container hosting for deploying your own
 model, pay-for-uptime with minute-granularity billing and weekly invoicing
 -- not a bare VM rental. There is no committed/reserved surface: tier is
 "on-demand" and the product identity rides in notes/extra. B200/B300
-CLUSTERS are contact-only (dedicated@deepinfra.com) with no public price
+CLUSTERS are contact-sales only, with no public price
 rows, so nothing is recorded (or skipped-counted) for them.
 
 Cell honesty, per data row of the pinned table (exactly 3 cells or raise):

@@ -59,10 +59,8 @@ no honest row-skip here:
 
 The book is fetched with include_unavailable=true: sold-out offers ARE
 observations of the book, distinguished by extra.available == 0 (the
-default response omits exactly the available==0 rows -- verified live
-2026-08-25: 314 rows vs 249 default, difference 65 = the zero-available
-count). Sold-out rows keep their full shape and stable offering_id (the
-8x b300 held a0a48d83d5f6 across its stockout), so per-offer availability
+default response omits the available==0 rows). Sold-out rows keep their
+full shape and a stable offering_id across a stockout, so per-offer availability
 time series survive stockouts instead of gapping, and a fully stocked-out
 chip stays distinguishable from a delisted one. Two consequences:
 
@@ -70,13 +68,11 @@ chip stays distinguishable from a delisted one. Two consequences:
     transactable -- safe in this capture-only observatory, but any future
     consumer computing an offered-price statistic from gpuai rows must
     fence on extra.available > 0 first;
-  - include_unavailable is UNDOCUMENTED (the public reference documents
-    no /pricing query params); it is honored live but if the server ever
-    stopped honoring it we would get the default book back -- zero
-    available==0 rows, shape-identical, unpinnable. book_stats records
-    rows_zero_available per capture so that failure mode is scannable:
-    many consecutive captures at 0 while chips like b300 vanish from the
-    book entirely is the tripwire.
+  - if the server ever stopped honoring include_unavailable we would get
+    the default book back -- zero available==0 rows, shape-identical,
+    unpinnable. book_stats records rows_zero_available per capture so that
+    failure mode is scannable: many consecutive captures at 0 while chips
+    like b300 vanish from the book entirely is the tripwire.
 """
 
 from __future__ import annotations

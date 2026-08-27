@@ -8,13 +8,11 @@ its exact-boundary straddle-averaging quantile convention:
 
     index 6.64, stability band 0.11 (vote p25 6.54, p75 6.75)
 
-METHODOLOGY.md's printed walkthrough currently says 6.62 / 0.13 (and
-6.66 for the repriced-E case, where the code produces 6.68): its prose
-accumulates to the vote AT cumulative weight 1.5 instead of averaging
-the exact-boundary straddle. The document's numbers are being corrected
-to match the code; that doc fix is tracked separately because
-METHODOLOGY.md mirrors an external canonical document — do NOT edit it
-from this repo. This test pins the executable truth either way.
+METHODOLOGY.md's printed walkthrough says 6.62 / 0.13 (and 6.66 for the
+repriced-E case, where the code produces 6.68): its prose accumulates to
+the vote AT cumulative weight 1.5 instead of averaging the exact-boundary
+straddle. The two therefore disagree, and the implementation is what the
+index publishes -- this test pins the implementation.
 """
 
 from __future__ import annotations

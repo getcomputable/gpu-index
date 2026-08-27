@@ -88,16 +88,8 @@ all fail-open: an availability reshape must never dark the price lane.
     estimate cache (10 in every 1x bucket on 2026-08-25, 32/64 in 8x
     buckets): treat unrented_count as indicative, never a hard count.
 
-FALLBACK ANCHOR (documented, not implemented): the homepage embeds the
-identical rows in <script id="__NEXT_DATA__"> at
-props.pageProps.dehydratedState.queries[queryKey==["/executors",null]]
-.state.data -- if /api/executors (a Next.js proxy route) ever moves, that
-is where the book lives. Auth-posture note (2026-08-25): openapi.json
-marks GET /executors JwtAccessBearer while it serves no-auth today -- a
-posture that could be locked down; /machines, /machines/capacity and
-/executors/count|total-count|stats are explicitly public in the spec and
-are the durable surfaces (count + total-count give a book-free occupancy
-ratio fallback if /api/machines is ever fenced off).
+The collector reads /api/executors, /api/machines and
+/api/machines/capacity, all anonymously and with no credentials.
 """
 
 from __future__ import annotations

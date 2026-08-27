@@ -620,8 +620,8 @@ def collect_vast(timeout: float = DEFAULT_TIMEOUT) -> Dict[str, Any]:
     Rewritten after a live extraction artifact: no 8x-preferred
     query, no verified filter (see _vast_query), dedup by machine, rank by
     per-GPU. The FULL candidate set is logged every capture so the next bad
-    print is diagnosable from the job log alone. 2 skus x 1 call stays
-    inside vast's unauthenticated rate budget at this cadence."""
+    print is diagnosable from the job log alone. This lane sends 2 skus x 1
+    call per capture."""
     rows: List[Dict[str, Any]] = []
     errors: List[str] = []
     book_stats: Dict[str, Dict[str, Any]] = {}
@@ -1089,7 +1089,8 @@ def collect_lambda(timeout: float = DEFAULT_TIMEOUT) -> Dict[str, Any]:
 # "NVIDIA GB200 NVL72" (data-product contains the substring 'b200', GPU
 # Count cell is literal '4^1', VRAM 186, $42.00 per 4 Grace-coupled GPUs)
 # and GB300 rows — the segment pins below exist to keep the recipe off
-# them. Default python UA is 403'd; the repo UA passes (verified).
+# them. The collector sends the project User-Agent defined in
+# gpu_index.common.http.
 
 COREWEAVE_URL = "https://www.coreweave.com/pricing"
 _COREWEAVE_ROW_SPLIT = '<div role="listitem" class="table-row-v2 w-dyn-item'

@@ -112,6 +112,7 @@ verifier prints a non-fatal warning when that is the case.
 | `tests/` | The suite: unit tests, live-captured fixtures, and the golden artifacts that pin published bytes |
 | `config/` | Panels, parameters, and the chip catalog. Parameters are configuration, not code; every published record embeds the parameter set that produced it |
 | `METHODOLOGY.md` | The full methodology specification |
+| `docs/COLLECTION.md` | What the collectors do on the network: what is fetched, how they identify themselves, how often, and the limits they run under |
 | `docs/` | Supporting design documents, per-lane mint records (`docs/mints/`), and [docs/architecture.md](docs/architecture.md) |
 
 Note: `src/gpu_index/index/sources.py` and `composite.py` are the FROZEN
