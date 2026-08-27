@@ -145,7 +145,7 @@ def test_config_rejects_prefix_outside_index_keyspace(tmp_path):
     """The basket shares the curve bucket — a prefix outside index/ (e.g. a
     typo'd curves/...) must be refused, not written to."""
     p = tmp_path / "c.json"
-    p.write_text(json.dumps(_minimal_cfg(bucket_prefix="curves/dpc-v2/oops")))
+    p.write_text(json.dumps(_minimal_cfg(bucket_prefix="curves/example/oops")))
     with pytest.raises(BasketConfigError, match="index/"):
         load_basket_config(p)
 
@@ -153,7 +153,7 @@ def test_config_rejects_prefix_outside_index_keyspace(tmp_path):
 def test_config_rejects_dot_segment_prefix_escapes(tmp_path):
     """'index/../curves/...' startswith 'index/' but a path-normalizing
     gateway could route it into the curve keyspace — refuse dot segments."""
-    for bad in ("index/../curves/dpc-v2", "index/./x", "index//x", "index/x\\y"):
+    for bad in ("index/../curves/example", "index/./x", "index//x", "index/x\\y"):
         p = tmp_path / "c.json"
         p.write_text(json.dumps(_minimal_cfg(bucket_prefix=bad)))
         with pytest.raises(BasketConfigError, match="clean path"):
