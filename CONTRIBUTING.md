@@ -66,3 +66,8 @@ the sanctioned cross-package edges, and the three contributor seams.
 - Run the test suite before opening a PR. Every collector has a fixture-based
   test; new collectors need one.
 - Keep fixtures minimal: the smallest page excerpt that exercises the recipe.
+- Synthesize identifiers in fixtures. Prices, page structure and the traps a
+  recipe must survive are what a fixture is for; account, host, machine and
+  offer identifiers, IP addresses, contact details and any personal data are
+  not. Replace them with obviously synthetic values (documentation-range
+  addresses, sequential ids) before committing.

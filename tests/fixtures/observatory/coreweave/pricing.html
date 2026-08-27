@@ -1,4 +1,4 @@
-<section class="section section-stack-90px-90px"><div class="w-layout-blockcontainer section-wrapper section-wrapper-1260 w-container"><header class="section-header section-header-center"><h2 data-heading-class="" class="heading-32-20">On-demand GPU instances</h2><div class="heading-paragraph w-richtext"><p>Utilize on-demand GPU instances for additional workloads when you’re not looking for long-term capacity commitments. Quickly spin-up burst On-Demand or Spot capacity—with the flexibility of great pricing.</p></div></header><div class="section-content"><h5><strong class="eyebrow">REGION: NORTH AMERICA</strong></h5><div class="table-v2 gpu-pricing"><div class="table-v2-header"><div class="table-grid"><div class="table-v2-cell table-v2-cell--name"><div class="table-header-text">GPU Model</div></div><div class="table-v2-cell table-v2-cell--vram"><div class="table-header-text">GPU Count</div></div><div class="table-v2-cell table-v2-cell--vram"><div class="table-header-text">VRAM (GB)</div></div><div class="table-v2-cell table-v2-cell--vram"><div class="table-header-text">vCPUs</div></div><div class="table-v2-cell"><div class="table-header-text">System RAM<br/>(GB)</div></div><div class="table-v2-cell"><div class="table-header-text">Local Storage<br/>(TB)</div></div><div class="table-v2-cell"><div class="table-header-text">On-Demand Price (Per Hour)</div></div><div class="table-v2-cell"><div class="table-header-text">Spot Price (Per Hour)</div></div><div class="table-v2-cell"><div class="table-header-text">Inference Single GPU Price(Per Hour)²</div></div></div></div><div class="table-v2-body w-dyn-list"><div role="list" class="w-dyn-items"><div role="listitem" class="table-row-v2 w-dyn-item kubernetes-gpu-pricing"><div class="w-embed"><div class="table-grid">
+<section class="section section-stack-90px-90px"><div class="w-layout-blockcontainer section-wrapper section-wrapper-1260 w-container"><header class="section-header section-header-center"><h2 data-heading-class="" class="heading-32-20">On-demand GPU instances</h2></header><div class="section-content"><h5><strong class="eyebrow">REGION: NORTH AMERICA</strong></h5><div class="table-v2 gpu-pricing"><div class="table-v2-body w-dyn-list"><div role="list" class="w-dyn-items"><div role="listitem" class="table-row-v2 w-dyn-item kubernetes-gpu-pricing"><div class="w-embed"><div class="table-grid">
 	<div class="table-v2-cell table-v2-cell--name">
 		<h3 data-product="nvidia-gb300-nvl72" class="table-model-name">NVIDIA GB300 NVL72</h3>
 	</div>
@@ -581,64 +581,7 @@
 			</div>
 		</div>
 	</div>
-</div></div></div></div></div><div class="hidden w-embed w-script"><style>
-.table-v2 .table-row:last-child {
-	border-bottom: 0;
-}
-</style>
-
-<script>
-(function() {
-    var DOMScript = document.currentScript;
-
-    document.addEventListener('DOMContentLoaded', function() {
-        var DOM = {
-            container: DOMScript.closest('.table-v2'),
-            cells: false
-        };
-
-        if (!DOM.container) {
-            return;
-        }
-
-        DOM.cells = DOM.container.querySelectorAll('.table-v2-cell');
-
-        DOM.cells.forEach(function(DOMCell) {
-            var DOMCopy = DOMCell.querySelector('div');
-            var DOMSuperScript = false;
-            var superScriptCopy = /\^(.+)$/.exec(DOMCell.innerText);
-
-
-            if (!superScriptCopy) {
-                return;
-            }
-
-            DOMSuperScript = document.createElement('sup');
-            DOMSuperScript.innerText = superScriptCopy[1];
-            DOMCopy.innerHTML = DOMCopy.innerText.replace(/\^(.+)$/, '');
-            DOMCopy.append(DOMSuperScript);
-        });
-    })
-})();
-</script>
-<script>
-(function () {
-  const elements = document.querySelectorAll(
-    '.instance-price, .spot-price, .inference-price'
-  );
-
-  elements.forEach(function (parent) {
-    const valueEl = parent.querySelector('.item-value');
-    if (!valueEl) return;
-
-    const value = valueEl.textContent.trim();
-
-    if (!value || value === 'N/A') {
-      parent.style.display = 'none';
-    }
-  });
-})();
-</script></div></div></div><div class="section-content pricing-spacing"><h5><strong class="eyebrow">REGION: EUROPE</strong></h5><div class="table-v2 gpu-pricing"><div class="table-v2-header"><div class="table-grid"><div class="table-v2-cell table-v2-cell--name"><div class="table-header-text">GPU Model</div></div><div class="table-v2-cell table-v2-cell--vram"><div class="table-header-text">GPU Count</div></div><div class="table-v2-cell table-v2-cell--vram"><div class="table-header-text">VRAM (GB)</div></div><div class="table-v2-cell table-v2-cell--vram"><div class="table-header-text">vCPUs</div></div><div class="table-v2-cell"><div class="table-header-text">System RAM<br/>(GB)</div></div><div class="table-v2-cell"><div class="table-header-text">Local Storage<br/>(TB)</div></div><div class="table-v2-cell"><div class="table-header-text">On-Demand Price (Per Hour)</div></div><div class="table-v2-cell"><div class="table-header-text">Spot Price (Per Hour)</div></div></div></div><div class="table-v2-body w-dyn-list"><div role="list" class="w-dyn-items"><div role="listitem" class="table-row-v2 w-dyn-item kubernetes-gpu-pricing"><div class="w-embed"><div class="table-grid">
+</div></div></div></div></div><div class="section-content pricing-spacing"><h5><strong class="eyebrow">REGION: EUROPE</strong></h5><div class="table-v2 gpu-pricing"><div class="table-v2-body w-dyn-list"><div role="list" class="w-dyn-items"><div role="listitem" class="table-row-v2 w-dyn-item kubernetes-gpu-pricing"><div class="w-embed"><div class="table-grid">
 	<div class="table-v2-cell table-v2-cell--name">
 		<h3 data-product="nvidia-gb300-nvl72" class="table-model-name">NVIDIA GB300 NVL72</h3>
 	</div>
@@ -1188,107 +1131,6 @@
 			</div>
 		</div>
 	</div>
-</div></div></div></div></div><div class="table-v2-footer-text-container"><div class="table-v2-footer-text w-richtext"><p><sup>1 </sup>Each instance is comprised of 2 GB200 or GB300 Superchips, where each Superchip has 1 Grace CPU and 2 Blackwell GPUs.</p><p><sup>2 </sup>Pricing based on GPUs is exclusively applicable to the CoreWeave inference platform customers. Please contact your account executive for more information.</p><p>CoreWeave Cloud storage usage is calculated in binary gigabytes (GB), where 1 GB is 2<sup>30</sup> bytes. This unit of measurement is also known as a gibibyte (GiB), defined by the International Electrotechnical Commission (IEC). Similarly, 1 TB is 2<sup>40</sup> bytes, i.e. 1024 GBs.</p></div></div><div class="hidden w-embed w-script"><style>
-.table-v2 .table-row:last-child {
-	border-bottom: 0;
-}
-</style>
-
-<script>
-(function() {
-    var DOMScript = document.currentScript;
-
-    document.addEventListener('DOMContentLoaded', function() {
-        var DOM = {
-            container: DOMScript.closest('.table-v2'),
-            cells: false
-        };
-
-        if (!DOM.container) {
-            return;
-        }
-
-        DOM.cells = DOM.container.querySelectorAll('.table-v2-cell');
-
-        DOM.cells.forEach(function(DOMCell) {
-            var DOMCopy = DOMCell.querySelector('div');
-            var DOMSuperScript = false;
-            var superScriptCopy = /\^(.+)$/.exec(DOMCell.innerText);
-
-
-            if (!superScriptCopy) {
-                return;
-            }
-
-            DOMSuperScript = document.createElement('sup');
-            DOMSuperScript.innerText = superScriptCopy[1];
-            DOMCopy.innerHTML = DOMCopy.innerText.replace(/\^(.+)$/, '');
-            DOMCopy.append(DOMSuperScript);
-        });
-    })
-})();
-</script>
-
-<script>
-(function () {
-  const elements = document.querySelectorAll(
-    '.instance-price, .spot-price, .inference-price'
-  );
-
-  elements.forEach(function (parent) {
-    const valueEl = parent.querySelector('.item-value');
-    if (!valueEl) return;
-
-    const value = valueEl.textContent.trim();
-
-    if (!value || value === 'N/A') {
-      parent.style.display = 'none';
-    }
-  });
-})();
-</script></div></div></div></div><div class="w-embed"><style>
-section:first-child {
-	margin-top: 77px;
-}
-.table-v2-cell div:empty,
-.table-v2-cell a:empty {
-	display: none;
-}
-</style></div><div class="hidden w-richtext"><div class="w-embed"><style>
-</style></div></div></section><div class="border-block"></div><section class="section section-stack-90px-90px"><div class="w-layout-blockcontainer section-wrapper section-wrapper-1260 w-container"><header class="section-header section-header-center"><h2 data-heading-class="" class="heading-32-20">On-demand CPU instances</h2><div class="heading-paragraph w-richtext"><p>We know AI training and serving workloads don’t exist in a vacuum. Get On-Demand or Spot CPUs to support GPUs during the overall lifecycle of model training jobs.</p></div></header><div class="section-content"><h5><strong class="eyebrow">REGION: NORTH AMERICA</strong></h5><div class="table-v2 gpu-pricing"><div class="table-v2-header"><div class="table-grid"><div class="table-v2-cell table-v2-cell--name"><div class="table-header-text">CPU Model</div></div><div class="table-v2-cell table-v2-cell--vram"><div class="table-header-text">CPU Type</div></div><div class="table-v2-cell"><div class="table-header-text">vCPUs</div></div><div class="table-v2-cell"><div class="table-header-text">System RAM (GB)</div></div><div class="table-v2-cell"><div class="table-header-text">Local Storage (TB)</div></div><div class="table-v2-cell"><div class="table-header-text">On-Demand Price (Per Hour)</div></div><div class="table-v2-cell"><div class="table-header-text"><strong>Spot Price (Per Hour)</strong></div></div></div></div><div class="table-v2-body w-dyn-list"><div role="list" class="w-dyn-items"><div role="listitem" class="table-row-v2 w-dyn-item kubernetes-cpu-pricing"><div class="w-embed"><div class="table-grid">
+</div></div></div></div></div></section><div class="border-block"></div><section class="section section-stack-90px-90px"><div class="w-layout-blockcontainer section-wrapper section-wrapper-1260 w-container"><header class="section-header section-header-center"><h2 data-heading-class="" class="heading-32-20">On-demand CPU instances</h2></header><div class="section-content"><h5><strong class="eyebrow">REGION: NORTH AMERICA</strong></h5><div class="table-v2 gpu-pricing"><div class="table-v2-body w-dyn-list"><div role="list" class="w-dyn-items"><div role="listitem" class="table-row-v2 w-dyn-item kubernetes-cpu-pricing"><div class="w-embed"><div class="table-grid">
 	<div class="table-v2-cell table-v2-cell--name">
 		<h3 data-product="amd-genoa-9274f" class="table-model-name">AMD Genoa (9274F)</h3>
-	</div>
-	<div class="table-v2-cell"><div>High Performance</div></div>
-  <div class="table-v2-cell"><div>96</div></div>
-	<div class="table-v2-cell"><div>768</div></div>
-	<div class="table-v2-cell"><div>7.68</div></div>
-	<div class="table-v2-cell"><div>$6.42</div></div>
-  <div class="table-v2-cell"><div>$3.50</div></div>
-	<div class="table-cell-column table-cell-column-left">
-		<h3 data-product="amd-genoa-9274f" class="table-model-name">AMD Genoa (9274F)</h3>
-		<div class="table-meta-text">
-			<div class="table-meta-value">$6.42</div>
-		</div>
-	</div>
-	<div class="table-cell-column table-cell-column-right">
-		<div class="table-cell-column-contents">
-			<div class="table-meta-text table-meta-text-right">
-				<div class="table-meta-value">96</div>
-				<div>vCPUs</div>
-			</div>
-			<div class="table-meta-text table-meta-text-right">
-				<div class="table-meta-value">768</div>
-				<div>System RAM</div>
-			</div>
-			<div class="table-meta-text table-meta-text-right">
-				<div class="table-meta-value">7.68</div>
-				<div>Local Storage (TB)</div>
-			</div>
-			<div class="table-meta-text table-meta-text-right">
-				<div class="table-meta-value">High Performance</div>
-				<div>CPU Type</div>
-			</div>
-		</div>
-	</div>
-</div></div></div>

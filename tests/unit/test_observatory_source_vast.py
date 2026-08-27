@@ -2,24 +2,27 @@
 # Copyright 2026 Computable
 """Observatory vast collector -- fixture pins (live responses 2026-08-22).
 
-Fixtures are REAL bundles-API bodies captured live 2026-08-22 with small
-limit values (a limit-8/limit-4 query IS the surface's own bytes, so no
-hand trimming was needed). They deliberately preserve the edge cases this
-source exposes:
+Fixtures are bundles-API response shapes recorded 2026-08-22 with small
+limit values (a limit-8/limit-4 query IS the surface's own shape, so no
+hand trimming was needed). Marketplace identifiers (offer/machine/host
+ids, IP addresses) are SYNTHETIC -- sequential stand-ins that preserve
+every duplicate/shared-host relationship the pins depend on. Prices,
+field shapes and geolocation strings are as recorded. They deliberately
+preserve the edge cases this source exposes:
 
   - h100_sxm_asc.json / h100_sxm_desc.json: ASC head + DESC tail of one
-    book; machine 146215 appears in BOTH windows (1x slice in ASC, 8x box
+    book; machine 900019 appears in BOTH windows (1x slice in ASC, 8x box
     in DESC) with the 8x box CHEAPER per GPU -- the exact 08-13 burial
     class the DESC guard exists for; verification values verified /
     unverified / deverified; non-US geolocations.
-  - b300_asc.json: thin whole book -- ONE machine (144888) listing two
+  - b300_asc.json: thin whole book -- ONE machine (900017) listing two
     slice sizes (2x and 4x), so machine dedup must record exactly one row.
   - h200_nvl_asc.json: lookalike label ('H200 NVL' is not 'H200'; since
     the H-series variant split it normalizes to its own H200_NVL sku).
 
 The verified-US/CA population branch (hourly panel design section 6) is
 covered here too: the h100_sxm fixtures genuinely contain exactly two
-verified US/CA machines (59380, 57753), which exercises the screen against
+verified US/CA machines (900005, 900004), which exercises the screen against
 real bytes; cap/overflow depth is synthesized in-test because no fixture
 carries 200+ eligible machines.
 """
@@ -92,21 +95,21 @@ def test_cheapest_machine_pinned_exactly(h100_rows):
     assert row["gpu_count_basis"] == 1
     assert row["tier"] == "on-demand"
     assert row["region"] == ", US"  # geolocation exactly as published
-    assert row["offer_id"] == 48285735
-    assert row["machine_id"] == 148199
-    assert row["host_id"] == 635532
+    assert row["offer_id"] == 700031
+    assert row["machine_id"] == 900027
+    assert row["host_id"] == 800021
     assert row["verification"] == "unverified"
-    assert "machine 148199" in row["notes"]
+    assert "machine 900027" in row["notes"]
 
 
 def test_multi_gpu_box_wins_machine_dedup_across_windows(h100_rows):
-    """Machine 146215 lists a 1x slice (ASC window) and an 8x box (DESC
+    """Machine 900019 lists a 1x slice (ASC window) and an 8x box (DESC
     window) and the 8x box is CHEAPER per GPU -- exactly one row, the 8x
     offer, and price*basis must reproduce the raw instance total (L0)."""
-    rows = [r for r in h100_rows if r["machine_id"] == 146215]
+    rows = [r for r in h100_rows if r["machine_id"] == 900019]
     assert len(rows) == 1
     row = rows[0]
-    assert row["offer_id"] == 48370130
+    assert row["offer_id"] == 700035
     assert row["gpu_count_basis"] == 8
     assert row["price_usd_gpu_hr"] == 1.9335
     raw = float(row["raw_value"])
@@ -118,14 +121,14 @@ def test_record_limit_and_per_gpu_ranking(h100_rows):
     assert len(h100_rows) == 10  # 14 machines in the merged book, limit 10
     prices = [r["price_usd_gpu_hr"] for r in h100_rows]
     assert prices == sorted(prices)
-    assert [r["machine_id"] for r in h100_rows[:3]] == [148199, 148240, 140072]
+    assert [r["machine_id"] for r in h100_rows[:3]] == [900027, 900028, 900010]
     # deverified is a real verification state and rides through untouched.
     deverified = [r for r in h100_rows if r["verification"] == "deverified"]
-    assert [r["machine_id"] for r in deverified] == [142073]
+    assert [r["machine_id"] for r in deverified] == [900011]
 
 
 def test_one_machine_two_slice_sizes_records_one_row():
-    """B300 thin book: machine 144888 lists 2x and 4x slices; the 4x is
+    """B300 thin book: machine 900017 lists 2x and 4x slices; the 4x is
     cheaper per GPU and must be the single recorded row."""
     candidates = parse_vast_offers((FIXTURES / "b300_asc.json").read_text())
     pinned, skipped = pin_candidates(candidates, "B300")
@@ -134,8 +137,8 @@ def test_one_machine_two_slice_sizes_records_one_row():
     assert len(rows) == 1
     row = rows[0]
     assert row["sku_identifier"] == "B300"
-    assert row["offer_id"] == 47419091
-    assert row["machine_id"] == 144888
+    assert row["offer_id"] == 700017
+    assert row["machine_id"] == 900017
     assert row["gpu_count_basis"] == 4
     assert row["price_usd_gpu_hr"] == 7.5005
     assert row["raw_value"] == "30.00208333333334"
@@ -243,15 +246,15 @@ def test_collect_fails_closed_without_options():
 def test_population_rows_appended_screened_and_marked(h100_candidates):
     """Design section 6: after the cheapest-N rows, every OTHER verified
     US/CA machine rides in per-GPU ascending, marked with book_scope.
-    Fixture truth (record_limit=3): cheapest-3 = 148199/148240/140072;
-    the only verified US/CA machines beyond them are 59380 (1.7356) and
-    57753 (5.0939); verified non-US/CA (68475 Japan, 33102 India) and
-    unverified-US (146215) machines must NOT be appended."""
+    Fixture truth (record_limit=3): cheapest-3 = 900027/900028/900010;
+    the only verified US/CA machines beyond them are 900005 (1.7356) and
+    900004 (5.0939); verified non-US/CA (900007 Japan, 900001 India) and
+    unverified-US (900019) machines must NOT be appended."""
     rows = select_chip_observations(h100_candidates, 3, population=True)
     head, population = rows[:3], rows[3:]
-    assert [r["machine_id"] for r in head] == [148199, 148240, 140072]
+    assert [r["machine_id"] for r in head] == [900027, 900028, 900010]
     assert all("book_scope" not in r for r in head)
-    assert [r["machine_id"] for r in population] == [59380, 57753]
+    assert [r["machine_id"] for r in population] == [900005, 900004]
     assert [r["price_usd_gpu_hr"] for r in population] == [1.7356, 5.0939]
     for row in population:
         assert row["book_scope"] == "verified_us_ca_population"
@@ -259,9 +262,9 @@ def test_population_rows_appended_screened_and_marked(h100_candidates):
         assert row["sku_identifier"] == "H100 SXM"
         assert "population row" in row["notes"]
     recorded = {r["machine_id"] for r in rows}
-    assert 68475 not in recorded  # verified, Japan
-    assert 33102 not in recorded  # verified, India
-    assert 146215 not in {r["machine_id"] for r in population}  # unverified
+    assert 900007 not in recorded  # verified, Japan
+    assert 900001 not in recorded  # verified, India
+    assert 900019 not in {r["machine_id"] for r in population}  # unverified
 
 
 def test_non_population_chips_record_exactly_the_old_shape(h100_candidates):

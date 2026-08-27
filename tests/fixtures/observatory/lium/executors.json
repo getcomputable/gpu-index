@@ -1,12 +1,12 @@
 [
  {
-  "id": "42ef8a0b-8b28-4a50-ad7c-4fcad8cc2734",
+  "id": "00000000-0000-4000-8000-00000000000b",
   "machine_name": "NVIDIA B300 SXM6 AC",
   "price_per_gpu": 7.97,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "204.9.206.216",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.13",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -14,10 +14,10 @@
   },
   "active": null,
   "uptime_in_minutes": 1185,
-  "miner_hotkey": "5EbiNautKicKhkGsy3ohkboFieVAp9KChgbG59jRKCdF9r4d",
+  "miner_hotkey": "5SyntheticMiner091111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "30947e9d-fcf2-4507-9ca3-2a9718a2aa09",
+   "id": "00000000-0000-4000-8000-000000000009",
    "created_at": "2026-08-22T18:34:27.819020",
    "updated_at": "2026-08-22T18:34:27.819021",
    "country": "United States",
@@ -46,13 +46,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "8b121617-ed54-4f51-aeff-c53ae4e69d4d",
+  "id": "00000000-0000-4000-8000-000000000013",
   "machine_name": "NVIDIA B300 SXM6 AC",
   "price_per_gpu": 8.000300000000001,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "86.38.182.100",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.29",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -60,10 +60,10 @@
   },
   "active": null,
   "uptime_in_minutes": 1995,
-  "miner_hotkey": "5C8CG5JkQGHD1AUj5J4Fh6BTt7CATnnk63wLVwGzNqoEdUWu",
+  "miner_hotkey": "5SyntheticMiner011111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "81001730-0b2f-4925-978a-3fa01017a023",
+   "id": "00000000-0000-4000-8000-000000000012",
    "created_at": "2026-08-22T18:34:27.816235",
    "updated_at": "2026-08-22T18:34:27.816236",
    "country": "Finland",
@@ -92,13 +92,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "d4093d0c-8d7c-448a-b4e0-a34e44468ea8",
+  "id": "00000000-0000-4000-8000-00000000001c",
   "machine_name": "NVIDIA H100 80GB HBM3",
   "price_per_gpu": 1.75,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "93.120.231.186",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.32",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -106,10 +106,10 @@
   },
   "active": null,
   "uptime_in_minutes": 75120,
-  "miner_hotkey": "5DHriWobesRvTyzTuHccpnJRukufCg3Mnrm4QEHqtf9uFGQB",
+  "miner_hotkey": "5SyntheticMiner061111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "74e06a8b-6d6e-478c-a868-bf93dd3f1483",
+   "id": "00000000-0000-4000-8000-000000000011",
    "created_at": "2026-08-22T18:34:27.812669",
    "updated_at": "2026-08-22T18:34:27.812671",
    "country": "Russia",
@@ -138,13 +138,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "d7fe144f-fc2e-4fa3-85b1-f6f4c5995f36",
+  "id": "00000000-0000-4000-8000-00000000001d",
   "machine_name": "NVIDIA H100 80GB HBM3",
   "price_per_gpu": 1.75,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "68.209.73.192",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.26",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 2,
   "available_gpu_count": 2,
   "specs": {
@@ -152,10 +152,10 @@
   },
   "active": null,
   "uptime_in_minutes": 25680,
-  "miner_hotkey": "5D1tLCwyAUzsoqsYC9zZkZJqmxjagTqEi2U1XuuWCVc1W8FS",
+  "miner_hotkey": "5SyntheticMiner041111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "14b611f0-eb4a-4998-a48c-b689adf6a945",
+   "id": "00000000-0000-4000-8000-000000000002",
    "created_at": "2026-08-22T18:34:27.815969",
    "updated_at": "2026-08-22T18:34:27.815970",
    "country": "United States",
@@ -184,13 +184,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "b37a337d-3e10-4eb0-b6a8-526dedf3afbe",
+  "id": "00000000-0000-4000-8000-000000000019",
   "machine_name": "NVIDIA H200",
   "price_per_gpu": 3.1,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "216.48.191.6",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.16",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -198,10 +198,10 @@
   },
   "active": null,
   "uptime_in_minutes": 1185,
-  "miner_hotkey": "5CMUxZ9EQpRsxtuFE3f8vcUoXheZMWnHex4WQ2dJCzxwMHaM",
+  "miner_hotkey": "5SyntheticMiner031111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "6f72d285-597c-4eed-bfed-04d9e03d81a3",
+   "id": "00000000-0000-4000-8000-000000000010",
    "created_at": "2026-08-22T18:34:27.819111",
    "updated_at": "2026-08-22T18:34:27.819113",
    "country": "India",
@@ -230,13 +230,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "1c05e9a9-296f-40b5-bb5a-d5a79af2f5f9",
+  "id": "00000000-0000-4000-8000-000000000004",
   "machine_name": "NVIDIA H200",
   "price_per_gpu": 4.2262,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "86.38.238.89",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.30",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 1,
   "available_gpu_count": 1,
   "specs": {
@@ -244,10 +244,10 @@
   },
   "active": null,
   "uptime_in_minutes": 870,
-  "miner_hotkey": "5CDmAsUADeCP3dFkB58Po3xq9NpLr2Xc3GW7mCKF4Sdy1ySy",
+  "miner_hotkey": "5SyntheticMiner021111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "f6418b3c-2bdf-41cd-85bb-d02d72616e1c",
+   "id": "00000000-0000-4000-8000-000000000022",
    "created_at": "2026-08-22T18:34:27.816684",
    "updated_at": "2026-08-22T18:34:27.816685",
    "country": "Finland",
@@ -276,13 +276,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "9a61aeb3-a905-4af9-a3e5-4de2686de311",
+  "id": "00000000-0000-4000-8000-000000000014",
   "machine_name": "NVIDIA H200 NVL",
   "price_per_gpu": 3.9,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "178.156.251.134",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.7",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 1,
   "available_gpu_count": 1,
   "specs": {
@@ -290,10 +290,10 @@
   },
   "active": null,
   "uptime_in_minutes": 1740,
-  "miner_hotkey": "5HbCthcf52ZJSKmFsY1ZhbjRPARRvKLrcPbmSJRk5gBKSFf2",
+  "miner_hotkey": "5SyntheticMiner151111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "44a964d2-1d97-4ad4-abd6-563224ebe566",
+   "id": "00000000-0000-4000-8000-00000000000c",
    "created_at": "2026-08-22T18:34:27.814811",
    "updated_at": "2026-08-22T18:34:27.814812",
    "country": "United States",
@@ -322,13 +322,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "1b3a15ce-7359-4c50-96e2-e18330dd043a",
+  "id": "00000000-0000-4000-8000-000000000003",
   "machine_name": "NVIDIA H100 PCIe",
   "price_per_gpu": 2.24,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "216.81.200.28",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.17",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 1,
   "available_gpu_count": 1,
   "specs": {
@@ -336,10 +336,10 @@
   },
   "active": null,
   "uptime_in_minutes": 101310,
-  "miner_hotkey": "5HGyf9J3u5iByuRYwNLTjrkwSqrLVEeixhFMZUavVuzihUyj",
+  "miner_hotkey": "5SyntheticMiner131111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "5f12f920-ca11-4f1e-b193-76a1220069bc",
+   "id": "00000000-0000-4000-8000-00000000000f",
    "created_at": "2026-08-22T18:34:27.816950",
    "updated_at": "2026-08-22T18:34:27.816951",
    "country": "United States",
@@ -368,13 +368,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "38a0b321-3296-465f-bfb5-3237c01623df",
+  "id": "00000000-0000-4000-8000-00000000000a",
   "machine_name": "NVIDIA B200",
   "price_per_gpu": 6.5318000000000005,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "95.133.252.85",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.34",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 1,
   "available_gpu_count": 1,
   "specs": {
@@ -382,10 +382,10 @@
   },
   "active": null,
   "uptime_in_minutes": 33615,
-  "miner_hotkey": "5D7Pt8JBChd4YiV7MmBYDHbBQYg4NHKeG7UPJcJ3fpTij246",
+  "miner_hotkey": "5SyntheticMiner051111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "b1d70699-766a-4f8b-b530-47fa7bcc433b",
+   "id": "00000000-0000-4000-8000-000000000017",
    "created_at": "2026-08-22T18:34:27.812575",
    "updated_at": "2026-08-22T18:34:27.812577",
    "country": "Finland",
@@ -414,13 +414,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "b1f168d5-4e0a-4add-8286-40dbf5b879f7",
+  "id": "00000000-0000-4000-8000-000000000018",
   "machine_name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
   "price_per_gpu": 1.01,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "204.9.206.22",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.14",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 4,
   "specs": {
@@ -428,10 +428,10 @@
   },
   "active": null,
   "uptime_in_minutes": 62655,
-  "miner_hotkey": "5DhzqmmkD99d8MFbEEFgtQYSUWyYHRLNJKpVjYQFn5d6hJsv",
+  "miner_hotkey": "5SyntheticMiner071111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "e47e1b8c-73f6-4bb2-ae03-4cd73f21894b",
+   "id": "00000000-0000-4000-8000-000000000020",
    "created_at": "2026-08-22T18:34:27.816147",
    "updated_at": "2026-08-22T18:34:27.816148",
    "country": "United States",
@@ -460,13 +460,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "5ab07794-6132-48fb-b331-3d8d9374edda",
+  "id": "00000000-0000-4000-8000-00000000000e",
   "machine_name": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
   "price_per_gpu": 1.3,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "178.105.229.97",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.6",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -474,10 +474,10 @@
   },
   "active": null,
   "uptime_in_minutes": 5745,
-  "miner_hotkey": "5EjovEqPR3xyD5fL5ZNHH6wvQnXUG8KCz7gFeGoJEWTv3QLn",
+  "miner_hotkey": "5SyntheticMiner101111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "507d77cd-09c6-4223-9ab0-3839f588ee30",
+   "id": "00000000-0000-4000-8000-00000000000d",
    "created_at": "2026-08-22T18:34:27.819201",
    "updated_at": "2026-08-22T18:34:27.819202",
    "country": "United Arab Emirates",
@@ -506,13 +506,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "224bfb74-6853-4f6c-810e-339792ab0bdc",
+  "id": "00000000-0000-4000-8000-000000000006",
   "machine_name": "NVIDIA RTX 6000 Ada Generation",
   "price_per_gpu": 0.69,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "195.26.233.68",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.10",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -520,10 +520,10 @@
   },
   "active": null,
   "uptime_in_minutes": 52350,
-  "miner_hotkey": "5HHN87ZRqa9R5JFgX3den8FLLE8zPZtK98sKPb2Ymz9r4zb7",
+  "miner_hotkey": "5SyntheticMiner141111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "b95a585f-7b4a-49ea-8c85-49994b5ca07c",
+   "id": "00000000-0000-4000-8000-00000000001a",
    "created_at": "2026-08-22T18:34:27.815167",
    "updated_at": "2026-08-22T18:34:27.815168",
    "country": "United States",
@@ -552,13 +552,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "ad83de56-8a04-4ab1-ac5a-4ab007b4e2b3",
+  "id": "00000000-0000-4000-8000-000000000016",
   "machine_name": "NVIDIA GeForce RTX 5090",
   "price_per_gpu": 0.5,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "202.214.223.66",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.12",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -566,10 +566,10 @@
   },
   "active": null,
   "uptime_in_minutes": 26835,
-  "miner_hotkey": "5GUBuA7kpRAUYkNqg3ZVsuTF7irBc1RPcb7wYcDgTuigphd7",
+  "miner_hotkey": "5SyntheticMiner111111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "304bf437-b852-44dc-b513-9bdd66c17c78",
+   "id": "00000000-0000-4000-8000-000000000008",
    "created_at": "2026-08-22T18:34:27.812029",
    "updated_at": "2026-08-22T18:34:27.812033",
    "country": "Japan",
@@ -598,13 +598,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "ec3caf45-75bb-4281-8f8f-1d4a3ae7683b",
+  "id": "00000000-0000-4000-8000-000000000021",
   "machine_name": "NVIDIA GeForce RTX 4090",
   "price_per_gpu": 0.58,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "5.130.180.236",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.22",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 1,
   "available_gpu_count": 1,
   "specs": {
@@ -612,10 +612,10 @@
   },
   "active": null,
   "uptime_in_minutes": 11715,
-  "miner_hotkey": "5EC9SdXSaCsFm22mmT9uw5LcHn2pSzgRY1YUiYN2oVdwKoED",
+  "miner_hotkey": "5SyntheticMiner081111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "db171845-cc90-4533-b0a9-6dee8a2ca401",
+   "id": "00000000-0000-4000-8000-00000000001e",
    "created_at": "2026-08-22T18:34:27.814255",
    "updated_at": "2026-08-22T18:34:27.814256",
    "country": "Russia",
@@ -644,13 +644,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "c95ba58d-8039-416a-9feb-093fbfb1346d",
+  "id": "00000000-0000-4000-8000-00000000001b",
   "machine_name": "NVIDIA GeForce RTX 3090",
   "price_per_gpu": 0.16,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "144.31.250.244",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.3",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 8,
   "available_gpu_count": 8,
   "specs": {
@@ -658,10 +658,10 @@
   },
   "active": null,
   "uptime_in_minutes": 18825,
-  "miner_hotkey": "5GnXmo223xKAs1QkEtHrRgC2DHUb5TKAbGfhmHbU2xob5iXN",
+  "miner_hotkey": "5SyntheticMiner121111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "22176e6f-60d4-497e-8734-e0185656c8f6",
+   "id": "00000000-0000-4000-8000-000000000005",
    "created_at": "2026-08-22T18:34:27.814167",
    "updated_at": "2026-08-22T18:34:27.814168",
    "country": "Germany",
@@ -690,13 +690,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "a1d2b8f5-9571-4fc2-a13a-3832b395b70e",
+  "id": "00000000-0000-4000-8000-000000000015",
   "machine_name": "NVIDIA L40S",
   "price_per_gpu": 0.38,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "64.247.196.196",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.24",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 4,
   "available_gpu_count": 4,
   "specs": {
@@ -704,10 +704,10 @@
   },
   "active": null,
   "uptime_in_minutes": 46965,
-  "miner_hotkey": "5DhzqmmkD99d8MFbEEFgtQYSUWyYHRLNJKpVjYQFn5d6hJsv",
+  "miner_hotkey": "5SyntheticMiner071111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "0c02f8df-1341-4ab7-b34f-70e4349ac2bf",
+   "id": "00000000-0000-4000-8000-000000000001",
    "created_at": "2026-08-22T18:34:27.812763",
    "updated_at": "2026-08-22T18:34:27.812764",
    "country": "United States",
@@ -736,13 +736,13 @@
   "on_infiniband_fabric": false
  },
  {
-  "id": "e1b995fb-64f9-4eca-af41-40bb3a9f09a2",
+  "id": "00000000-0000-4000-8000-00000000001f",
   "machine_name": "NVIDIA L40",
   "price_per_gpu": 0.33,
   "pending_price_per_hour": null,
   "price_change_effective_date": null,
-  "executor_ip_address": "64.247.196.157",
-  "validator_hotkey": "5F7X5UpKSr26KU3jKfpLmT8kuKtBNyHhEnfS8xtxPCqCb13p",
+  "executor_ip_address": "203.0.113.23",
+  "validator_hotkey": "5SyntheticValidator01111111111111111111111111111",
   "gpu_count": 1,
   "available_gpu_count": 1,
   "specs": {
@@ -750,10 +750,10 @@
   },
   "active": null,
   "uptime_in_minutes": 157290,
-  "miner_hotkey": "5DhzqmmkD99d8MFbEEFgtQYSUWyYHRLNJKpVjYQFn5d6hJsv",
+  "miner_hotkey": "5SyntheticMiner071111111111111111111111111111111",
   "collateral_deposited": false,
   "location": {
-   "id": "2de563e5-e8a7-43a2-9134-7df5e589ef91",
+   "id": "00000000-0000-4000-8000-000000000007",
    "created_at": "2026-08-22T18:34:27.815704",
    "updated_at": "2026-08-22T18:34:27.815705",
    "country": "United States",
