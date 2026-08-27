@@ -1,12 +1,4 @@
-<!-- Wordmark banner: a deliberate typographic placeholder, one image for
-     every theme. banner.svg is the vector source; banner.png is what the
-     README embeds, since GitHub renders PNG most reliably. To rebrand,
-     swap both in place. -->
-<div align="center">
-
-<img src="https://github.com/getcomputable/gpu-index/blob/main/assets/banner.png?raw=true" alt="Computable GPU Index" width="600">
-
-</div>
+<h1 align="center">Computable GPU Index</h1>
 
 <p align="center">
   <a href="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml"><img src="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
