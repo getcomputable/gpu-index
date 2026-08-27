@@ -4,7 +4,7 @@
      swap both in place. -->
 <div align="center">
 
-<img src="assets/banner.png" alt="Computable GPU Index" width="600">
+<img src="https://github.com/getcomputable/gpu-index/blob/main/assets/banner.png?raw=true" alt="Computable GPU Index" width="600">
 
 </div>
 
