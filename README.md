@@ -1,8 +1,10 @@
-<!-- Wordmark banner: a deliberate typographic placeholder, one file for
-     every theme. To rebrand, swap assets/banner.svg in place. -->
+<!-- Wordmark banner: a deliberate typographic placeholder, one image for
+     every theme. banner.svg is the vector source; banner.png is what the
+     README embeds, since GitHub renders PNG most reliably. To rebrand,
+     swap both in place. -->
 <div align="center">
 
-![Computable GPU Index](assets/banner.svg)
+<img src="assets/banner.png" alt="Computable GPU Index" width="600">
 
 </div>
 
