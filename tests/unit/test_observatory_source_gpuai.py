@@ -8,7 +8,11 @@ the edge rows kept: the 8x-only B300 config, an odd 7x gpu_count, the 4x
 RTX 5090 outlier row ($154.67 -- the framework flags it implausible, the
 collector records it raw), rows missing the optional environment key, and
 every lookalike label pair (h100_sxm/pcie/nvl, h200_sxm/nvl,
-a100_40gb/80gb, rtx_6000_ada vs rtx_pro_6000). pricing_page1.json keeps
+a100_40gb/80gb, rtx_6000_ada vs rtx_pro_6000). The per-offer
+``offering_id`` values are SYNTHETIC -- sequential 12-hex stand-ins
+(aa0000000001...) that preserve the stable-identity and cross-page
+uniqueness relationships the pins depend on; prices, availability counts,
+field shapes and the next_cursor are as recorded. pricing_page1.json keeps
 the REAL next_cursor string from the live page; pricing_page2.json is the
 book tail with next_cursor null, plus three real sold-out rows (available
 0: 1x a100_80gb, 1x a40, 8x b200) appended verbatim from the live
@@ -72,7 +76,7 @@ def test_source_id_matches_module():
 def test_per_instance_price_divides_to_per_gpu(rows):
     """price_per_hour covers the WHOLE configuration -- the 8x B300 must
     record $6.3275/GPU-hr, never $50.62."""
-    b300 = _by_offer(rows, "a0a48d83d5f6")
+    b300 = _by_offer(rows, "aa0000000006")
     assert b300["sku_identifier"] == "b300"
     assert b300["price_usd_gpu_hr"] == 6.3275
     assert b300["raw_value"] == "50.62"
@@ -98,17 +102,17 @@ def test_capacity_classes_recorded_separately(rows):
         if r["sku_identifier"] == "b200"
     }
     assert b200 == {
-        "89ce2d94cfa2": ("community", 1, 5.32),
-        "e8cf1fc47222": ("secure", 1, 6.79),
-        "b25408688458": ("community", 8, 7.1275),
+        "aa0000000003": ("community", 1, 5.32),
+        "aa0000000004": ("secure", 1, 6.79),
+        "aa0000000005": ("community", 8, 7.1275),
         # Sold out (available 0) -- records beside the in-stock offers.
-        "e1f5ddfb9ebc": ("secure", 8, 5.4),
+        "aa0000000025": ("secure", 8, 5.4),
     }
 
 
 def test_recon_cross_checked_h100_sxm_row(rows):
     """2x $3.47 us-west community -- the /gpus page renders it $1.74."""
-    h100 = _by_offer(rows, "ec95461f7fc5")
+    h100 = _by_offer(rows, "aa0000000009")
     assert h100["sku_identifier"] == "h100_sxm"
     assert h100["price_usd_gpu_hr"] == 1.735
     assert h100["raw_value"] == "3.47"
@@ -119,7 +123,7 @@ def test_recon_cross_checked_h100_sxm_row(rows):
 def test_odd_gpu_count_basis(rows):
     """gpu_count is whatever the provider listed -- a 7x config divides
     by 7 (rounded to the lane's 4 decimals)."""
-    r3090 = _by_offer(rows, "8132b1195c60")
+    r3090 = _by_offer(rows, "aa0000000015")
     assert r3090["sku_identifier"] == "rtx_3090"
     assert r3090["gpu_count_basis"] == 7
     assert r3090["raw_value"] == "1.5"
@@ -129,7 +133,7 @@ def test_odd_gpu_count_basis(rows):
 def test_outlier_row_recorded_raw_not_screened(rows):
     """The live 4x RTX 5090 at $154.67 is recorded honestly -- flagging
     it implausible is the FRAMEWORK's job, never the collector's."""
-    outlier = _by_offer(rows, "79ff8ac1608a")
+    outlier = _by_offer(rows, "aa0000000017")
     assert outlier["sku_identifier"] == "rtx_5090"
     assert outlier["price_usd_gpu_hr"] == 38.6675
     assert outlier["raw_value"] == "154.67"
@@ -137,7 +141,7 @@ def test_outlier_row_recorded_raw_not_screened(rows):
 
 def test_rows_missing_optional_environment_key_still_record(rows):
     """environment is absent on 4/272 live rows -- not pinned, not fatal."""
-    h200 = _by_offer(rows, "aea648d95704")
+    h200 = _by_offer(rows, "aa0000000011")
     assert h200["sku_identifier"] == "h200_sxm"
     assert h200["price_usd_gpu_hr"] == 3.99
     assert h200["extra"]["capacity_class"] == "secure"
@@ -156,7 +160,7 @@ def test_offer_identity_and_availability_metadata(rows):
     assert len({r["offer_id"] for r in rows}) == len(rows)
     assert all(r["extra"]["available"] >= 0 for r in rows)
     sold_out = {r["offer_id"] for r in rows if r["extra"]["available"] == 0}
-    assert sold_out == {"d02ea9e6ccf4", "0dd4c7c1c3aa", "e1f5ddfb9ebc"}
+    assert sold_out == {"aa0000000023", "aa0000000024", "aa0000000025"}
 
 
 def test_sold_out_row_records_as_listed_price():
@@ -165,14 +169,14 @@ def test_sold_out_row_records_as_listed_price():
     extra.available > 0 before any offered-price statistic)."""
     page2 = json.loads(PAGE2.read_text())
     row = next(
-        r for r in page2["data"] if r["offering_id"] == "d02ea9e6ccf4"
+        r for r in page2["data"] if r["offering_id"] == "aa0000000023"
     )
     obs = row_observation(row)
     assert obs["sku_identifier"] == "a100_80gb"
     assert obs["extra"]["available"] == 0
     assert obs["price_usd_gpu_hr"] == 1.07
     assert obs["raw_value"] == "1.07"
-    assert obs["offer_id"] == "d02ea9e6ccf4"
+    assert obs["offer_id"] == "aa0000000023"
 
 
 def test_collect_requests_include_unavailable_and_counts_stockouts(
