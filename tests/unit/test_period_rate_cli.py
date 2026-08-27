@@ -501,8 +501,7 @@ def test_missing_bucket_env_refuses_exit_two(monkeypatch, capsys, tmp_path):
 
 def test_malformed_json_artifact_refuses_exit_two(monkeypatch, capsys, tmp_path):
     """A listed artifact with unparseable bytes refuses (exit 2), never
-    tracebacks (Greptile P1 on #63: JSONDecodeError bypassed the
-    refusal handler)."""
+    tracebacks -- JSONDecodeError used to bypass the refusal handler."""
     client = FakeS3()
     _seed_world(client)
     client.objects[_key("2026-08-12T09")] = b"{not json"
