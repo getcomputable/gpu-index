@@ -1,4 +1,4 @@
-<h1 align="center">Computable GPU Index</h1>
+<h1 align="center">Computable GPU Index (CGI)</h1>
 
 <p align="center">
   <a href="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml"><img src="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
