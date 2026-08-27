@@ -87,11 +87,9 @@ from gpu_index.common.http import fetch
 from gpu_index.observatory.observation import DEFAULT_TIMEOUT, observation, result
 
 # Up to (MAX_PAGES_PER_GPU + 1) * len(options.gpus) calls per capture (the
-# +1 is the per-slug available_total probe); space them out of politeness
-# to an unauthenticated public API (vast drew a live 429 from a rapid-fire
-# burst on 2026-08-22 — don't find out this API's limit the same way).
-# ~15s added for the current 10-slug config, trivially inside the
-# per-source deadline.
+# +1 is the per-slug available_total probe); they are spaced rather than
+# sent back to back. ~15s added for the current 10-slug config, trivially
+# inside the per-source deadline.
 REQUEST_SPACING_SECONDS = 0.5
 
 SOURCE_ID = "computepulse"

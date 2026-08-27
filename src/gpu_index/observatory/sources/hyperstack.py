@@ -50,7 +50,7 @@ are nullable strings (usually null, sometimes "0"); model lists are
 sparse per region (US-1 published only A100-80G-SXM4) so ABSENCE of a
 model is not zero stock -- only explicit "0" rows are zeros. The worker
 is docs-team convenience infra (CORS pinned to docs.hyperstack.cloud),
-not a contractual API: it can be renamed, removed or origin/token-gated
+not a contractual API: it can change or stop answering
 any day, so parse_gpu_stock fences fail closed WITHIN the stock parse
 and collect() converts any stock fetch/shape failure into a
 partial_error tripwire -- stock death can NEVER dark the price lane.

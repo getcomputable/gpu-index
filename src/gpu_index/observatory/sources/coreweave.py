@@ -46,9 +46,8 @@ generalized:
     superchips x 2 GPUs = 4 GPUs) -- the leading integer is the count and
     the raw cell rides in extra. GB200/GB300 NVL72 are first-class skus
     here, NOT the basket lanes' quarantine class;
-  - the default python UA is 403'd by coreweave.com; the framework's
-    explicit UA (gpu_index.common.http) is what this collector sends —
-    this host is UA-sensitive.
+  - the collector sends the project User-Agent defined in
+    gpu_index.common.http.
 """
 
 from __future__ import annotations

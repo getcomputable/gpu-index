@@ -7,9 +7,8 @@ no JS needed). The docs page is DELIBERATELY the source over the marketing
 page (www.digitalocean.com/pricing/gpu-droplets): the marketing page
 interleaves '12 Month Reserved Price*' teasers ($3.26 H100, $7.94 B300)
 with on-demand figures in a JS-heavy blob, while the docs page separates
-tiers into cleanly anchored sections. The bare python-urllib UA is 403'd by
-this host; the framework's explicit UA (gpu_index.common.http) passes --
-the shared transport is load-bearing, not just convention.
+tiers into cleanly anchored sections. The collector sends the project
+User-Agent defined in gpu_index.common.http.
 
 Page shape verified live 2026-08-22 (11 on-demand + 8 spot rows):
 

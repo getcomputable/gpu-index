@@ -191,14 +191,14 @@
       "display_name": "GMI Cloud",
       "source_type": "direct_principal",
       "first_party": true,
-      "notes": "Server-rendered /en/pricing GPU cards — h3 'NVIDIA <chip>' paired with adjacent 'from $X.XX' + '/GPU-hour' spans; USD from-floor list prices (page FAQ: on-demand vs committed differ, so tier recorded as from_floor, never on-demand). Unpriced pre-order cards skipped with a partial_error; GB200/GB300 map to their own skus, never B200/B300. UA-sensitive host (the bare urllib UA is 403'd; the framework UA is what the fetch sends); the /en/ locale URL is pinned."
+      "notes": "Server-rendered /en/pricing GPU cards — h3 'NVIDIA <chip>' paired with adjacent 'from $X.XX' + '/GPU-hour' spans; USD from-floor list prices (page FAQ: on-demand vs committed differ, so tier recorded as from_floor, never on-demand). Unpriced pre-order cards skipped with a partial_error; GB200/GB300 map to their own skus, never B200/B300. The fetch sends the project User-Agent (gpu_index.common.http); the /en/ locale URL is pinned."
     },
     {
       "source_id": "digitalocean",
       "display_name": "DigitalOcean",
       "source_type": "direct_principal",
       "first_party": true,
-      "notes": "Docs pricing page (server-rendered) — On-Demand + Spot GPU Droplet tables sliced by h2 anchor ids; 1x per-GPU rows and (8x) full-droplet rows recorded as separate labeled observations (whole-droplet price + gpu_count_basis from the page's own (Nx) label). Contract table is unpriced by design and excluded. B300 exists only in the spot tier (public preview). UA-sensitive host (the bare urllib UA is 403'd)."
+      "notes": "Docs pricing page (server-rendered) — On-Demand + Spot GPU Droplet tables sliced by h2 anchor ids; 1x per-GPU rows and (8x) full-droplet rows recorded as separate labeled observations (whole-droplet price + gpu_count_basis from the page's own (Nx) label). Contract table is unpriced by design and excluded. B300 exists only in the spot tier (public preview). The fetch sends the project User-Agent (gpu_index.common.http)."
     },
     {
       "source_id": "fal",
@@ -212,7 +212,7 @@
       "display_name": "Hot Aisle",
       "source_type": "direct_principal",
       "first_party": true,
-      "notes": "Server-rendered Astro pricing cards on /pricing — MI300X only today: VM on-demand $/GPU/hr (per-minute billing, new-customer rate) + 8x bare-metal one-month-minimum rate labeled monthly-commit; grandfathered existing-customer rate recorded tier legacy while published. One of few AMD principals. UA-sensitive host (Cloudflare 403s the bare urllib UA). Unpriced parts (MI355X) never get invented rows."
+      "notes": "Server-rendered Astro pricing cards on /pricing — MI300X only today: VM on-demand $/GPU/hr (per-minute billing, new-customer rate) + 8x bare-metal one-month-minimum rate labeled monthly-commit; grandfathered existing-customer rate recorded tier legacy while published. One of few AMD principals. The fetch sends the project User-Agent (gpu_index.common.http). Unpriced parts (MI355X) never get invented rows."
     },
     {
       "source_id": "sesterce",
@@ -226,7 +226,7 @@
       "display_name": "Sesterce console (cloud.sesterce.com live-offers book)",
       "source_type": "direct_principal",
       "first_party": true,
-      "notes": "Public /compute marketplace page server-renders the FULL key-gated /gpu-cloud/instances/offers book into its Next.js RSC flight payload (no auth, no JS; cache-control no-store, fresh per request). Join-then-scan of self.__next_f.push chunks; fail-closed pins: exactly one \"filteredOffers\":[ page-wide (RSC reference strings never match), balanced-bracket slice, json.loads-or-raise, $undefined-inside-slice raises. One observation per offer: sku_identifier = raw gpuName, per-GPU = instance-total hourlyPrice / gpuCount (float artifacts kept in raw_value); verbatim per-region availability booleans + instance_id/deployment_type/cloud_name (anonymized upstream tag) in extra; gpuCount<1 CPU tiers and zero prices skipped + counted; standing partial_error names homepage-advertised chips (B200/B300) absent from the book; book_stats records the offer count per capture (server-side default-filter tripwire). Sibling of sesterce -- the homepage floor table runs on its own ISR clock and the two surfaces are never reconciled at collect time."
+      "notes": "Public /compute marketplace page server-renders the full /gpu-cloud/instances/offers book into its Next.js RSC flight payload (read anonymously, no JS; cache-control no-store, fresh per request). Join-then-scan of self.__next_f.push chunks; fail-closed pins: exactly one \"filteredOffers\":[ page-wide (RSC reference strings never match), balanced-bracket slice, json.loads-or-raise, $undefined-inside-slice raises. One observation per offer: sku_identifier = raw gpuName, per-GPU = instance-total hourlyPrice / gpuCount (float artifacts kept in raw_value); verbatim per-region availability booleans + instance_id/deployment_type/cloud_name (anonymized upstream tag) in extra; gpuCount<1 CPU tiers and zero prices skipped + counted; standing partial_error names homepage-advertised chips (B200/B300) absent from the book; book_stats records the offer count per capture (server-side default-filter tripwire). Sibling of sesterce -- the homepage floor table runs on its own ISR clock and the two surfaces are never reconciled at collect time."
     },
     {
       "source_id": "tensorpool",

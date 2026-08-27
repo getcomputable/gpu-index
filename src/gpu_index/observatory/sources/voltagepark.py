@@ -73,10 +73,9 @@ Availability capture (availability accrual, added 2026-08-25) -- three legs:
     2026-08-25) while prices stayed published. Four surfaces reading empty
     SIMULTANEOUSLY (gpu_count_*=0, all location_ids_with_availability=[],
     instant locations results=[], legacy /locations/ results=[]) corroborate
-    "sold out" over junk fields, but anonymous callers being served zeroed
-    availability is not excluded (the spec marks instant/locations as
-    bearer-required yet it 200s anonymously). First nonzero observation is
-    the semantics proof.
+    "sold out" over junk fields, but a zero reading is not yet PROVEN to
+    mean sold out -- every surface here is read anonymously, and the first
+    nonzero observation is the semantics proof.
 
 The VM surfaces do NOT emit observations (2026-08-25 ruling): voltagepark
 is a seated source in the live H100 panels, which read raw-observatory
