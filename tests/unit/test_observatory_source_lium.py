@@ -7,10 +7,13 @@ House style per the runpod exemplar: (1) parse the recorded fixture, (2)
 pin exact prints for known rows incl. this source's edge cases (the single
 spot row, miner-set float residue, lookalike labels, identical duplicate
 asks), (3) prove the framework normalization maps this source's real
-labels. The executors fixture is a 17-row excerpt of the real 86-row
-/api/executors response captured 2026-08-22 -- every distinct machine_name
+labels. The executors fixture is a 17-row excerpt of the 86-row
+/api/executors response recorded 2026-08-22 -- every distinct machine_name
 kept, with the bulky ``specs`` blob pruned to the one field the collector
-reads (is_spot); all other bytes are verbatim. Structural-drift and
+reads (is_spot). Machine/location UUIDs, executor IP addresses and
+miner/validator hotkeys are SYNTHETIC stand-ins that preserve the
+shared-validator and repeated-miner relationships; prices, labels and
+location fields are as recorded. Structural-drift and
 pending-price cases do not exist on the live surface today, so those pins
 are exercised with synthetic bodies.
 
@@ -91,7 +94,7 @@ def test_every_fixture_row_recorded(parsed):
 
 
 def test_pins_exact_prices_for_known_rows(rows):
-    b300 = next(r for r in rows if r["machine_id"].startswith("42ef8a0b"))
+    b300 = next(r for r in rows if r["machine_id"] == "00000000-0000-4000-8000-00000000000b")
     assert b300["sku_identifier"] == "NVIDIA B300 SXM6 AC"
     assert b300["price_usd_gpu_hr"] == 7.97
     assert b300["raw_value"] == "7.97"
@@ -112,7 +115,7 @@ def test_pins_exact_prices_for_known_rows(rows):
 def test_float_residue_recorded_verbatim(rows):
     """Miner-set prices carry float residue -- raw_value keeps the figure
     exactly as published while the normalized price rounds to 4dp."""
-    residue = next(r for r in rows if r["machine_id"].startswith("8b121617"))
+    residue = next(r for r in rows if r["machine_id"] == "00000000-0000-4000-8000-000000000013")
     assert residue["raw_value"] == "8.000300000000001"
     assert residue["price_usd_gpu_hr"] == 8.0003
     b200 = next(r for r in rows if r["sku_identifier"] == "NVIDIA B200")
@@ -350,7 +353,7 @@ def test_collect_attaches_chip_occupancy(monkeypatch):
     rows = out["observations"]
     assert len(rows) == 17
     assert "partial_errors" not in out
-    b300 = next(r for r in rows if r["machine_id"].startswith("42ef8a0b"))
+    b300 = next(r for r in rows if r["machine_id"] == "00000000-0000-4000-8000-00000000000b")
     assert b300["extra"]["model_rental_rate"] == 1.0  # fully-rented fleet
     assert b300["extra"]["model_total_gpu_count"] == 57
     b200 = next(r for r in rows if r["sku_identifier"] == "NVIDIA B200")

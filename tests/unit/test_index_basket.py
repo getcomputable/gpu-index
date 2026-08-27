@@ -346,22 +346,23 @@ VAST_BODY = json.dumps(
     }
 )
 
-# The REAL B300 book as fetched live 2026-08-15 (incident forensics):
+# A recorded book shape exercising the dedup and population rules:
 # 9 offers, 5 machines, 4 hosts, $6.25-$10.94/GPU-hr simultaneously. Host
-# 543558 prices ~$10.94/GPU at every slice size; the cheapest hosts are
-# verification="unverified".
+# 800017 prices ~$10.94/GPU at every slice size; the cheapest hosts are
+# verification="unverified". Identifiers are synthetic; prices and the
+# offer/machine/host shape are as recorded.
 VAST_LIVE_BOOK_2026_08_15 = json.dumps(
     {
         "offers": [
-            {"id": 47779742, "machine_id": 144429, "host_id": 543558, "num_gpus": 1, "dph_total": 10.938888888888888, "geolocation": ", CA", "verified": None, "verification": "verified"},
-            {"id": 47419090, "machine_id": 144888, "host_id": 620186, "num_gpus": 2, "dph_total": 15.002083333333335, "geolocation": "Utah, US", "verified": None, "verification": "verified"},
-            {"id": 47779740, "machine_id": 144429, "host_id": 543558, "num_gpus": 2, "dph_total": 21.87638888888889, "geolocation": ", CA", "verified": None, "verification": "verified"},
-            {"id": 47676702, "machine_id": 147162, "host_id": 1801, "num_gpus": 4, "dph_total": 25.002083333333335, "geolocation": "Taiwan, TW", "verified": None, "verification": "unverified"},
-            {"id": 47419091, "machine_id": 144888, "host_id": 620186, "num_gpus": 4, "dph_total": 30.002083333333335, "geolocation": "Utah, US", "verified": None, "verification": "verified"},
-            {"id": 47779738, "machine_id": 144429, "host_id": 543558, "num_gpus": 4, "dph_total": 43.75138888888889, "geolocation": ", CA", "verified": None, "verification": "verified"},
-            {"id": 47676700, "machine_id": 147162, "host_id": 1801, "num_gpus": 8, "dph_total": 50.002083333333335, "geolocation": "Taiwan, TW", "verified": None, "verification": "unverified"},
-            {"id": 46949777, "machine_id": 146594, "host_id": 246706, "num_gpus": 8, "dph_total": 55.002083333333335, "geolocation": "Texas, US", "verified": None, "verification": "unverified"},
-            {"id": 47106639, "machine_id": 144407, "host_id": 543558, "num_gpus": 8, "dph_total": 85.00555555555556, "geolocation": ", CA", "verified": None, "verification": "verified"},
+            {"id": 700025, "machine_id": 900014, "host_id": 800017, "num_gpus": 1, "dph_total": 10.938888888888888, "geolocation": ", CA", "verified": None, "verification": "verified"},
+            {"id": 700016, "machine_id": 900017, "host_id": 800019, "num_gpus": 2, "dph_total": 15.002083333333335, "geolocation": "Utah, US", "verified": None, "verification": "verified"},
+            {"id": 700024, "machine_id": 900014, "host_id": 800017, "num_gpus": 2, "dph_total": 21.87638888888889, "geolocation": ", CA", "verified": None, "verification": "verified"},
+            {"id": 700021, "machine_id": 900023, "host_id": 800001, "num_gpus": 4, "dph_total": 25.002083333333335, "geolocation": "Taiwan, TW", "verified": None, "verification": "unverified"},
+            {"id": 700017, "machine_id": 900017, "host_id": 800019, "num_gpus": 4, "dph_total": 30.002083333333335, "geolocation": "Utah, US", "verified": None, "verification": "verified"},
+            {"id": 700023, "machine_id": 900014, "host_id": 800017, "num_gpus": 4, "dph_total": 43.75138888888889, "geolocation": ", CA", "verified": None, "verification": "verified"},
+            {"id": 700020, "machine_id": 900023, "host_id": 800001, "num_gpus": 8, "dph_total": 50.002083333333335, "geolocation": "Taiwan, TW", "verified": None, "verification": "unverified"},
+            {"id": 700012, "machine_id": 900021, "host_id": 800006, "num_gpus": 8, "dph_total": 55.002083333333335, "geolocation": "Texas, US", "verified": None, "verification": "unverified"},
+            {"id": 700013, "machine_id": 900013, "host_id": 800017, "num_gpus": 8, "dph_total": 85.00555555555556, "geolocation": ", CA", "verified": None, "verification": "verified"},
         ]
     }
 )
@@ -379,24 +380,24 @@ def test_parse_vast_normalizes_per_gpu():
 def test_parse_vast_dedups_by_machine_and_ranks_per_gpu():
     """THE 08-13 incident pin: against the real book, the
     recorded print must be $6.2503 (Taiwan, TRUE 8-GPU basis) — never host
-    543558's $10.94 slice pricing, and never an instance-total ranking."""
+    800017's $10.94 slice pricing, and never an instance-total ranking."""
     rows = parse_vast(VAST_LIVE_BOOK_2026_08_15, "B300")
     # One row per machine, cheapest machines first, per-GPU ranked.
     assert [
         (r["machine_id"], r["price_usd_gpu_hr"], r["gpu_count_basis"])
         for r in rows
     ] == [
-        (147162, pytest.approx(6.2503, abs=1e-4), 8),
-        (146594, pytest.approx(6.8753, abs=1e-4), 8),
-        (144888, pytest.approx(7.5005, abs=1e-4), 4),
-        (144407, pytest.approx(10.6257, abs=1e-4), 8),
-        (144429, pytest.approx(10.9378, abs=1e-4), 4),
+        (900023, pytest.approx(6.2503, abs=1e-4), 8),
+        (900021, pytest.approx(6.8753, abs=1e-4), 8),
+        (900017, pytest.approx(7.5005, abs=1e-4), 4),
+        (900013, pytest.approx(10.6257, abs=1e-4), 8),
+        (900014, pytest.approx(10.9378, abs=1e-4), 4),
     ]
     # The would-be daily print (lowest eligible) is the Taiwan 8x box.
     lowest = min(rows, key=lambda r: r["price_usd_gpu_hr"])
-    assert (lowest["host_id"], lowest["region"]) == (1801, "Taiwan, TW")
+    assert (lowest["host_id"], lowest["region"]) == (800001, "Taiwan, TW")
     assert lowest["verification"] == "unverified"  # metadata, not a screen
-    assert lowest["offer_id"] == 47676700
+    assert lowest["offer_id"] == 700020
     # Identity fields ride every row (L2).
     assert all(
         r["machine_id"] and r["host_id"] and r["offer_id"] for r in rows
@@ -544,7 +545,7 @@ def test_collect_vast_single_call_per_sku_logs_candidates(monkeypatch, capsys):
     assert any("B200" in e for e in result["partial_errors"])
     out = capsys.readouterr().out
     assert out.count("vast candidate B300") == 9  # full set, pre-dedup
-    assert "machine=147162" in out and "host=1801" in out
+    assert "machine=900023" in out and "host=800001" in out
 
 
 def test_collect_vast_log_lines_strip_control_chars(monkeypatch, capsys):
@@ -1317,7 +1318,7 @@ def test_jump_screen_quarantines_uncorroborated_jump():
             _scr_src(
                 "vast",
                 [
-                    _scr_obs(native=10.9382, machine=144429),
+                    _scr_obs(native=10.9382, machine=900014),
                     _scr_obs(native=3.75, tier="spot"),
                 ],
             ),
@@ -1327,7 +1328,7 @@ def test_jump_screen_quarantines_uncorroborated_jump():
         [
             _scr_src("verda", [_scr_obs(native=7.5)]),
             _scr_src("nebius", [_scr_obs(native=7.85)]),
-            _scr_src("vast", [_scr_obs(native=6.8753, machine=146594)]),
+            _scr_src("vast", [_scr_obs(native=6.8753, machine=900021)]),
         ]
     )
     report = apply_jump_screen(payload, reference, config=_scr_cfg())
@@ -1460,16 +1461,16 @@ def test_normalize_observation_preserves_identity_fields():
         {
             "sku": "B300",
             "price_usd_gpu_hr": 6.25,
-            "offer_id": 47676700,
-            "machine_id": 147162,
-            "host_id": 1801,
+            "offer_id": 700020,
+            "machine_id": 900023,
+            "host_id": 800001,
             "verification": "unverified",
         }
     )
     assert (out["offer_id"], out["machine_id"], out["host_id"]) == (
-        47676700,
-        147162,
-        1801,
+        700020,
+        900023,
+        800001,
     )
     assert out["verification"] == "unverified"
     plain = normalize_observation({"sku": "B300", "price_usd_gpu_hr": 6.25})
@@ -1483,7 +1484,7 @@ def test_quarantined_prints_are_excluded_from_the_composite():
     from gpu_index.index.composite import compute_day
 
     cfg = load_basket_config(REPO_ROOT / "config" / "index_basket.json")
-    quarantined_obs = _scr_obs(native=10.9382, machine=144429)
+    quarantined_obs = _scr_obs(native=10.9382, machine=900014)
     quarantined_obs["implausible"] = True
     quarantined_obs["quarantined"] = QUARANTINE_REASON
     snapshot = {
@@ -1533,7 +1534,7 @@ def test_main_capture_applies_screens_and_stores_flags(
         "sources": [
             {"source_id": "verda", "status": "ok", "observations": [_scr_obs(native=7.5)]},
             {"source_id": "nebius", "status": "ok", "observations": [_scr_obs(native=7.85)]},
-            {"source_id": "vast", "status": "ok", "observations": [_scr_obs(native=6.8753, machine=146594)]},
+            {"source_id": "vast", "status": "ok", "observations": [_scr_obs(native=6.8753, machine=900021)]},
         ],
     }
     client.objects[ref_key] = json.dumps(reference).encode()
@@ -1566,9 +1567,9 @@ def test_main_capture_applies_screens_and_stores_flags(
                     "raw_value": "87.5056",
                     "raw_unit": "usd_per_instance_hr",
                     "gpu_count_basis": 8,
-                    "offer_id": 47779749,
-                    "machine_id": 144429,
-                    "host_id": 543558,
+                    "offer_id": 700036,
+                    "machine_id": 900014,
+                    "host_id": 800017,
                     "verification": "verified",
                 },
                 # Non-target sku stays unflagged, but the quarantined B300
@@ -1628,7 +1629,7 @@ def test_lowest_eligible_mirrors_r1_at_capture_time():
         [
             _scr_obs(native=3.75, tier="spot"),
             _scr_obs(native=5.0, implausible=True),
-            _scr_obs(native=6.8753, machine=146594),
+            _scr_obs(native=6.8753, machine=900021),
             _scr_obs(native=7.5),
             {"sku": "B300", "tier": "on-demand", "notes": ""},
         ],
@@ -1651,14 +1652,14 @@ def test_collect_vast_fetches_descending_tail_when_at_limit(monkeypatch, capsys)
     limit = sources_mod.VAST_FETCH_LIMIT
     asc_offers = [
         {
-            "id": i, "machine_id": 1000 + i, "host_id": 543558, "num_gpus": 1,
+            "id": i, "machine_id": 1000 + i, "host_id": 800017, "num_gpus": 1,
             "dph_total": 10.94 + i * 0.01, "geolocation": ", CA",
             "verification": "verified",
         }
         for i in range(limit)  # exactly at limit -> suspected truncation
     ]
     cheap_8x = {
-        "id": 9999, "machine_id": 147162, "host_id": 1801, "num_gpus": 8,
+        "id": 9999, "machine_id": 900023, "host_id": 800001, "num_gpus": 8,
         "dph_total": 50.0021, "geolocation": "Taiwan, TW",
         "verification": "unverified",
     }
@@ -1683,7 +1684,7 @@ def test_collect_vast_fetches_descending_tail_when_at_limit(monkeypatch, capsys)
     b300 = [o for o in result["observations"] if o["sku"] == "B300"]
     lowest = min(b300, key=lambda o: o["price_usd_gpu_hr"])
     assert lowest["price_usd_gpu_hr"] == pytest.approx(6.2503, abs=1e-4)
-    assert lowest["machine_id"] == 147162
+    assert lowest["machine_id"] == 900023
     out = capsys.readouterr().out
     assert "book at fetch limit" in out
     # Not book-exceeds-coverage: the desc window was NOT full.
