@@ -11,11 +11,13 @@ tagging.
    surface test
    (`tests/unit/test_public_api.py`) untouched or deliberately updated in
    the same diff.
-2. **Signature compatibility**: `griffe check gpu_index --search src
-   --against <previous release tag>` reports no breakages, or the release
-   is a major version bump and the breakages are listed in the release
-   notes. (CI runs the same check against the PR base on every pull
-   request.)
+2. **Signature compatibility**: `python .github/scripts/api_compat.py
+   gpu_index --search src --against <previous release tag>` reports no
+   breakages, or the release is a major version bump and the breakages
+   are listed in the release notes. (That script is griffe's own check
+   minus the one breakage kind that is not a signature break, a
+   constant's value changing; CI runs the same script against the PR base
+   on every pull request.)
 3. **Value-affecting changes are minted**: any change that alters what the
    pipeline would publish requires a new methodology version. See
    GOVERNANCE.md ("Methodology changes"): every artifact embeds its full
