@@ -15,6 +15,18 @@ is in `config/raw_observatory.json` and `src/gpu_index/observatory/sources/`.
 Only prices and the metadata printed alongside them are recorded. Nothing is
 purchased, provisioned or benchmarked.
 
+## One source is an aggregator
+
+Most sources are a provider publishing its own prices. Two collectors are not:
+`computepulse` and `computepulse_supply` read a third-party aggregator, so a row
+there is that aggregator's observation of some other provider's price, never a
+first-party print. Those rows are recorded for breadth, and each one keeps the
+provenance the aggregator states alongside it -- which provider the figure
+belongs to, how it was obtained, and how far it has been verified. They are
+marked `first_party: false` and `source_type: aggregator` in
+`config/raw_observatory.json`, and they are never seated on a panel and never
+priced into a published index value.
+
 ## How the collectors identify themselves
 
 Every request carries the project User-Agent defined in

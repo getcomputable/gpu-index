@@ -17,7 +17,10 @@ per-region available:false entries on live offers (RTXPro6000x8 TYO4),
 null countryCodes, float price artifacts (30.008000000000003), the
 gpuCount=0 CPU vm tiers, and instance-total prices needing per-GPU
 division. All splices cut between real top-level array elements; every
-byte inside the kept chunks is verbatim from the live page.
+byte inside the kept chunks is verbatim from the live page except the four
+cloud._id record ids, which are length-preserving 24-hex stand-ins
+(aa00000000000000000000NN) so the flight chunk byte lengths stay exact.
+The parser reads cloud.name and never cloud._id, so no pin moves.
 """
 
 from __future__ import annotations
