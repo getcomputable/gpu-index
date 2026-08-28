@@ -61,9 +61,13 @@ _META_KEYS = frozenset(
         "disclosure_restatement_count",
     }
 )
-_LICENSE_KEYS = frozenset(
-    {"spdx", "url", "attribution", "commercial_licensing"}
-)
+# License block: the three fields the publisher actually emits. A
+# verifier must never need a licensing URL to check a price, so
+# ``commercial_licensing`` is tolerated-when-present, not required --
+# the publisher has never written it, and a reader that demanded it
+# could not read the published record at all.
+_LICENSE_KEYS = frozenset({"spdx", "url", "attribution"})
+_LICENSE_OPTIONAL_KEYS = frozenset({"commercial_licensing"})
 _DATA_KINDS = (
     "gpu_index_latest",
     "gpu_index_observation_day",
@@ -229,11 +233,23 @@ def payload_digest(payload: Any) -> str:
 # --------------------------------------------------- envelope decode + verify
 
 
-def _require_keys(doc: dict, keys: frozenset, where: str) -> None:
+def _require_keys(
+    doc: dict,
+    keys: frozenset,
+    where: str,
+    optional: frozenset = frozenset(),
+) -> None:
+    """Exact key match, widened by an explicitly named ``optional`` set.
+
+    Default behavior is unchanged: every key in ``keys`` must be present
+    and nothing else may be. ``optional`` names keys that MAY appear --
+    never keys that may be missing -- so a block carrying one of them
+    still validates while an unnamed extra key still fails.
+    """
     found = set(doc)
-    if found != keys:
-        extra = sorted(found - keys)
-        missing = sorted(keys - found)
+    missing = sorted(keys - found)
+    extra = sorted(found - keys - optional)
+    if missing or extra:
         raise PublishedRecordError(
             f"{where} keys diverge from the published contract: "
             f"missing {missing}, unexpected {extra}"
@@ -355,7 +371,12 @@ def decode_and_verify_artifact(raw: bytes) -> dict:
     license_block = document["license"]
     if not isinstance(license_block, dict):
         raise PublishedRecordError("envelope license must be an object")
-    _require_keys(license_block, _LICENSE_KEYS, "envelope license")
+    _require_keys(
+        license_block,
+        _LICENSE_KEYS,
+        "envelope license",
+        optional=_LICENSE_OPTIONAL_KEYS,
+    )
     if license_block["spdx"] != "CC-BY-NC-4.0":
         raise PublishedRecordError(
             f"license.spdx {license_block['spdx']!r} is not the published "

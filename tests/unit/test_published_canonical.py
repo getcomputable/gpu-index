@@ -205,6 +205,51 @@ def test_missing_license_key_refuses():
         decode_and_verify_artifact(_encode(document))
 
 
+def _redigest(document: dict) -> dict:
+    """Re-stamp artifact_sha256 after editing a payload block.
+
+    For the shape gates only. The digest ALGORITHM is cross-checked
+    against the JS-minted fixtures above, so reusing it here to mint a
+    variant envelope exercises the key-set gate without also re-testing
+    the digest -- and leaves a key-set failure as the ONLY way these can
+    fail.
+    """
+    payload = {key: document[key] for key in ("data", "meta", "license")}
+    document["artifact_sha256"] = payload_digest(payload)
+    return document
+
+
+def test_license_block_without_commercial_licensing_validates():
+    # The shape the publisher actually emits: spdx + url + attribution.
+    # Verifying a PRICE must never depend on a licensing URL, so the
+    # three-key block is valid on its own. Regression guard: the reader
+    # once required a fourth key the publisher has never written, which
+    # made every live artifact unreadable while these fixtures -- written
+    # to the contract rather than recorded from the publisher -- passed.
+    document = _valid_document()
+    del document["license"]["commercial_licensing"]
+    assert sorted(document["license"]) == ["attribution", "spdx", "url"]
+    envelope = decode_and_verify_artifact(_encode(_redigest(document)))
+    assert sorted(envelope["license"]) == ["attribution", "spdx", "url"]
+
+
+def test_license_block_with_commercial_licensing_validates():
+    # ...and the four-key block still validates, so the publisher adding
+    # the reserved field later is not a breaking change for readers.
+    document = _valid_document()
+    assert document["license"]["commercial_licensing"]
+    envelope = decode_and_verify_artifact(_encode(document))
+    assert "commercial_licensing" in envelope["license"]
+
+
+def test_unknown_license_key_refuses():
+    # Tolerating one NAMED optional key is not tolerating any extra key.
+    document = _valid_document()
+    document["license"]["surprise"] = "x"
+    with pytest.raises(PublishedRecordError, match="unexpected"):
+        decode_and_verify_artifact(_encode(_redigest(document)))
+
+
 def test_wrong_spdx_refuses():
     document = _valid_document()
     document["license"]["spdx"] = "MIT"

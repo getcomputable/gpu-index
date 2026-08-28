@@ -18,7 +18,14 @@ Homepage = "https://github.com/getcomputable/gpu-index"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q"
+# `live` is deselected by default: those tests read the real published
+# record over the network, and a default suite that fails when a host is
+# unreachable breaks offline work and forks. Run them with `pytest -m
+# live`; CI runs them daily in the `live-record` job.
+addopts = "-q -m 'not live'"
+markers = [
+    "live: reads the real published record over the network (deselected by default; run with `pytest -m live`)",
+]
 
 [tool.ruff]
 line-length = 100
