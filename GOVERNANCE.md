@@ -30,6 +30,6 @@ this repository does not by itself make that provider a panel member.
 
 Maintainers review code and operate the published pipeline. Methodology and
 panel changes are decided by Computable and recorded in the change log
-(CHANGELOG.md) with effective dates. Questions and error reports: index@getcomputable.com. A
+(CHANGELOG.md) with effective dates. Questions and error reports: team@getcomputable.com. A
 report about a published value is answered with the replay evidence for that
 value.

@@ -22,7 +22,7 @@ from typing import Optional
 
 UA = (
     "CGI-Collector/0.1 (+https://github.com/getcomputable/gpu-index; "
-    "index@getcomputable.com)"
+    "team@getcomputable.com)"
 )
 
 DEFAULT_TIMEOUT = 30.0

@@ -57,7 +57,7 @@ following uses. Each requires a separate written license:
      product or feed;
   e. naming a product or index with the CGI mark (see TRADEMARKS.md).
 
-For a Product Use license contact index@getcomputable.com.
+For a Product Use license contact team@getcomputable.com.
 
 ## 4. Integrity and provenance
 

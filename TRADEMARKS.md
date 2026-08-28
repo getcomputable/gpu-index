@@ -39,4 +39,4 @@ Required notice where a licensed product uses a Mark:
 Computable makes no representation regarding the advisability of trading in or
 purchasing <Product>."
 
-Questions and permission requests: index@getcomputable.com
+Questions and permission requests: team@getcomputable.com
