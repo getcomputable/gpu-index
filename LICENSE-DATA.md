@@ -75,17 +75,19 @@ endorsed, sold, or promoted by Computable unless separately agreed in writing.
 
 ## 6. Machine-readable declaration
 
-Each artifact embeds a `license` block with exactly these four fields:
+Each artifact embeds a `license` block with these three fields:
 
     "license": {
       "spdx": "CC-BY-NC-4.0",
       "url": "https://creativecommons.org/licenses/by-nc/4.0/",
-      "attribution": "<index name> by Computable — <index domain>",
-      "commercial_licensing": "<commercial licensing URL>"
+      "attribution": "<index name> by Computable — <index domain>"
     }
 
 `spdx` is pinned to `CC-BY-NC-4.0`; `url` is the CC BY-NC 4.0 license
-text; `attribution` names the index and Computable; `commercial_licensing`
-is where to ask about the Section 3 uses. The Derived Index Grant
-(Section 2) is granted by this file and is not restated inside the
-artifact. The operative terms are this file, not the embedded field.
+text; `attribution` names the index and Computable. A fourth field,
+`commercial_licensing`, is reserved for the Section 3 contact and is not
+published today; readers accept it when present, so adding it later
+breaks nobody, and until then Section 3 carries that address. The
+Derived Index Grant (Section 2) is granted by this file and is not
+restated inside the artifact. The operative terms are this file, not the
+embedded field.
