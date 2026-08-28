@@ -27,6 +27,12 @@ jobs:
   # breaking changes (removed/renamed names, removed/reordered parameters,
   # changed defaults). Names-only surface drift is covered separately by
   # tests/unit/test_public_api.py in the test job.
+  #
+  # Run through .github/scripts/api_compat.py, not `griffe check` directly:
+  # griffe also reports a constant's VALUE changing, which is not a
+  # signature break and which `griffe check` gives no way to scope out.
+  # The wrapper drops that one breakage kind (still printing it) and keeps
+  # every signature check fatal. See the script's docstring.
   api-compat:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
@@ -38,9 +44,9 @@ jobs:
         with:
           python-version-file: .python-version
       - name: Install griffe
-        run: pip install griffe
+        run: pip install "griffe>=2,<3"  # the wrapper uses griffe's 2.x API
       - name: Check API against the PR base
-        run: griffe check gpu_index --search src --against "origin/${{ github.base_ref }}" --format github
+        run: python .github/scripts/api_compat.py gpu_index --search src --against "origin/${{ github.base_ref }}" --format github
 
   # DCO gate (PRs only): every commit in the PR range must carry a
   # Signed-off-by trailer (CONTRIBUTING.md section 1). Stopgap until an
