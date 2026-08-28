@@ -21,7 +21,7 @@ Every request carries the project User-Agent defined in
 `src/gpu_index/common/http.py`:
 
 ```
-CGI-Collector/0.1 (+https://github.com/getcomputable/gpu-index; index@getcomputable.com)
+CGI-Collector/0.1 (+https://github.com/getcomputable/gpu-index; team@getcomputable.com)
 ```
 
 It names the project, links this repository and carries a working contact
@@ -64,7 +64,7 @@ gap, stated here plainly rather than papered over.
 ## Contact
 
 A provider who does not want their prices collected here should write to
-**index@getcomputable.com**. That is the route for asking to have a source
+**team@getcomputable.com**. That is the route for asking to have a source
 removed, and for anything else about collection. Removing a seated provider is
 a panel-membership change, so it is decided and recorded the way
 [GOVERNANCE.md](../GOVERNANCE.md) sets out, with the reasoning in

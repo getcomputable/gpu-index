@@ -1,6 +1,6 @@
 # Security Policy
 
-Report security issues to index@getcomputable.com with "SECURITY" in the
+Report security issues to team@getcomputable.com with "SECURITY" in the
 subject. Please do not open public issues for security reports.
 
 We aim to acknowledge reports within 3 business days and to resolve confirmed

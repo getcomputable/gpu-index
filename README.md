@@ -162,4 +162,4 @@ Contributions are welcome under the Developer Certificate of Origin (see
 
 Found a problem? A published value that looks wrong, a misread provider, a
 methodology surprise: [open an issue](https://github.com/getcomputable/gpu-index/issues)
-or write to index@getcomputable.com.
+or write to team@getcomputable.com.
