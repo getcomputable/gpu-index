@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from gpu_index.observatory.catalog import SkuCatalogError, load_sku_catalog
 
@@ -85,16 +85,50 @@ def resolve_catalog_path(cfg: Dict[str, Any]) -> Path:
     return _REPO_ROOT / str(cfg["sku_catalog_path"])
 
 
+def capture_grid(cfg: Dict[str, Any]) -> Tuple[List[int], Optional[int], bool]:
+    """The ONE normalization of a capture config's slot vocabulary:
+    (slot marks as minute-of-day, canonical mark as minute-of-day or
+    None, minute_tokens). Hour-vocabulary configs (capture_slots_utc /
+    canonical_slot_utc) normalize h -> h*60 and keep the legacy
+    slot<HH>- key tokens; minute-vocabulary configs
+    (capture_slot_minutes_utc / canonical_slot_minute_utc — 15-min
+    cadence design 2026-08-27) are minute-of-day already and write
+    slot<HHMM>- tokens for every mark. _validate guarantees exactly one
+    vocabulary is present."""
+    if "capture_slot_minutes_utc" in cfg:
+        slots = [int(m) for m in cfg["capture_slot_minutes_utc"]]
+        canonical = cfg.get("canonical_slot_minute_utc")
+        return slots, (None if canonical is None else int(canonical)), True
+    slots = [int(h) * 60 for h in cfg["capture_slots_utc"]]
+    canonical = cfg.get("canonical_slot_utc")
+    return slots, (None if canonical is None else int(canonical) * 60), False
+
+
 def _validate(cfg: Dict[str, Any]) -> None:
     for field in (
         "lane_id",
         "bucket_prefix",
-        "capture_slots_utc",
         "sku_catalog_path",
         "sources",
     ):
         if not cfg.get(field):
             raise ObservatoryConfigError(f"observatory config missing {field!r}")
+    if ("capture_slots_utc" in cfg) == ("capture_slot_minutes_utc" in cfg):
+        # Exactly one vocabulary: both (or neither) is a config
+        # contradiction, and a silently-ignored second grid would be the
+        # silently-inert-key failure class.
+        raise ObservatoryConfigError(
+            "observatory config must declare exactly one of "
+            "capture_slots_utc / capture_slot_minutes_utc"
+        )
+    if "capture_slots_utc" in cfg and "canonical_slot_minute_utc" in cfg:
+        raise ObservatoryConfigError(
+            "canonical_slot_minute_utc requires capture_slot_minutes_utc"
+        )
+    if "capture_slot_minutes_utc" in cfg and "canonical_slot_utc" in cfg:
+        raise ObservatoryConfigError(
+            "canonical_slot_utc requires capture_slots_utc"
+        )
 
     prefix = str(cfg["bucket_prefix"])
     if (
@@ -123,34 +157,68 @@ def _validate(cfg: Dict[str, Any]) -> None:
                 f"lane keyspace {reserved!r}"
             )
 
-    slots = cfg["capture_slots_utc"]
-    if not isinstance(slots, list) or not all(
-        isinstance(h, int) and not isinstance(h, bool) and 0 <= h <= 23
-        for h in slots
-    ):
-        raise ObservatoryConfigError(
-            f"capture_slots_utc must be UTC hours 0-23: {slots!r}"
-        )
-    if not 1 <= len(set(slots)) <= 24 or len(set(slots)) != len(slots):
-        # Hourly cadence: the fence widened from
-        # the original 1-8 to the full 24 — the vendor-politeness math was
-        # re-done at hourly (each capture sends 1-2 requests per vendor;
-        # vast/computepulse keep per-call spacing; ~0.5 req/min worst-case
-        # average per vendor). Duplicate hours are still a typo, and the
-        # fence still exists so a future sub-hourly ambition has to edit
-        # code deliberately, not just grow a list.
-        raise ObservatoryConfigError(
-            f"capture_slots_utc must hold 1-24 distinct slots: {slots!r}"
-        )
-    canonical = cfg.get("canonical_slot_utc")
-    if canonical is not None and (
-        not isinstance(canonical, int)
-        or isinstance(canonical, bool)
-        or canonical not in slots
-    ):
-        raise ObservatoryConfigError(
-            f"canonical_slot_utc {canonical!r} is not one of capture_slots_utc {slots!r}"
-        )
+    if "capture_slots_utc" in cfg:
+        slots = cfg["capture_slots_utc"]
+        if not isinstance(slots, list) or not all(
+            isinstance(h, int) and not isinstance(h, bool) and 0 <= h <= 23
+            for h in slots
+        ):
+            raise ObservatoryConfigError(
+                f"capture_slots_utc must be UTC hours 0-23: {slots!r}"
+            )
+        if not 1 <= len(set(slots)) <= 24 or len(set(slots)) != len(slots):
+            # Hourly cadence: the fence widened from the original 1-8 to
+            # the full 24 — the vendor-politeness math was re-done at
+            # hourly (each capture sends 1-2 requests per vendor;
+            # vast/computepulse keep per-call spacing; ~0.5 req/min
+            # worst-case average per vendor). Duplicate hours are still a
+            # typo, and the fence still exists so a sub-hourly ambition
+            # has to move to the MINUTE vocabulary deliberately, not just
+            # grow this list.
+            raise ObservatoryConfigError(
+                f"capture_slots_utc must hold 1-24 distinct slots: {slots!r}"
+            )
+        canonical = cfg.get("canonical_slot_utc")
+        if canonical is not None and (
+            not isinstance(canonical, int)
+            or isinstance(canonical, bool)
+            or canonical not in slots
+        ):
+            raise ObservatoryConfigError(
+                f"canonical_slot_utc {canonical!r} is not one of "
+                f"capture_slots_utc {slots!r}"
+            )
+    else:
+        slots = cfg["capture_slot_minutes_utc"]
+        if not isinstance(slots, list) or not all(
+            isinstance(m, int) and not isinstance(m, bool) and 0 <= m <= 1439
+            for m in slots
+        ):
+            raise ObservatoryConfigError(
+                f"capture_slot_minutes_utc must be UTC minutes-of-day "
+                f"0-1439: {slots!r}"
+            )
+        if not 1 <= len(set(slots)) <= 96 or len(set(slots)) != len(slots):
+            # 15-minute cadence: the deliberate-edit fence moves with the
+            # vocabulary — 96 marks (every quarter hour) is the re-done
+            # vendor-politeness ceiling (captures measured ~83s wall; each
+            # sends 1-2 requests per vendor, vast keeps per-call spacing);
+            # anything DENSER than 15 minutes must again edit code
+            # deliberately, not just grow this list.
+            raise ObservatoryConfigError(
+                f"capture_slot_minutes_utc must hold 1-96 distinct marks: "
+                f"{slots!r}"
+            )
+        canonical = cfg.get("canonical_slot_minute_utc")
+        if canonical is not None and (
+            not isinstance(canonical, int)
+            or isinstance(canonical, bool)
+            or canonical not in slots
+        ):
+            raise ObservatoryConfigError(
+                f"canonical_slot_minute_utc {canonical!r} is not one of "
+                f"capture_slot_minutes_utc {slots!r}"
+            )
     if not isinstance(cfg["lane_id"], str):
         raise ObservatoryConfigError(f"lane_id must be a string: {cfg['lane_id']!r}")
 

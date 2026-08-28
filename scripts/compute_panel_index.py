@@ -34,8 +34,9 @@ per OBSERVATION:
     from ONE paginated LIST of the composite keyspace (never a
     per-stamp GET walk), takes frontier = the first scheduled stamp not
     yet published, and replays state from window_start =
-    max(genesis, frontier - STATE_WINDOW_HOURS) where STATE_WINDOW_HOURS
-    = dw history_days*24 + max(forward_horizons) + PRUNE_MARGIN_HOURS --
+    max(genesis, frontier - state window) where the state window (in
+    MINUTES, the observation-mode stamp unit)
+    = dw history_days*1440 + max(forward_horizons)*60 + PRUNE_MARGIN_MINUTES --
     exactly the weight state's prune bound, so every state the engine
     can consult (the 20-observation filter window, the 3-print currency
     streak, the jump-screen reference walk-back, attendance over
@@ -49,14 +50,25 @@ per OBSERVATION:
     over published artifacts WITHIN the window only (a documented
     loosening): older artifacts are immutable and their pins were
     enforced when the frontier passed them.
-  - **Closure rule (section 2)**: an observation at scheduled stamp t
-    is computable once its window CLOSES at the NEXT scheduled mark
-    (era-aware; utc_now decides). There is NO slot promotion and NO
-    eager compute: the slot's own snapshot prices the observation, and
-    a scheduled hour with no snapshot publishes an explicit
-    observation_missed artifact once closed -- never skipped, never
-    interpolated, never substituted from a neighboring hour (the daily
-    lane's R4 promotion has no meaning on a dense grid).
+  - **Closure rule (section 2, amended for early compose)**: an
+    observation at scheduled stamp t is computable for VALUE composition
+    as soon as its slot snapshot EXISTS on the record LIST -- capture is
+    create-if-missing with immutable puts and the compute reads nothing
+    beyond the snapshot (corroborators are same-snapshot, weights
+    pre-realized, FX walk-back), so composite bytes are a pure function
+    of the record and early composition equals late composition byte
+    for byte -- OR once its window closes at the NEXT scheduled mark
+    (era-aware; utc_now decides), whichever comes first. MISSINGNESS
+    keeps the wait and gains a drain grace: observation_missed and
+    record_quarantined artifacts are immutable, and a false one
+    published while a late self-heal capture is still draining would
+    permanently mask a real observation, so neither publishes until
+    utc_now >= next mark + MISSED_PUBLISH_GRACE_MINUTES. There is still
+    NO slot promotion: the slot's own snapshot prices the observation,
+    and a scheduled stamp with no snapshot publishes an explicit
+    observation_missed artifact once the grace passes -- never skipped,
+    never interpolated, never substituted from a neighboring hour (the
+    daily lane's R4 promotion has no meaning on a dense grid).
   - **False-missed guard (harden stage, adversarial F7,
     docs/adversarial-reviews.md)**: an
     observation_missed artifact is immutable, so before one publishes
@@ -66,7 +78,7 @@ per OBSERVATION:
     LIST the observation computes normally.
   - **Record quarantine (harden stage, adversarial F6,
     docs/adversarial-reviews.md)**: a top-level
-    config key ``record_exclusions`` ([{date, hour, reason}]) names
+    config key ``record_exclusions`` ([{date, hour, minute?, reason}]) names
     stamps whose stored record object must NEVER be read -- the escape
     hatch for a poisoned/unparseable snapshot that would otherwise
     crash every firing forever (publish-in-order blocks the lane behind
@@ -95,8 +107,9 @@ per OBSERVATION:
     statistic prints are USD by construction and compare in USD;
     manually-excluded seats are skipped (divergence is the point).
     GATED (perf stage): the scan re-reads the record for dozens of
-    published observations, so it runs only on the DRIFT_SCAN_HOUR_UTC
-    (16:00Z) firing -- one sweep per day, the daily lanes' cadence --
+    published observations, so it runs only on firings landing inside
+    DRIFT_SCAN_WINDOW_MINUTES ([16:00Z, 16:30Z) -- the 16:00Z mark's
+    neighborhood, once-a-day at any cron cadence) --
     or when --drift-scan forces it explicitly; every other firing
     advances state from published artifacts alone with zero record
     reads for published stamps.
@@ -167,6 +180,7 @@ import json
 import os
 import re
 import sys
+import time as time_module
 from collections import OrderedDict, deque
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -201,9 +215,9 @@ from gpu_index.index.panel_config import (  # noqa: E402
 )
 from gpu_index.index.panel_schedule import (  # noqa: E402
     PanelScheduleError,
-    hour_iso_to_stamp,
-    stamp_to_date_hour,
-    stamp_to_hour_iso,
+    obs_key_to_stamp,
+    stamp_to_date_minute,
+    stamp_to_obs_key,
 )
 from gpu_index.common.jsondiff import field_diffs  # noqa: E402
 from gpu_index.common.slots import snapshot_key, utc_now  # noqa: E402
@@ -222,7 +236,7 @@ from gpu_index.common.store import (  # noqa: E402
 )
 from gpu_index.index.weights import (  # noqa: E402
     MODE_DYNAMIC,
-    PRUNE_MARGIN_HOURS,
+    PRUNE_MARGIN_MINUTES,
     advance_panel_weight_state,
     new_weight_state,
     series_print,
@@ -237,7 +251,26 @@ def _in_actions() -> bool:
 # record for dozens of published observations 48x/day would be the job's
 # dominant cost, so the scan runs on the 16:00Z firing only -- the daily
 # lanes' canonical-slot hour -- unless --drift-scan forces it.
-DRIFT_SCAN_HOUR_UTC = 16
+# Drift-scan arming window in minute-of-day terms: the daily sweep arms
+# on firings whose wall clock lands in [16:00Z, 16:30Z) -- the 16:00Z
+# mark's neighborhood at every cadence, so a denser cron cannot multiply
+# the once-a-day record re-read the gating exists to bound (perf review
+# amendment, re-cut for the 15-min lattice 2026-08-27).
+DRIFT_SCAN_WINDOW_MINUTES = (16 * 60, 16 * 60 + 30)
+
+# Missed/quarantined-publish drain grace, in minutes past the closing
+# mark (early compose). Value composition happens on ANY firing once the
+# stamp's snapshot exists (early closure -- module docstring), but
+# observation_missed / record_quarantined artifacts are IMMUTABLE and
+# must outwait the slowest capture still draining: a false missed print
+# published before a late self-heal upload lands would permanently mask
+# a real observation (earliest-key-wins means the artifact can never be
+# shadowed right). 20 minutes past the next mark covers the raw
+# observatory's self-heal firing plus its full job timeout with margin
+# at the current capture cadence, and lands an hourly lane's missed
+# declaration on a :20-class firing exactly as the pre-early-compose cron
+# did.
+MISSED_PUBLISH_GRACE_MINUTES = 20
 
 # Parsed-snapshot cache size. Snapshots are consumed in stamp order, so
 # one entry is usually enough (24 observations share a day's keys but
@@ -275,22 +308,28 @@ def error(msg: str) -> None:
 
 
 def _stamp_datetime(stamp: int) -> datetime:
-    day_ordinal, hour = divmod(int(stamp), 24)
+    day_ordinal, minute_of_day = divmod(int(stamp), 1440)
+    hour, minute = divmod(minute_of_day, 60)
     return datetime.combine(
-        date.fromordinal(day_ordinal), time(hour), tzinfo=timezone.utc
+        date.fromordinal(day_ordinal), time(hour, minute), tzinfo=timezone.utc
     )
 
 
 def _next_scheduled_stamp(schedule, stamp: int) -> int:
     """The scheduled stamp strictly after ``stamp`` -- the mark at which
-    the observation at ``stamp`` CLOSES. Always exists on a valid grid
+    the observation at ``stamp`` closes AT THE LATEST (early compose: it
+    closes earlier the moment its slot snapshot exists on the record),
+    and the mark the missed-publish drain grace is measured from.
+    Always exists on a valid grid
     (the final era is open-ended with >= 1 slot per day, so the gap is
     bounded by 47 hours); a 72h probe window is therefore sufficient,
     and an empty probe is a loud impossibility, never a silent skip."""
-    upcoming = schedule.scheduled_stamps(int(stamp) + 1, int(stamp) + 73)
+    upcoming = schedule.scheduled_stamps(
+        int(stamp) + 1, int(stamp) + 73 * 60
+    )
     if not upcoming:
         raise RuntimeError(
-            f"no scheduled stamp follows {stamp_to_hour_iso(stamp)} within "
+            f"no scheduled stamp follows {schedule.stamp_key(stamp)} within "
             f"72h -- the era grid is malformed (validation should have "
             f"refused it)"
         )
@@ -346,7 +385,7 @@ def advance_panel_state_from_published(
     weight_calc = stored.get("weight_calc") or {}
     advance_panel_weight_state(
         weight_state,
-        obs_stamp=hour_iso_to_stamp(stored["date"]),
+        obs_stamp=obs_key_to_stamp(stored["date"]),
         prints=prints,
         vector=weight_calc.get("weights"),
         mode=weight_calc.get("mode", "fallback"),
@@ -492,7 +531,9 @@ def detect_drift(
     return msgs
 
 
-def _config_excluded_for(exclusions, obs_date: str, obs_hour: int) -> set:
+def _config_excluded_for(
+    exclusions, obs_date: str, obs_minute_of_day: int
+) -> set:
     """The source_ids the live config excludes at one observation -- the
     scope rule is gpu_index.index.panel.exclusion_applies, the SAME predicate the
     engine applies (one home; a forked copy here could silently disagree
@@ -500,7 +541,7 @@ def _config_excluded_for(exclusions, obs_date: str, obs_hour: int) -> set:
     return {
         e["source_id"]
         for e in exclusions
-        if exclusion_applies(e, obs_date, obs_hour)
+        if exclusion_applies(e, obs_date, obs_minute_of_day)
     }
 
 
@@ -535,18 +576,18 @@ def verify_published_observation(args, config, params, schedule) -> int:
     prefix = config["bucket_prefix"]
     methodology_id = params["methodology_id"]
     try:
-        target = hour_iso_to_stamp(args.verify_published)
+        target = obs_key_to_stamp(args.verify_published)
     except PanelScheduleError as exc:
         error(f"--verify-published: {exc}")
         return 1
-    stamp_iso = stamp_to_hour_iso(target)
+    stamp_iso = stamp_to_obs_key(target, minute_keyed=schedule.minute_keyed)
     if not schedule.is_scheduled(target):
         error(
             f"--verify-published {stamp_iso} is not a scheduled "
             f"observation of this lane's era grid"
         )
         return 1
-    obs_date, obs_hour = stamp_to_date_hour(target)
+    obs_date, obs_minute_of_day = stamp_to_date_minute(target)
 
     bucket_config = BucketConfig.from_env()
     client = make_client(bucket_config)
@@ -621,11 +662,11 @@ def verify_published_observation(args, config, params, schedule) -> int:
             bucket,
             prefix=prefix,
             methodology_id=methodology_id,
-            observation=stamp_to_hour_iso(prior),
+            observation=schedule.stamp_key(prior),
         )
         if prior_stored is None:
             warn(
-                f"{stamp_to_hour_iso(prior)} is unpublished below the "
+                f"{schedule.stamp_key(prior)} is unpublished below the "
                 "target observation -- the series publishes in order, so "
                 "replay state may be incomplete (expect MISMATCH until "
                 "the gap is explained)"
@@ -648,13 +689,30 @@ def verify_published_observation(args, config, params, schedule) -> int:
         snapshot = None
     else:
         record_entry = record_source_for(params["record_sources"], obs_date)
-        pinned_key = snapshot_key(
-            record_entry["prefix"],
-            date.fromisoformat(obs_date),
-            obs_hour,
-            stored.get("snapshot_run_id"),
-        )
-        snapshot_raw = get_object_bytes(client, bucket, pinned_key)
+        # The record's TOKEN era is a property of the writer, not of this
+        # lane's grain: an hour-aligned mark can be keyed slot<HH>- (the
+        # legacy vocabulary) or slot<HHMM>-. Probe the legacy form first
+        # so today's hourly record resolves on the first GET exactly as
+        # before, then the minute form; a sub-hour mark has only the
+        # minute form and skips the legacy probe entirely.
+        pinned_key = None
+        snapshot_raw = None
+        for minute_tokens in (
+            (False, True) if obs_minute_of_day % 60 == 0 else (True,)
+        ):
+            candidate = snapshot_key(
+                record_entry["prefix"],
+                date.fromisoformat(obs_date),
+                obs_minute_of_day,
+                stored.get("snapshot_run_id"),
+                minute_tokens=minute_tokens,
+            )
+            if pinned_key is None:
+                pinned_key = candidate
+            snapshot_raw = get_object_bytes(client, bucket, candidate)
+            if snapshot_raw is not None:
+                pinned_key = candidate
+                break
         if snapshot_raw is None:
             error(
                 f"MISMATCH {stamp_iso}: the artifact's pinned snapshot "
@@ -767,7 +825,7 @@ def main() -> int:
         action="store_true",
         dest="drift_scan",
         help="Force the record drift scan this run (it otherwise runs only "
-        "on the 16:00Z firing -- DRIFT_SCAN_HOUR_UTC)",
+        "on firings inside [16:00Z, 16:30Z) -- DRIFT_SCAN_WINDOW_MINUTES)",
     )
     parser.add_argument(
         "--check-config",
@@ -835,14 +893,35 @@ def main() -> int:
     if args.verify_published:
         return verify_published_observation(args, config, params, schedule)
 
+    if schedule.minute_keyed and os.environ.get(
+        "PANEL_MINUTE_LANES_LIVE"
+    ) != "true":
+        # The mechanical gate on the 15-minute mint prerequisites: a
+        # minute-keyed doc passes every validator by design -- and
+        # --check-config above stays fence-free so a config-only PR can
+        # validate offline -- but RUNNING one before the minute-grain
+        # ingest and the replay-checkpoint follow-up are live would
+        # dual-publish a keyspace the downstream cannot read while the
+        # replay walk grows toward the per-lane cap. Loud refusal, one
+        # lane (the sweeper's rc aggregation keeps the other lanes
+        # running); arming is one env set, same as every lever.
+        error(
+            f"{methodology_id}: minute-keyed lane refused -- set "
+            f"PANEL_MINUTE_LANES_LIVE=true only after the minute-grain "
+            f"ingest and the replay-checkpoint follow-up are live"
+        )
+        return 1
+
     now = utc_now()
-    now_stamp = now.date().toordinal() * 24 + now.hour
+    now_stamp = (
+        now.date().toordinal() * 1440 + now.hour * 60 + now.minute
+    )
 
     targets = None  # --sync: every missing closed observation
     if args.observation or args.from_obs:
         try:
             if args.observation:
-                target = hour_iso_to_stamp(args.observation)
+                target = obs_key_to_stamp(args.observation)
                 if not schedule.is_scheduled(target):
                     error(
                         f"--observation {args.observation} is not a scheduled "
@@ -851,8 +930,8 @@ def main() -> int:
                     return 1
                 targets = {target}
             else:
-                start = hour_iso_to_stamp(args.from_obs)
-                end = hour_iso_to_stamp(args.to_obs)
+                start = obs_key_to_stamp(args.from_obs)
+                end = obs_key_to_stamp(args.to_obs)
                 if start > end:
                     error(f"--from {args.from_obs} is after --to {args.to_obs}")
                     return 1
@@ -875,8 +954,8 @@ def main() -> int:
             # A typo'd backfill must never look like a successful no-op.
             error(
                 f"target observation(s) outside the replayable range "
-                f"[{stamp_to_hour_iso(schedule.genesis_stamp)}..now]: "
-                f"{[stamp_to_hour_iso(t) for t in out_of_range]}"
+                f"[{schedule.stamp_key(schedule.genesis_stamp)}..now]: "
+                f"{[schedule.stamp_key(t) for t in out_of_range]}"
             )
             return 1
 
@@ -884,20 +963,6 @@ def main() -> int:
         bucket_config = BucketConfig.from_env()
         client = make_client(bucket_config)
         bucket = bucket_config.bucket
-
-    # The replay domain: every scheduled stamp from genesis whose window
-    # has CLOSED. All scheduled stamps <= now_stamp except possibly the
-    # last are closed by construction (each closes at the next scheduled
-    # stamp, which is itself <= now); only the final one needs the
-    # explicit next-mark probe.
-    scheduled = list(schedule.iter_scheduled(now_stamp))
-    if scheduled and _stamp_datetime(
-        _next_scheduled_stamp(schedule, scheduled[-1])
-    ) > now:
-        closed = scheduled[:-1]
-    else:
-        closed = scheduled
-    closed_set = set(closed)
 
     # ------------------------------------ bounded replay (LIST frontier)
     # ONE paginated LIST of the composite keyspace learns the published
@@ -908,7 +973,7 @@ def main() -> int:
         client, bucket, prefix=prefix, methodology_id=methodology_id
     ):
         try:
-            published_stamps.add(hour_iso_to_stamp(published_iso))
+            published_stamps.add(obs_key_to_stamp(published_iso))
         except ValueError:
             # Regex-shaped but calendar-invalid (a foreign object in our
             # own keyspace): never a stamp, but worth a page.
@@ -916,6 +981,49 @@ def main() -> int:
                 f"unparseable observation key {published_iso!r} under the "
                 f"{methodology_id} composites keyspace -- ignored"
             )
+
+    # Slot-key LIST cache, one entry per (record prefix, day) -- filled
+    # by the early-closure probe below and by the walk's slot-granular
+    # reads (perf stage); defined here because the domain construction
+    # seeds it.
+    day_keys_cache: dict = {}
+
+    # The replay domain: every scheduled stamp from genesis whose
+    # observation is COMPUTABLE. All scheduled stamps <= now_stamp except
+    # possibly the last are closed by construction (each closes at the
+    # next scheduled stamp, which is itself <= now); the final one enters
+    # the domain EARLY when its slot snapshot already EXISTS on the
+    # record LIST (early compose: composite bytes are a pure function of the
+    # snapshot, so early composition equals late composition), and
+    # otherwise waits for its next-mark probe exactly as before. The
+    # early-closure read is ONE slot-key LIST, seeded into the day-key
+    # cache so the walk never re-LISTs that day; it is skipped when the
+    # final stamp is already published (a published stamp is in the
+    # domain regardless -- state advances from its artifact). A transient
+    # empty LIST here is benign: the stamp simply stays open until the
+    # next firing -- this read never decides a missed verdict (the F7
+    # guard protects that path).
+    scheduled = list(schedule.iter_scheduled(now_stamp))
+    closed = scheduled
+    if (
+        scheduled
+        and scheduled[-1] not in published_stamps
+        and _stamp_datetime(_next_scheduled_stamp(schedule, scheduled[-1]))
+        > now
+    ):
+        last_date, last_minute = stamp_to_date_minute(scheduled[-1])
+        last_record = record_source_for(params["record_sources"], last_date)
+        last_keys = day_slot_keys(
+            client,
+            bucket,
+            prefix=last_record["prefix"],
+            day=date.fromisoformat(last_date),
+        )
+        day_keys_cache[(last_record["prefix"], last_date)] = last_keys
+        if last_keys.get(last_minute) is None:
+            closed = scheduled[:-1]
+    closed_set = set(closed)
+
     frontier = next((s for s in scheduled if s not in published_stamps), None)
     if frontier is None:
         # Every scheduled stamp <= now is published: the frontier is the
@@ -927,12 +1035,14 @@ def main() -> int:
             else schedule.genesis_stamp
         )
     dw_live = params["dynamic_weights"]
-    state_window_hours = (
-        int(dw_live["history_days"]) * 24
-        + max(int(x) for x in dw_live["forward_horizons_hours"])
-        + PRUNE_MARGIN_HOURS
+    state_window_minutes = (
+        int(dw_live["history_days"]) * 1440
+        + 60 * max(int(x) for x in dw_live["forward_horizons_hours"])
+        + PRUNE_MARGIN_MINUTES
     )
-    window_start = max(schedule.genesis_stamp, frontier - state_window_hours)
+    window_start = max(
+        schedule.genesis_stamp, frontier - state_window_minutes
+    )
     # The stamps this run walks: closed AND inside the state window.
     # Everything older is published (frontier is the FIRST unpublished
     # scheduled stamp) and fully summarized by the seed below.
@@ -949,7 +1059,7 @@ def main() -> int:
         # observation's day is unresolvable from stored records after
         # walk-back (module docstring, perf stage).
         fx_from_day = (
-            date.fromordinal(window_start // 24)
+            date.fromordinal(window_start // 1440)
             - timedelta(days=params["fx_max_staleness_days"])
         ).isoformat()
         fx_records = load_stored_rates(
@@ -957,7 +1067,7 @@ def main() -> int:
         )
         fx_needed_days = sorted(
             {
-                stamp_to_date_hour(s)[0]
+                stamp_to_date_minute(s)[0]
                 for s in replayed
                 if s not in published_stamps
             }
@@ -1006,7 +1116,7 @@ def main() -> int:
             bucket,
             prefix=prefix,
             methodology_id=methodology_id,
-            observation=stamp_to_hour_iso(max(pre_window)),
+            observation=schedule.stamp_key(max(pre_window)),
         )
         if seed is not None:
             last_published_params = seed.get("calc_params")
@@ -1026,7 +1136,7 @@ def main() -> int:
     panel_sku_union = {
         sku for member in params["members"] for sku in member["skus"]
     }
-    day_keys_cache: dict = {}
+    # day_keys_cache is defined above (the domain construction seeds it).
     snapshot_cache: OrderedDict = OrderedDict()
 
     def _refresh_day_keys(record_prefix: str, day_str: str):
@@ -1047,12 +1157,12 @@ def main() -> int:
         day_keys_cache[(record_prefix, day_str)] = slot_keys
         return slot_keys
 
-    def _slot_snapshot(record_prefix: str, day_str: str, hour: int):
+    def _slot_snapshot(record_prefix: str, day_str: str, minute_of_day: int):
         day_key = (record_prefix, day_str)
         slot_keys = day_keys_cache.get(day_key)
         if slot_keys is None:
             slot_keys = _refresh_day_keys(record_prefix, day_str)
-        key = slot_keys.get(hour)
+        key = slot_keys.get(minute_of_day)
         if key is None:
             return None  # slot missing: the observation_missed condition
         if key in snapshot_cache:
@@ -1074,6 +1184,7 @@ def main() -> int:
     params_drift: list = []
     drift_checked = False
     wrote = 0
+    replay_started = time_module.monotonic()
     exit_code = 0
     skipped_unpublished = False
     exclusion_conflict = False
@@ -1081,13 +1192,18 @@ def main() -> int:
     # explicit --drift-scan. The bound counts trailing REPLAYED closed
     # observations (== trailing closed observations whenever the ops knob
     # sits inside the state window, its sane range).
-    drift_scan_armed = bool(args.drift_scan) or now.hour == DRIFT_SCAN_HOUR_UTC
+    now_minute_of_day = now.hour * 60 + now.minute
+    drift_scan_armed = bool(args.drift_scan) or (
+        DRIFT_SCAN_WINDOW_MINUTES[0]
+        <= now_minute_of_day
+        < DRIFT_SCAN_WINDOW_MINUTES[1]
+    )
     drift_scan_observations = int(config["drift_scan_observations"])
     scan_from_index = len(replayed) - drift_scan_observations
 
     for idx, stamp in enumerate(replayed):
-        stamp_iso = stamp_to_hour_iso(stamp)
-        obs_date, obs_hour = stamp_to_date_hour(stamp)
+        stamp_iso = schedule.stamp_key(stamp)
+        obs_date, obs_minute_of_day = stamp_to_date_minute(stamp)
         stored = None
         if stamp in published_stamps:
             stored = get_panel_composite(
@@ -1134,7 +1250,7 @@ def main() -> int:
                 if s.get("status") == "manually_excluded"
             }
             config_excluded = _config_excluded_for(
-                params["manual_exclusions"], obs_date, obs_hour
+                params["manual_exclusions"], obs_date, obs_minute_of_day
             )
             if stored_excluded != config_excluded:
                 error(
@@ -1151,7 +1267,7 @@ def main() -> int:
             # observation pins whether it was quarantined and why; the
             # live config may ADD entries only for unpublished stamps.
             config_quarantine = record_exclusion_reason(
-                params["record_exclusions"], obs_date, obs_hour
+                params["record_exclusions"], obs_date, obs_minute_of_day
             )
             stored_quarantine = stored.get("record_quarantined")
             if stored_quarantine != config_quarantine:
@@ -1192,7 +1308,7 @@ def main() -> int:
                     params["record_sources"], obs_date
                 )
                 snapshot = _slot_snapshot(
-                    record_entry["prefix"], obs_date, obs_hour
+                    record_entry["prefix"], obs_date, obs_minute_of_day
                 )
                 for msg in detect_drift(
                     stored,
@@ -1260,32 +1376,66 @@ def main() -> int:
         # quarantined (date, hour)'s stored object must never be fetched
         # or parsed -- the quarantine exists because parsing it crashes.
         quarantine_reason = record_exclusion_reason(
-            params["record_exclusions"], obs_date, obs_hour
+            params["record_exclusions"], obs_date, obs_minute_of_day
         )
         if quarantine_reason is not None:
             snapshot = None
-            warn(
-                f"{stamp_iso}: record quarantined by config "
-                f"({quarantine_reason}) -- publishing an explicit "
-                "record_quarantined artifact without reading the record"
-            )
         else:
-            snapshot = _slot_snapshot(record_entry["prefix"], obs_date, obs_hour)
+            snapshot = _slot_snapshot(
+                record_entry["prefix"], obs_date, obs_minute_of_day
+            )
             if snapshot is None:
                 # False-missed guard (F7): confirm against ONE fresh LIST
                 # before pinning an immutable observation_missed artifact
                 # -- a transient empty-Contents gateway blip must not
                 # become a permanent false record.
                 refreshed = _refresh_day_keys(record_entry["prefix"], obs_date)
-                if refreshed.get(obs_hour) is not None:
+                if refreshed.get(obs_minute_of_day) is not None:
                     warn(
                         f"{stamp_iso}: slot key appeared on the confirming "
                         "re-LIST (transient empty LIST) -- computing the "
                         "observation instead of publishing missed"
                     )
                     snapshot = _slot_snapshot(
-                        record_entry["prefix"], obs_date, obs_hour
+                        record_entry["prefix"], obs_date, obs_minute_of_day
                     )
+
+        if snapshot is None:
+            # Drain grace (early compose): observation_missed and
+            # record_quarantined artifacts are IMMUTABLE, and a late
+            # self-heal capture can still be draining after the closing
+            # mark -- neither publishes until next mark + grace. Value
+            # composition is deliberately NOT gated here: a snapshot that
+            # exists composes on any firing (early closure). Deferring
+            # STOPS the walk: publish-in-order means no later stamp may
+            # publish ahead of this one, and the next firing continues
+            # exactly here (the --max-observations posture).
+            grace_deadline = _stamp_datetime(
+                _next_scheduled_stamp(schedule, stamp)
+            ) + timedelta(minutes=MISSED_PUBLISH_GRACE_MINUTES)
+            if now < grace_deadline:
+                notice(
+                    f"{stamp_iso}: no readable record for this closed "
+                    f"observation yet -- missed/quarantined publishes "
+                    f"wait for the drain grace (next mark + "
+                    f"{MISSED_PUBLISH_GRACE_MINUTES}m = "
+                    f"{grace_deadline.strftime('%Y-%m-%dT%H:%MZ')}); "
+                    "deferring; the next firing continues here"
+                )
+                if targets is not None and any(t >= stamp for t in targets):
+                    # A targeted stamp cannot publish while an earlier
+                    # (or its own) missed/quarantined verdict is inside
+                    # the grace -- loud, the not-yet-closed posture (a
+                    # typo'd backfill must never look like a no-op).
+                    exit_code = 1
+                break
+
+        if quarantine_reason is not None:
+            warn(
+                f"{stamp_iso}: record quarantined by config "
+                f"({quarantine_reason}) -- publishing an explicit "
+                "record_quarantined artifact without reading the record"
+            )
 
         # Jump-screen reference: the most recent prior NON-MISSED,
         # NON-QUARANTINED artifact within the walk-back window (both
@@ -1451,11 +1601,22 @@ def main() -> int:
             # passed: loud exit 1, mirroring the daily lane's
             # not-yet-computable posture.
             notice(
-                f"{stamp_to_hour_iso(target)}: not yet closed (an "
-                "observation closes at the next scheduled mark)"
+                f"{schedule.stamp_key(target)}: not yet closed (an "
+                "observation closes early once its slot snapshot exists "
+                "on the record, else at the next scheduled mark)"
             )
             exit_code = 1
 
+    # The perf-gate instrument (15-min cadence design 2026-08-27): the
+    # bounded replay walks every published in-window artifact per firing
+    # and the walk grows until the state window saturates -- this line is
+    # how the curve gets WATCHED before any minute-grain mint is staged
+    # (a lane whose walk exceeds the per-lane cap goes permanently dark).
+    notice(
+        f"replay walk: {len(replayed)} in-window stamps, "
+        f"{time_module.monotonic() - replay_started:.1f}s wall "
+        f"(methodology {methodology_id})"
+    )
     print(f"observations written: {wrote} (methodology {methodology_id})")
     return exit_code
 

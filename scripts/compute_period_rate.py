@@ -29,8 +29,9 @@ so a partial period can never present as a settled one.
 
 Bucket reads are bounded: ONE paginated LIST learns the published
 stamp set; artifacts GET only for published stamps inside the period
-plus a backward walk before it that stops as soon as
-FILL_LOOKBACK_HOURS filled stamps are in hand (or genesis is hit).
+plus a backward walk before it that stops as soon as the lane's fill
+lookback (72 wall-clock hours as a stamp count) is in hand (or genesis
+is hit).
 Unpublished stamps never GET.
 """
 
@@ -56,13 +57,13 @@ from gpu_index.index.panel_config import (  # noqa: E402
 from gpu_index.index.panel_schedule import (  # noqa: E402
     PanelScheduleError,
     date_hour_to_stamp,
-    hour_iso_to_stamp,
-    stamp_to_hour_iso,
+    date_minute_to_stamp,
+    obs_key_to_stamp,
 )
 from gpu_index.index.period_rate import (  # noqa: E402
-    FILL_LOOKBACK_HOURS,
     PeriodRateError,
     classify_artifact,
+    fill_lookback_stamps,
     period_report,
 )
 from gpu_index.common.slots import utc_now  # noqa: E402
@@ -95,9 +96,13 @@ def error(msg: str) -> None:
     print(f"::error::{msg}" if _in_actions() else f"ERROR: {msg}", file=sys.stderr)
 
 
-def parse_period_stamp(value: str) -> int:
-    """Accept 'YYYY-MM-DDTHH' or a bare 'YYYY-MM-DD' (expands to T00 --
-    a day-aligned period boundary). Loud on anything else."""
+def parse_period_stamp(value: str, *, minute_keyed: bool) -> int:
+    """Accept a bare 'YYYY-MM-DD' (expands to T00 -- a day-aligned
+    period boundary), 'YYYY-MM-DDTHH', and -- on a minute-keyed lane
+    only -- 'YYYY-MM-DDTHHMM'. Loud on anything else AT THE PARSE SITE:
+    a minute-form boundary against an hour-keyed lane must get the
+    typed refusal here, never a PanelScheduleError traceback later from
+    a report formatter (adversarial review 2026-08-27)."""
     text = str(value)
     if len(text) == 10:
         try:
@@ -107,7 +112,12 @@ def parse_period_stamp(value: str) -> int:
                 f"period boundary must be 'YYYY-MM-DD' or 'YYYY-MM-DDTHH', "
                 f"got {value!r}: {exc}"
             ) from exc
-    return hour_iso_to_stamp(text)
+    if len(text) == 15 and not minute_keyed:
+        raise PanelScheduleError(
+            f"period boundary {value!r} carries a minute but this lane is "
+            f"hour-keyed -- use 'YYYY-MM-DDTHH' (or 'YYYY-MM-DD')"
+        )
+    return obs_key_to_stamp(text)
 
 
 def build_statuses(
@@ -124,8 +134,8 @@ def build_statuses(
 ):
     """statuses for the period plus exactly the context the report
     needs: GET each published stamp in [start, end); when any period
-    stamp is missing, a backward walk before start stops once
-    FILL_LOOKBACK_HOURS filled stamps precede the period (or genesis) --
+    stamp is missing, a backward walk before start stops once the lane's
+    fill-lookback stamp count precedes the period (or genesis) --
     a fully-covered period performs ZERO extra reads; when the LAST
     period stamp is missing, a forward walk over [end, frontier) stops
     at the first filled stamp (where the record resumes) so the tail
@@ -136,7 +146,7 @@ def build_statuses(
 
     def classify(stamp: int):
         nonlocal gets
-        iso = stamp_to_hour_iso(stamp)
+        iso = schedule.stamp_key(stamp)
         artifact = None
         if iso in published:
             artifact = get_panel_composite(
@@ -155,9 +165,10 @@ def build_statuses(
     any_missing = any(statuses[stamp][0] is None for stamp in scheduled)
 
     if any_missing:
+        lookback_stamps = fill_lookback_stamps(schedule)
         filled_before = 0
         cursor = schedule.prev_scheduled_stamp(start_stamp)
-        while cursor is not None and filled_before < FILL_LOOKBACK_HOURS:
+        while cursor is not None and filled_before < lookback_stamps:
             statuses[cursor] = classify(cursor)
             if statuses[cursor][0] is not None:
                 filled_before += 1
@@ -226,8 +237,12 @@ def main(argv=None) -> int:
         return 2
 
     try:
-        start_stamp = parse_period_stamp(args.start)
-        end_stamp = parse_period_stamp(args.end)
+        start_stamp = parse_period_stamp(
+            args.start, minute_keyed=schedule.minute_keyed
+        )
+        end_stamp = parse_period_stamp(
+            args.end, minute_keyed=schedule.minute_keyed
+        )
     except PanelScheduleError as exc:
         error(str(exc))
         return 2
@@ -241,7 +256,9 @@ def main(argv=None) -> int:
     # Counting a still-open slot as missing would fabricate a gap on
     # every mid-window run.
     now = utc_now()
-    now_stamp = date_hour_to_stamp(now.date().isoformat(), now.hour)
+    now_stamp = date_minute_to_stamp(
+        now.date().isoformat(), now.hour * 60 + now.minute
+    )
     latest_started = schedule.prev_scheduled_stamp(now_stamp + 1)
     last_closed = (
         None
@@ -252,12 +269,19 @@ def main(argv=None) -> int:
     if last_closed is None:
         error("nothing has closed yet on this lane's grid -- period is all future")
         return 2
-    frontier_stamp = last_closed + 1
+    # The EXCLUSIVE frontier bound is the next scheduled mark after the
+    # last closed stamp -- which is latest_started itself (its own next
+    # mark is still in the future, so it is the first NOT-closed stamp).
+    # Grid-aware by construction: one hour past last_closed on an hourly
+    # era (the pre-re-base clip point, byte-identical reports), fifteen
+    # minutes on a 15-minute era.
+    frontier_stamp = latest_started
     if end_stamp > frontier_stamp:
         clipped_at_stamp = frontier_stamp
         notice(
-            f"period end {stamp_to_hour_iso(end_stamp)} is beyond the record "
-            f"frontier; clipping at {stamp_to_hour_iso(clipped_at_stamp)}"
+            f"period end {schedule.stamp_key(end_stamp)} is beyond the "
+            f"record frontier; clipping at "
+            f"{schedule.stamp_key(clipped_at_stamp)}"
         )
         end_stamp = clipped_at_stamp
     if end_stamp <= start_stamp:

@@ -58,10 +58,21 @@ What is panel-NEW, each a design-doc rule:
     observation, and calc_params embedded VERBATIM -- record sources +
     cutover, slot grids per era, every screen, statistic ids + params, dw
     params incl. attendance -- so the D2 refuse-to-extend fence carries
-    over. Panel calc_params keys are UNCONDITIONAL: the basket's
-    conditional-key discipline protects frozen artifact bytes, and no
-    frozen panel bytes exist; a fully-resolved embed is strictly more
-    auditable.
+    over. Panel calc_params keys are UNCONDITIONAL where one key can be:
+    the basket's conditional-key discipline protects frozen artifact
+    bytes, and panel lanes started with none; a fully-resolved embed is
+    strictly more auditable. Four exceptions, all key-presence-shaped by
+    now-frozen panel bytes: iqm_alpha, the floor pair --
+    EXACTLY ONE of filter_sigma_floor (absolute, every pre-pct-mint
+    artifact) / filter_sigma_floor_pct (percent, ruling 2026-08-26;
+    FENCE-ONLY since the 2026-08-27 floor split) rides each params set --
+    vote_sigma_source (ruling 2026-08-27: absent = the legacy
+    filter-window vote tail, byte-identical), and vote_sigma_floor_pct
+    (floor split, ruling 2026-08-27: the median-vote band's own floor,
+    pct of the print's OWN filter-terms price; absent = the legacy
+    regime, where the absolute floor governs both sigmas). Restoring an
+    unconditional key here forks the live lanes' embedded params and
+    trips the D2 fence on all six at once.
 
 Manual exclusions gain an optional ``hour`` (section 3 item 9): a
 date-only entry holds out all of that date's observations (the shape the
@@ -79,7 +90,7 @@ from gpu_index.index.composite import (
     CURRENCY_CONFIRM_DAYS,
     DEFAULT_COMPOSITE_STATISTIC,
     DEFAULT_FILTER_SIGMA,
-    DEFAULT_FILTER_SIGMA_FLOOR,
+    DEFAULT_FILTER_SIGMA_FLOOR_PCT,
     DEFAULT_FILTER_TERMS,
     DEFAULT_FILTER_WARMUP,
     DEFAULT_FILTER_WINDOW,
@@ -102,11 +113,20 @@ from gpu_index.index.fx import (
     FxUnavailableError,
     eur_to_usd,
 )
-from gpu_index.index.panel_schedule import stamp_to_date_hour, stamp_to_hour_iso
+from gpu_index.index.panel_schedule import stamp_to_date_minute, stamp_to_obs_key
+
+# Pinned public re-exports (tests/unit/test_public_api.py): the
+# minute re-base stopped using stamp_to_date_hour/stamp_to_hour_iso here, but downstream
+# consumers import them by this name, so the surface stays.
+from gpu_index.index.panel_schedule import (  # noqa: F401
+    stamp_to_date_hour,
+    stamp_to_hour_iso,
+)
 from gpu_index.index.weights import (
     DEFAULT_TARGET_VARIANCE_FLOOR,
     advance_panel_weight_state,
     compute_panel_weights,
+    dw_vote_tail,  # re-exported: the vote-tail seam lives with the series
     series_print,
 )
 
@@ -123,6 +143,24 @@ from gpu_index.observatory.catalog import boundary_pattern, normalize_label
 
 PANEL_SCHEMA_VERSION = 1
 PANEL_COMPOSITE_KIND = "index_panel_composite"
+
+# Vote-sigma source (founder ruling 2026-08-27): WHICH per-source history a
+# passing print's vote stddev is computed over. "filter_window" is the
+# legacy coupling -- the same 20-print tail the outlier fence judges
+# against (and what an ABSENT key means: every already-published panel
+# artifact replays byte-identically). "dw_history" decouples the two: the
+# vote sigma is the source's variability over the trailing dynamic-weights
+# history (calc.dynamic_weights.history_days, 90 days on the live lanes) --
+# the same per-source price series the weight regression consumes -- while
+# the fence keeps its 20-print window. The floor semantics are UNTOUCHED
+# either way: the fence band floors at pct of the window mean, the vote
+# stddev at pct of the print's own filter-terms price (ruling 2026-08-26).
+VOTE_SIGMA_SOURCE_FILTER_WINDOW = "filter_window"
+VOTE_SIGMA_SOURCE_DW_HISTORY = "dw_history"
+VALID_VOTE_SIGMA_SOURCES = (
+    VOTE_SIGMA_SOURCE_DW_HISTORY,
+    VOTE_SIGMA_SOURCE_FILTER_WINDOW,
+)
 
 
 def _finite_number(value: Any) -> bool:
@@ -500,9 +538,18 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         }
         if "hour" in entry:
             pinned["hour"] = int(entry["hour"])
+            if "minute" in entry:
+                # Conditional like iqm_alpha: absent on every hour-grid
+                # config, so existing lanes' embedded bytes never move.
+                pinned["minute"] = int(entry["minute"])
         exclusions.append(pinned)
     exclusions.sort(
-        key=lambda e: (e["date"], e["source_id"], e.get("hour", -1))
+        key=lambda e: (
+            e["date"],
+            e["source_id"],
+            e.get("hour", -1),
+            e.get("minute", -1),
+        )
     )
     # Record-quarantine entries (top-level config key; adversarial review
     # F6, docs/adversarial-reviews.md, amended into the mints before any
@@ -519,11 +566,16 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "date": str(entry["date"]),
                 "hour": int(entry["hour"]),
+                **(
+                    {"minute": int(entry["minute"])}
+                    if "minute" in entry
+                    else {}
+                ),
                 "reason": str(entry["reason"]),
             }
             for entry in config.get("record_exclusions") or []
         ),
-        key=lambda e: (e["date"], e["hour"]),
+        key=lambda e: (e["date"], e["hour"], e.get("minute", -1)),
     )
     dw = calc["dynamic_weights"]
     screen = calc["jump_screen"]
@@ -542,7 +594,18 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         "slot_grids": [
             {
                 "from_date": str(g["from_date"]),
-                "slot_hours_utc": [int(h) for h in g["slot_hours_utc"]],
+                # Embed the era's OWN vocabulary (hour eras byte-unchanged;
+                # a minute era embeds slot_minutes_utc -- 15-min cadence
+                # design 2026-08-27).
+                **(
+                    {"slot_hours_utc": [int(h) for h in g["slot_hours_utc"]]}
+                    if "slot_hours_utc" in g
+                    else {
+                        "slot_minutes_utc": [
+                            int(m) for m in g["slot_minutes_utc"]
+                        ]
+                    }
+                ),
             }
             for g in config["slot_grids"]
         ],
@@ -556,12 +619,56 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         "filter_window": int(calc.get("filter_window", DEFAULT_FILTER_WINDOW)),
         "filter_sigma": float(calc.get("filter_sigma", DEFAULT_FILTER_SIGMA)),
         "filter_warmup": int(calc.get("filter_warmup", DEFAULT_FILTER_WARMUP)),
-        "filter_sigma_floor": float(
-            calc.get("filter_sigma_floor", DEFAULT_FILTER_SIGMA_FLOOR)
+        # Exactly ONE floor key rides the params (ruling 2026-08-26, load
+        # validation refuses both): a config still on the absolute key
+        # embeds it verbatim (pre-mint artifact bytes unchanged); otherwise
+        # the percent key embeds, defaulted to 3% — the new-mint posture.
+        **(
+            {"filter_sigma_floor": float(calc["filter_sigma_floor"])}
+            if "filter_sigma_floor" in calc
+            else {
+                "filter_sigma_floor_pct": float(
+                    calc.get(
+                        "filter_sigma_floor_pct",
+                        DEFAULT_FILTER_SIGMA_FLOOR_PCT,
+                    )
+                )
+            }
         ),
         "filter_terms": str(calc.get("filter_terms", DEFAULT_FILTER_TERMS)),
         "composite_statistic": str(
             calc.get("composite_statistic", DEFAULT_COMPOSITE_STATISTIC)
+        ),
+        # CONDITIONAL, unlike the defaulted keys around it -- an
+        # unconditional iqm_alpha would grow every live panel's embedded
+        # calc_params at the next observation and trip the D2
+        # refuse-to-extend fence on all six lanes at once. Absent means
+        # alpha 0 (the point median) by engine default.
+        **(
+            {"iqm_alpha": float(calc["iqm_alpha"])}
+            if "iqm_alpha" in calc
+            else {}
+        ),
+        # Vote-sigma source (ruling 2026-08-27): CONDITIONAL exactly like
+        # iqm_alpha and the floor pair -- absent means the legacy
+        # filter-window vote tail (what every already-published artifact
+        # replays as), so frozen artifact bytes stay untouched and the D2
+        # fence owns the flip on each lane.
+        **(
+            {"vote_sigma_source": str(calc["vote_sigma_source"])}
+            if "vote_sigma_source" in calc
+            else {}
+        ),
+        # Vote floor (floor split, founder ruling 2026-08-27): CONDITIONAL
+        # like the fence floor pair -- absent means the legacy regime
+        # (the absolute filter_sigma_floor governs both sigmas), so every
+        # already-published artifact's bytes stay untouched and the D2
+        # fence owns the flip. Load validation guarantees the key only
+        # rides percent-regime median_ci_votes configs.
+        **(
+            {"vote_sigma_floor_pct": float(calc["vote_sigma_floor_pct"])}
+            if "vote_sigma_floor_pct" in calc
+            else {}
         ),
         "manual_verify_pct": float(
             calc.get("manual_verify_pct", DEFAULT_MANUAL_VERIFY_PCT)
@@ -648,29 +755,40 @@ def embedded_calc_params(params: Dict[str, Any]) -> Dict[str, Any]:
     return {k: (list(v) if isinstance(v, tuple) else v) for k, v in params.items()}
 
 
-def exclusion_applies(entry: Dict[str, Any], obs_date: str, obs_hour: int) -> bool:
+def exclusion_applies(
+    entry: Dict[str, Any], obs_date: str, obs_minute_of_day: int
+) -> bool:
     """Section 3 item 9's ONE scope rule: a date-only exclusion covers
-    every observation of its date; an hour-scoped entry covers exactly
-    that observation. Shared by the engine (_exclusion_reason) and the
-    CLI's published-artifact pin check -- two copies of this predicate
-    could silently disagree on exactly the entries the pin exists to
-    police."""
-    return str(entry["date"]) == str(obs_date) and (
-        "hour" not in entry or int(entry["hour"]) == int(obs_hour)
-    )
+    every observation of its date; a mark-scoped entry (hour + optional
+    minute, absent minute == :00) covers exactly that observation.
+    Shared by the engine (_exclusion_reason) and the CLI's
+    published-artifact pin check -- two copies of this predicate could
+    silently disagree on exactly the entries the pin exists to police."""
+    if str(entry["date"]) != str(obs_date):
+        return False
+    if "hour" not in entry:
+        return True
+    entry_minute_of_day = int(entry["hour"]) * 60 + int(entry.get("minute", 0))
+    return entry_minute_of_day == int(obs_minute_of_day)
 
 
 def record_exclusion_reason(
-    record_exclusions: Sequence[Dict[str, Any]], obs_date: str, obs_hour: int
+    record_exclusions: Sequence[Dict[str, Any]],
+    obs_date: str,
+    obs_minute_of_day: int,
 ) -> Optional[str]:
-    """The record-quarantine reason covering one (date, hour), or None.
-    Entries are always hour-scoped (a record snapshot is per slot); the
-    loader guarantees no duplicates. Shared by the CLI's pre-read check
-    and its published-artifact pin check."""
+    """The record-quarantine reason covering one (date, mark), or None.
+    Entries are always mark-scoped (a record snapshot is per slot; hour +
+    optional minute, absent minute == :00); the loader guarantees no
+    duplicates. Shared by the CLI's pre-read check and its
+    published-artifact pin check."""
     for entry in record_exclusions:
-        if str(entry["date"]) == str(obs_date) and int(entry["hour"]) == int(
-            obs_hour
-        ):
+        if str(entry["date"]) != str(obs_date):
+            continue
+        entry_minute_of_day = int(entry["hour"]) * 60 + int(
+            entry.get("minute", 0)
+        )
+        if entry_minute_of_day == int(obs_minute_of_day):
             return str(entry["reason"])
     return None
 
@@ -1166,17 +1284,17 @@ def apply_panel_jump_screen(
 def _exclusion_reason(
     exclusions: Sequence[Dict[str, Any]],
     obs_date: str,
-    obs_hour: int,
+    obs_minute_of_day: int,
     source_id: str,
 ) -> Optional[str]:
     """Section 3 item 9: a date-only exclusion holds out every observation
-    of that date; an hour-scoped one holds out exactly this observation
+    of that date; a mark-scoped one holds out exactly this observation
     (the scope rule is exclusion_applies -- one home with the CLI's pin
     check). The loader guarantees one scope per (date, source_id)."""
     for entry in exclusions:
         if entry["source_id"] != source_id:
             continue
-        if exclusion_applies(entry, obs_date, obs_hour):
+        if exclusion_applies(entry, obs_date, obs_minute_of_day):
             return entry["reason"]
     return None
 
@@ -1266,18 +1384,23 @@ def compute_observation(
         schedule = panel_schedule(config)
     obs_stamp = int(obs_stamp)
     if not schedule.is_scheduled(obs_stamp):
+        # Error text formats minute-keyed unconditionally: an off-hour
+        # stamp under an hour-keyed lane must land HERE as "not scheduled",
+        # never as a formatting refusal masking the real error.
         raise ValueError(
-            f"stamp {obs_stamp} ({stamp_to_hour_iso(obs_stamp)}) is not a "
+            f"stamp {obs_stamp} "
+            f"({stamp_to_obs_key(obs_stamp, minute_keyed=True)}) is not a "
             f"scheduled observation of this panel's era grid"
         )
     if record_quarantined is not None and snapshot is not None:
         raise ValueError(
-            f"stamp {stamp_to_hour_iso(obs_stamp)} is record-quarantined "
+            f"stamp {schedule.stamp_key(obs_stamp)} is record-quarantined "
             f"({record_quarantined!r}) but a snapshot was passed -- the "
             f"engine must never price a record the config quarantined"
         )
-    obs_date, obs_hour = stamp_to_date_hour(obs_stamp)
-    stamp_iso = stamp_to_hour_iso(obs_stamp)
+    obs_date, obs_minute_of_day = stamp_to_date_minute(obs_stamp)
+    obs_hour, obs_minute = divmod(obs_minute_of_day, 60)
+    stamp_iso = schedule.stamp_key(obs_stamp)
     record_entry = record_source_for(params["record_sources"], obs_date)
 
     filter_terms = params["filter_terms"]
@@ -1295,8 +1418,82 @@ def compute_observation(
             "replay without shared state cannot reconstruct the series"
         )
     pending = pending_currencies if pending_currencies is not None else {}
-    sigma_floor = params["filter_sigma_floor"]
+    # Exactly one floor key per params set (the embed rule): percent-mode
+    # params carry filter_sigma_floor_pct; absolute-mode (every pre-mint
+    # artifact) carry filter_sigma_floor. The required [] access keeps a
+    # malformed params dict LOUD — never a silent floor-0 default.
+    if "filter_sigma_floor_pct" in params and "filter_sigma_floor" in params:
+        # panel_calc_params embeds exactly one key and load validation
+        # refuses the pair, but REPLAYED artifact-embedded params bypass
+        # both — with both keys the binding floor is ambiguous, and no
+        # published artifact carries both, so this raise is unreachable
+        # on every replay.
+        raise ValueError(
+            "params carry BOTH filter_sigma_floor and "
+            "filter_sigma_floor_pct — one floor semantics per mint "
+            "(ruling 2026-08-26); the binding floor would be ambiguous"
+        )
+    if (
+        "vote_sigma_floor_pct" in params
+        and "filter_sigma_floor_pct" not in params
+    ):
+        # Floor split (founder ruling 2026-08-27): the vote floor is a
+        # percent-regime key. Alongside the ABSOLUTE filter_sigma_floor —
+        # whose frozen semantics govern BOTH sigmas — the binding vote
+        # floor would be ambiguous; no published artifact carries that
+        # pair, so this raise is unreachable on every replay.
+        raise ValueError(
+            "params carry vote_sigma_floor_pct without "
+            "filter_sigma_floor_pct — the vote floor is a percent-regime "
+            "key (ruling 2026-08-27) and the absolute filter_sigma_floor "
+            "keeps its frozen both-sigmas semantics; the binding vote "
+            "floor would be ambiguous"
+        )
+    sigma_floor_pct = params.get("filter_sigma_floor_pct")
+    sigma_floor = (
+        params["filter_sigma_floor"] if sigma_floor_pct is None else 0.0
+    )
     median_votes = params["composite_statistic"] == MEDIAN_STDDEV_VOTES
+    # Vote floor split (founder ruling 2026-08-27): filter_sigma_floor_pct
+    # is FENCE-ONLY (evaluate_filter below); the median-vote band floors
+    # at vote_sigma_floor_pct of the print's own filter-terms price. A
+    # percent-regime median-votes params set MUST carry the vote floor —
+    # silently falling back to the fence floor would price votes under a
+    # rule the params never recorded (the v8-family has published NOTHING,
+    # so no artifact-embedded params legitimately lack the key). The
+    # legacy absolute regime is untouched: filter_sigma_floor feeds both
+    # sigmas verbatim.
+    if (
+        median_votes
+        and sigma_floor_pct is not None
+        and "vote_sigma_floor_pct" not in params
+    ):
+        raise ValueError(
+            "percent-regime median_ci_votes params missing "
+            "vote_sigma_floor_pct — the vote floor is its own knob "
+            "(ruling 2026-08-27) and never silently falls back to the "
+            "fence floor filter_sigma_floor_pct"
+        )
+    vote_sigma_floor_pct = (
+        float(params["vote_sigma_floor_pct"])
+        if median_votes and sigma_floor_pct is not None
+        else None
+    )
+    # Vote-sigma decouple (ruling 2026-08-27): "dw_history" computes each
+    # vote's stddev over the source's trailing dynamic-weights history
+    # (weight_state prices, currency-scoped, pre-advance) instead of the
+    # fence's filter-window tail. Key ABSENT (every published artifact)
+    # or "filter_window" = the legacy tails below, byte-identical.
+    vote_sigma_dw = (
+        params.get("vote_sigma_source") == VOTE_SIGMA_SOURCE_DW_HISTORY
+    )
+    # history_days is the wire vocabulary (wall-time, cadence-neutral);
+    # stamp arithmetic is MINUTES (the observation-mode lattice).
+    dw_history_minutes = (
+        int(params["dynamic_weights"]["history_days"]) * 1440
+        if vote_sigma_dw
+        else 0
+    )
     if params["fx_lane"] == "none":
         fx_records = {}
 
@@ -1317,7 +1514,7 @@ def compute_observation(
         entry = source_entries.get(source_id)
         resolved: Dict[str, Any] = {"entry": entry}
         excluded_reason = _exclusion_reason(
-            params["manual_exclusions"], obs_date, obs_hour, source_id
+            params["manual_exclusions"], obs_date, obs_minute_of_day, source_id
         )
         if excluded_reason is not None:
             resolved["excluded_reason"] = excluded_reason
@@ -1496,6 +1693,20 @@ def compute_observation(
             }
         else:
             filter_price, filter_currency = observation
+            # ONE dw-tail computation for both vote sites below (the
+            # currency-confirmed and the normal path): a future argument
+            # edit must not be able to fork the two semantics. Pure
+            # function, discarded on the no-vote verdict paths.
+            dw_tail = (
+                dw_vote_tail(
+                    weight_state["prices"].get(source_id),
+                    obs_stamp=obs_stamp,
+                    window_minutes=dw_history_minutes,
+                    currency=filter_currency,
+                )
+                if median_votes and vote_sigma_dw
+                else None
+            )
             if window_incompatible(
                 window_history, window_currencies, source_id, filter_currency
             ):
@@ -1505,7 +1716,18 @@ def compute_observation(
                 prior_currency = window_currencies.get(source_id)
                 if len(queued) >= CURRENCY_CONFIRM_DAYS:
                     if median_votes:
-                        vote_tail = list(queued[:-1])
+                        # dw_history: the currency-scoped slice holds the
+                        # trusted pending history -- the mismatch prints
+                        # entered the prices series under their NEW label
+                        # at their own stamps (test-pinned) -- plus any
+                        # older same-currency prints in the span (the
+                        # never-era-reset rule), so the legacy queued[:-1]
+                        # special case needs no dw twin.
+                        vote_tail = (
+                            dw_tail
+                            if vote_sigma_dw
+                            else list(queued[:-1])
+                        )
                     verdict = {
                         "accepted": True,
                         "unfiltered": True,
@@ -1529,10 +1751,14 @@ def compute_observation(
                     }
             else:
                 if median_votes:
-                    vote_tail = list(
-                        (window_history.get(source_id) or [])[
-                            -params["filter_window"] :
-                        ]
+                    vote_tail = (
+                        dw_tail
+                        if vote_sigma_dw
+                        else list(
+                            (window_history.get(source_id) or [])[
+                                -params["filter_window"] :
+                            ]
+                        )
                     )
                 verdict = evaluate_filter(
                     window_history.get(source_id, []),
@@ -1541,6 +1767,7 @@ def compute_observation(
                     sigma=params["filter_sigma"],
                     warmup=params["filter_warmup"],
                     sigma_floor=sigma_floor,
+                    sigma_floor_pct=sigma_floor_pct,
                     currency=filter_currency if recorded_terms else None,
                 )
         detail.update({"status": "ok", "chosen": chosen, "filter": verdict})
@@ -1587,6 +1814,11 @@ def compute_observation(
                 vote = vote_stddev(
                     vote_tail or [],
                     sigma_floor=sigma_floor,
+                    # The VOTE floor (ruling 2026-08-27), never the
+                    # fence's: None on legacy absolute lanes (sigma_floor
+                    # governs both, frozen semantics).
+                    sigma_floor_pct=vote_sigma_floor_pct,
+                    filter_price=filter_price,
                     fx_factor=fx_factor,
                 )
                 detail["vote"] = vote
@@ -1628,7 +1860,11 @@ def compute_observation(
     min_claim = params["min_sources_to_claim"]
     if len(passing) >= min_claim:
         composite = (
-            median_stddev_composite(passing, vote_stddevs)
+            median_stddev_composite(
+                passing,
+                vote_stddevs,
+                iqm_alpha=float(params.get("iqm_alpha", 0.0)),
+            )
             if median_votes
             else weighted_composite(passing)
         )
@@ -1688,6 +1924,14 @@ def compute_observation(
         "date": stamp_iso,
         "observation_date": obs_date,
         "observation_hour_utc": obs_hour,
+        # CONDITIONAL like iqm_alpha: only minute-keyed lanes carry it, so
+        # every hour-grid lane's artifact bytes are unchanged by the
+        # 15-min re-base (parity rule).
+        **(
+            {"observation_minute_utc": obs_minute}
+            if schedule.minute_keyed
+            else {}
+        ),
         # A quarantined stamp is NOT missed: the record may hold bytes;
         # they are quarantined by config (F6), a recorded fact of its own.
         "observation_missed": snapshot is None and record_quarantined is None,

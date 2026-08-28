@@ -32,7 +32,13 @@ import json
 
 import pytest
 
-from gpu_index.index.composite import CURRENCY_CONFIRM_DAYS, SOURCE_STATISTIC_FNS
+from fractions import Fraction
+
+from gpu_index.index.composite import (
+    CURRENCY_CONFIRM_DAYS,
+    SOURCE_STATISTIC_FNS,
+    _interquantile_mean,
+)
 from gpu_index.index.panel import (
     PANEL_STATISTIC_FNS,
     apply_panel_jump_screen,
@@ -57,7 +63,7 @@ from gpu_index.index.panel_config import (
     validate_panel_config,
 )
 from gpu_index.index.panel_schedule import date_hour_to_stamp
-from gpu_index.index.weights import new_weight_state
+from gpu_index.index.weights import dw_vote_tail, new_weight_state
 from gpu_index.observatory.config import RESERVED_LANE_PREFIXES
 
 GENESIS = "2026-08-23"
@@ -548,6 +554,813 @@ def test_config_filter_vocabulary_and_exclusion_shape_rejections():
     )
 
 
+def test_config_iqm_alpha_validation_and_conditional_embed():
+    """The panel validator mirrors the basket rule — a number in
+    [0, 0.5] riding WITH median_ci_votes — and panel_calc_params embeds the
+    knob CONDITIONALLY: an unconditional key would grow every live lane's
+    embedded params at its next observation and trip the D2
+    refuse-to-extend fence on all six panels at once."""
+    _reject("iqm_alpha", lambda c: c["calc"].update(iqm_alpha=-0.1))
+    _reject("iqm_alpha", lambda c: c["calc"].update(iqm_alpha=0.51))
+    _reject("iqm_alpha", lambda c: c["calc"].update(iqm_alpha=True))
+    _reject("iqm_alpha", lambda c: c["calc"].update(iqm_alpha="0.1"))
+    _reject("iqm_alpha", lambda c: c["calc"].update(iqm_alpha=None))
+
+    def _strip_statistic(c):
+        del c["calc"]["composite_statistic"]
+        c["calc"]["iqm_alpha"] = 0.1
+
+    _reject("iqm_alpha", _strip_statistic)
+    # The unknown-key fence stays armed AROUND the new key (typo class).
+    _reject("unrecognized key", lambda c: c["calc"].update(iqm_alfa=0.1))
+    assert "iqm_alpha" not in panel_calc_params(_config())
+    # The basket test's exact acceptance shapes, both boundaries included —
+    # the two validators are DUPLICATED rules, so the symmetry lives here.
+    for good in (0, 0.1, 0.5):
+        cfg = _config()
+        cfg["calc"]["iqm_alpha"] = good
+        validate_panel_config(cfg)
+        assert panel_calc_params(cfg)["iqm_alpha"] == float(good)
+
+
+def test_config_percent_floor_validation_and_params_embed():
+    """Percent-form floor (ruling 2026-08-26): number >= 0, mutually
+    exclusive with the absolute key, satisfies the median_ci_votes gate,
+    and the params embed carries EXACTLY ONE floor key — the absolute key
+    verbatim on legacy configs (pre-mint artifact bytes unchanged), else
+    the pct key defaulted to 3.0 (the new-mint posture)."""
+    _reject(
+        "filter_sigma_floor_pct",
+        lambda c: c["calc"].update(filter_sigma_floor_pct=-1),
+    )
+    _reject(
+        "filter_sigma_floor_pct",
+        lambda c: c["calc"].update(filter_sigma_floor_pct="3"),
+    )
+    _reject(
+        "filter_sigma_floor_pct",
+        lambda c: c["calc"].update(filter_sigma_floor_pct=True),
+    )
+    # Both keys at once: one floor semantics per mint.
+    _reject(
+        "mutually exclusive",
+        lambda c: c["calc"].update(filter_sigma_floor_pct=3.0),
+    )
+    # The unknown-key fence stays armed AROUND the new key (typo class).
+    _reject(
+        "unrecognized key",
+        lambda c: c["calc"].update(filter_sigma_floor_pcnt=3.0),
+    )
+
+    def _swap_to_pct(c, value, vote=3.0):
+        del c["calc"]["filter_sigma_floor"]
+        c["calc"]["filter_sigma_floor_pct"] = value
+        if vote is not None:
+            c["calc"]["vote_sigma_floor_pct"] = vote
+
+    # Floor split (ruling 2026-08-27): a percent-regime median-votes lane
+    # needs the VOTE floor > 0 — the fence floor no longer satisfies the
+    # gate (fence pct 0 with a positive vote floor is a real ruling and
+    # validates; the fence floor is fence-only).
+    _reject(
+        "vote_sigma_floor_pct > 0", lambda c: _swap_to_pct(c, 3.0, vote=None)
+    )
+    _reject("vote_sigma_floor_pct > 0", lambda c: _swap_to_pct(c, 3.0, vote=0))
+    fence_zero = _config()
+    _swap_to_pct(fence_zero, 0)
+    validate_panel_config(fence_zero)
+    # pct > 0 (with the vote floor) validates and embeds pct keys ONLY.
+    cfg = _config()
+    _swap_to_pct(cfg, 3.0)
+    validate_panel_config(cfg)
+    params = panel_calc_params(cfg)
+    assert params["filter_sigma_floor_pct"] == 3.0
+    assert params["vote_sigma_floor_pct"] == 3.0
+    assert "filter_sigma_floor" not in params
+    # Legacy config: absolute key verbatim, no pct key — the pre-mint
+    # embedded params (and so the D2 compare) are byte-untouched.
+    legacy = panel_calc_params(_config())
+    assert legacy["filter_sigma_floor"] == 0.05
+    assert "filter_sigma_floor_pct" not in legacy
+    assert "vote_sigma_floor_pct" not in legacy
+    # Neither key: the pct default (3.0) embeds — only reachable off the
+    # median_ci_votes statistic, whose gate demands an explicit floor.
+    bare = _config()
+    del bare["calc"]["filter_sigma_floor"]
+    del bare["calc"]["composite_statistic"]
+    validate_panel_config(bare)
+    defaulted = panel_calc_params(bare)
+    assert defaulted["filter_sigma_floor_pct"] == 3.0
+    assert "filter_sigma_floor" not in defaulted
+    assert "vote_sigma_floor_pct" not in defaulted
+
+
+def test_compute_observation_percent_floor_votes_at_pct_of_price():
+    """End-to-end percent floor on the hourly grain: warm-up votes claim
+    3% of each print's OWN price in FILTER terms — the EUR seat anchors
+    on its NATIVE 2.0 (recorded_currency, D1), NOT its 2.30 USD value,
+    then converts at the print's own rate; USD seats anchor on their
+    quotes (0.09/0.12/0.15 for prints 3/4/5). calc_params embeds the pct
+    key only, and the index is the weighted median of the
+    per-price-anchored votes."""
+    cfg = _config()
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_floor_pct"] = 3.0  # floor split, both 3%
+    validate_panel_config(cfg)
+    snapshot = _snapshot(
+        [
+            _entry(
+                "alpha",
+                [_obs("H100", "sxm h100", usd=None, native=2.0, currency="EUR")],
+            ),
+            _entry("bravo", [_obs("H100", "hgx h100", usd=3.0)]),
+            _entry("charlie", [_obs("H100", "sxm h100", usd=4.0)]),
+            _entry("delta", [_obs("H100", "sxm h100", usd=5.0)]),
+        ]
+    )
+    payload = _compute(cfg, snapshot, _state(), fx=FX)
+    assert payload["calc_params"]["filter_sigma_floor_pct"] == 3.0
+    assert payload["calc_params"]["vote_sigma_floor_pct"] == 3.0
+    assert "filter_sigma_floor" not in payload["calc_params"]
+    by_sid = {s["source_id"]: s for s in payload["sources"]}
+    # EUR seat: floor = 3% of NATIVE 2.0 = 0.06 EUR, x fx 1.15 = 0.069
+    # USD. Anchoring on the converted 2.30 USD price would print 0.0794 —
+    # the double-fx regression this pin exists to catch.
+    assert by_sid["alpha"]["chosen"]["usd_per_gpu_hr"] == 2.3
+    assert by_sid["alpha"]["vote"] == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": round(2.0 * (3.0 / 100.0) * 1.15, 6),
+    }
+    votes = [
+        (2.3 - 0.069, payload["weight_calc"]["weights"]["alpha"]),
+        (2.3, payload["weight_calc"]["weights"]["alpha"]),
+        (2.3 + 0.069, payload["weight_calc"]["weights"]["alpha"]),
+    ]
+    for source_id, price in (
+        ("bravo", 3.0),
+        ("charlie", 4.0),
+        ("delta", 5.0),
+    ):
+        conf = round(price * 0.03, 6)
+        assert by_sid[source_id]["vote"] == {
+            "sigma": 0.0,
+            "sigma_floored": True,
+            "conf_usd_gpu_hr": conf,
+        }
+        weight = payload["weight_calc"]["weights"][source_id]
+        votes.extend(
+            [(price - conf, weight), (price, weight), (price + conf, weight)]
+        )
+    # Hand-walk the ballot: W = 2.4, half-weight target 1.2; cumulative
+    # weight up the sorted ladder (alpha's 2.231/2.3/2.369 at 0.3 each
+    # -> 0.9, +2.91 at 0.2 -> 1.1) crosses inside bravo's point vote 3.0
+    # — the per-price confs reorder nothing here, but they ARE the rungs.
+    assert sorted(v for v, _ in votes)[3] == 3.0 - 0.09
+    assert payload["index"]["value_usd_gpu_hr"] == 3.0
+
+
+def test_config_vote_sigma_source_validation_and_conditional_embed():
+    """Vote-sigma source (ruling 2026-08-27): enum-valued, requires the
+    median_ci_votes statistic (a vote-sigma source without votes is inert
+    config), 'dw_history' requires the dynamic_weights block (it spans
+    history_days), and the params embed is KEY-PRESENCE-CONDITIONAL like
+    iqm_alpha and the floor pair — absent stays absent, so every
+    already-published artifact's bytes (and the D2 compare) are
+    untouched."""
+    _reject(
+        "calc.vote_sigma_source must be one of",
+        lambda c: c["calc"].update(vote_sigma_source="window20"),
+    )
+    _reject(
+        "calc.vote_sigma_source must be one of",
+        lambda c: c["calc"].update(vote_sigma_source=None),
+    )
+    # The unknown-key fence stays armed AROUND the new key (typo class).
+    _reject(
+        "unrecognized key",
+        lambda c: c["calc"].update(vote_sigma_src="dw_history"),
+    )
+
+    def _without_votes(c):
+        del c["calc"]["composite_statistic"]
+        c["calc"]["vote_sigma_source"] = "dw_history"
+
+    _reject(
+        "vote_sigma_source requires calc.composite_statistic", _without_votes
+    )
+
+    def _without_dw(c):
+        del c["calc"]["dynamic_weights"]
+        c["calc"]["vote_sigma_source"] = "dw_history"
+
+    _reject("'dw_history' requires\\s+calc.dynamic_weights", _without_dw)
+
+    # Both enum values validate; the embed carries the key IFF present.
+    for value in ("dw_history", "filter_window"):
+        cfg = _config()
+        cfg["calc"]["vote_sigma_source"] = value
+        validate_panel_config(cfg)
+        assert panel_calc_params(cfg)["vote_sigma_source"] == value
+    legacy = panel_calc_params(_config())
+    assert "vote_sigma_source" not in legacy
+
+
+def test_dw_vote_tail_slice_rules():
+    """The dw_history vote tail (ruling 2026-08-27), every slice rule on a
+    hand-built prices series: the span is [obs_stamp - window_minutes,
+    obs_stamp) — CLOSED at the old edge (a print exactly window_minutes ago
+    is in), OPEN at the observation (today's print is out — though at vote
+    time it is also naturally absent, the state advances after votes);
+    entries are currency-scoped to the vote's own filter currency (the
+    prices series is never reset on a currency change and can straddle
+    EUR->USD); order is stamp-ascending (the engine's summation order, NOT
+    value order); gaps are absent stamps, never carried forward; values
+    are the NATIVE (filter-terms) prints."""
+    h90 = 90 * 1440  # the live lanes' dynamic_weights.history_days, in minutes
+    obs = STAMP0
+    prices = {
+        obs - h90: {"usd": 2.0, "native": 2.0, "currency": "USD"},
+        obs - h90 - 1: {"usd": 9.0, "native": 9.0, "currency": "USD"},
+        obs - 20 * 60: {"usd": 8.05, "native": 7.0, "currency": "EUR"},
+        obs - 3 * 60: {"usd": 2.2, "native": 2.2, "currency": "USD"},
+        obs - 60: {"usd": 2.1, "native": 2.1, "currency": "USD"},
+        obs: {"usd": 5.0, "native": 5.0, "currency": "USD"},
+    }
+    assert dw_vote_tail(
+        prices, obs_stamp=obs, window_minutes=h90, currency="USD"
+    ) == [2.0, 2.2, 2.1]
+    assert dw_vote_tail(
+        prices, obs_stamp=obs, window_minutes=h90, currency="EUR"
+    ) == [7.0]
+    # No history at all (day one): empty tail, both spellings.
+    assert (
+        dw_vote_tail(None, obs_stamp=obs, window_minutes=h90, currency="USD")
+        == []
+    )
+    assert (
+        dw_vote_tail({}, obs_stamp=obs, window_minutes=h90, currency="USD")
+        == []
+    )
+    # Single-owner seam: gpu_index.index.weights owns the series shape and the
+    # tail; gpu_index.index.panel re-exports the SAME function (no fork).
+    from gpu_index.index import panel as _panel
+    from gpu_index.index import weights as _weights
+
+    assert _panel.dw_vote_tail is _weights.dw_vote_tail
+
+
+def test_dw_vote_tail_is_stamp_sorted_not_insertion_ordered():
+    """Mutation-verified gap: dict iteration follows INSERTION order and
+    every other fixture inserts stamps ascending, so deleting the
+    sorted() passed the whole suite. Deliberately out-of-stamp-order
+    insertion pins that the tail can only come from sorting by stamp —
+    the engine's summation order rides on it (float pstdev is
+    order-sensitive at the ulp)."""
+    obs = STAMP0
+    prices = {}
+    prices[obs - 60] = {"usd": 2.1, "native": 2.1, "currency": "USD"}
+    prices[obs - 5 * 60] = {"usd": 2.5, "native": 2.5, "currency": "USD"}
+    prices[obs - 3 * 60] = {"usd": 2.3, "native": 2.3, "currency": "USD"}
+    assert dw_vote_tail(
+        prices, obs_stamp=obs, window_minutes=48 * 60, currency="USD"
+    ) == [2.5, 2.3, 2.1]
+
+
+def test_compute_observation_vote_sigma_dw_history_and_legacy_contrast():
+    """Ruling 2026-08-27 end-to-end, the three-way contrast on IDENTICAL
+    inputs (a frozen 2.5-USD 11-print window, dw prices [2.0, 2.1, 2.3]
+    over the trailing history):
+
+      - key ABSENT: the vote tail is the fence's window tail exactly —
+        the poisoned-different dw prices are never consulted, sigma 0
+        (frozen window), the vote sits AT the pct floor;
+      - 'filter_window': the same legacy vote, key embedded;
+      - 'dw_history': sigma is the source's variability over the dw
+        history. IEEE-double walk: mean([2.0, 2.1, 2.3]) =
+        2.1333333333333333, pstdev = 0.12472191289246462 -> 0.124722 at
+        the 6dp wire round; floor = 2.5 * 0.03 = 0.075 < sigma, so the
+        REAL sigma prices the vote (sigma_floored False) — a source that
+        genuinely repriced inside the history earns a wider band than the
+        floor, the ruling's point.
+
+    The FENCE verdict is byte-identical in all three runs (band floored
+    at 3% of the window mean over the SAME 20-print window) — the
+    decouple moves the vote sigma only."""
+    def _run(vote_sigma_source):
+        cfg = _config()
+        del cfg["calc"]["filter_sigma_floor"]
+        cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+        cfg["calc"]["vote_sigma_floor_pct"] = 3.0  # floor split, both 3%
+        if vote_sigma_source is not None:
+            cfg["calc"]["vote_sigma_source"] = vote_sigma_source
+        validate_panel_config(cfg)
+        state = _state()
+        state["window_history"]["bravo"] = [2.5] * 11
+        state["window_currencies"]["bravo"] = "USD"
+        # Stamp-ascending dw entries, deliberately DIFFERENT from the
+        # window: whichever tail the vote reads is unambiguous.
+        state["weight_state"]["prices"]["bravo"] = {
+            STAMP0 - 180: {"usd": 2.0, "native": 2.0, "currency": "USD"},
+            STAMP0 - 120: {"usd": 2.1, "native": 2.1, "currency": "USD"},
+            STAMP0 - 60: {"usd": 2.3, "native": 2.3, "currency": "USD"},
+        }
+        snapshot = _snapshot([_entry("bravo", [_obs("H100", "hgx h100", 2.5)])])
+        return _compute(cfg, snapshot, state)
+
+    legacy = _run(None)
+    explicit = _run("filter_window")
+    dw = _run("dw_history")
+    for payload, embedded in (
+        (legacy, None),
+        (explicit, "filter_window"),
+        (dw, "dw_history"),
+    ):
+        if embedded is None:
+            assert "vote_sigma_source" not in payload["calc_params"]
+        else:
+            assert payload["calc_params"]["vote_sigma_source"] == embedded
+        bravo = {s["source_id"]: s for s in payload["sources"]}["bravo"]
+        # The fence is untouched by the decouple: same window, same band.
+        assert bravo["filter"]["accepted"] is True
+        assert bravo["filter"]["band"] == pytest.approx(3.0 * 2.5 * 0.03)
+        assert bravo["filter"]["n_history"] == 11
+    legacy_vote = {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.075,  # the 3%-of-own-print floor
+    }
+    assert {s["source_id"]: s for s in legacy["sources"]}["bravo"][
+        "vote"
+    ] == legacy_vote
+    assert {s["source_id"]: s for s in explicit["sources"]}["bravo"][
+        "vote"
+    ] == legacy_vote
+    assert {s["source_id"]: s for s in dw["sources"]}["bravo"]["vote"] == {
+        "sigma": 0.124722,
+        "sigma_floored": False,
+        "conf_usd_gpu_hr": 0.124722,
+    }
+
+
+def test_vote_sigma_dw_history_currency_confirmed_uses_scoped_slice():
+    """Ruling 2026-08-27 at the currency-change confirmation, all
+    engine-built state (six consecutive observations): bravo prints USD
+    2.5, EUR 1.9 (pending, streak broken), USD 2.5, then EUR 2.0 / 2.2 /
+    2.1 — the third consecutive EUR print confirms.
+
+    dw_history mode retires the legacy queued[:-1] special case: the
+    confirmed print's vote tail is the natural currency-scoped slice of
+    the prices series, which holds EVERY trusted EUR print at its own
+    stamp (mismatch prints enter prices under their NEW label — pinned by
+    test_currency_change_fence_confirms_at_the_third_print) — including
+    the broken-streak 1.9 the legacy tail never saw. IEEE walk:
+    pstdev([1.9, 2.0, 2.2]) = 0.12472191289246483 -> 0.124722; floor 3%
+    of the 2.1 NATIVE print = 0.063 < sigma; conf = sigma * fx 1.15 =
+    0.14343019982633454 -> 0.14343. The legacy run of the SAME sequence
+    votes from queued[:-1] = [2.0, 2.2]: pstdev 0.10000000000000009 ->
+    0.1, conf 0.11500000000000009 -> 0.115. Along the way: the USD vote
+    at the third observation reads the USD-scoped slice ([2.5] alone — 1
+    entry -> sigma 0 -> floor), pinning both the currency scoping and the
+    pre-advance rule (today's print absent from its own tail)."""
+    def _run(dw_mode):
+        cfg = _config()
+        del cfg["calc"]["filter_sigma_floor"]
+        cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+        cfg["calc"]["vote_sigma_floor_pct"] = 3.0  # floor split, both 3%
+        if dw_mode:
+            cfg["calc"]["vote_sigma_source"] = "dw_history"
+        validate_panel_config(cfg)
+        state = _state()
+        def usd():
+            return _obs("H100", "hgx h100", 2.5)
+
+        def eur(native):
+            return _obs(
+                "H100", "hgx h100", usd=None, native=native, currency="EUR"
+            )
+
+        rows = [usd(), eur(1.9), usd(), eur(2.0), eur(2.2), eur(2.1)]
+        payloads = [
+            _compute(
+                cfg,
+                _snapshot([_entry("bravo", [row])]),
+                state,
+                stamp=STAMP0 + i * 60,
+                fx=FX,
+            )
+            for i, row in enumerate(rows)
+        ]
+        return [
+            {s["source_id"]: s for s in p["sources"]}["bravo"]
+            for p in payloads
+        ]
+
+    dw = _run(dw_mode=True)
+    # Pending EUR prints cast no vote (held out, fail-closed) — both eras.
+    for idx in (1, 3, 4):
+        assert dw[idx]["filter"]["accepted"] is False
+        assert "vote" not in dw[idx]
+    # Third observation (USD print): the USD-scoped slice is the STAMP0
+    # print alone — the EUR 1.9 at STAMP0+60 is scoped out, and today's
+    # 2.5 is not in its own tail (pre-advance). One entry -> sigma 0 ->
+    # the 3%-of-own-print floor.
+    assert dw[2]["vote"] == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.075,
+    }
+    # Confirmation: the EUR-scoped slice [1.9, 2.0, 2.2].
+    assert dw[5]["filter"]["currency_confirmed"] is True
+    assert dw[5]["vote"] == {
+        "sigma": 0.124722,
+        "sigma_floored": False,
+        "conf_usd_gpu_hr": 0.14343,
+    }
+    # The SAME sequence under the legacy coupling: queued[:-1] = the two
+    # pending prints minus today — the broken-streak 1.9 invisible.
+    legacy = _run(dw_mode=False)
+    assert legacy[5]["filter"]["currency_confirmed"] is True
+    assert legacy[5]["vote"] == {
+        "sigma": 0.1,
+        "sigma_floored": False,
+        "conf_usd_gpu_hr": 0.115,
+    }
+
+
+def test_vote_sigma_dw_history_includes_the_fence_held_out_print():
+    """Ruling 2026-08-27 membership rule: the dw vote tail holds every
+    TRUSTED print — fence-held-out included (the fence holds a print out
+    of the INDEX, never out of the weight series). A 2.7 print rejected
+    by the 3%-floored fence (dev 0.295 > band 3.0 * max(sd, 3% * 2.405))
+    still enters the prices series at its stamp, and the NEXT
+    observation's vote earns its sigma from [2.5, 2.7]: pstdev =
+    0.10000000000000009 -> 0.1 > the 0.075 floor."""
+    cfg = _config()
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_floor_pct"] = 3.0  # floor split, both 3%
+    cfg["calc"]["vote_sigma_source"] = "dw_history"
+    validate_panel_config(cfg)
+    state = _state()
+    state["window_history"]["bravo"] = [2.4] * 20
+    state["window_currencies"]["bravo"] = "USD"
+
+    def _run(usd, stamp):
+        payload = _compute(
+            cfg,
+            _snapshot([_entry("bravo", [_obs("H100", "hgx h100", usd)])]),
+            state,
+            stamp=stamp,
+        )
+        return {s["source_id"]: s for s in payload["sources"]}["bravo"]
+
+    first = _run(2.5, STAMP0)  # dev 0.1 <= band 0.216: accepted
+    assert first["filter"]["accepted"] is True
+    fenced = _run(2.7, STAMP0 + 60)  # dev 0.295 > band: held out
+    assert fenced["filter"]["accepted"] is False
+    assert "vote" not in fenced
+    assert state["weight_state"]["prices"]["bravo"][STAMP0 + 60] == {
+        "usd": 2.7, "native": 2.7, "currency": "USD",
+    }
+    third = _run(2.5, STAMP0 + 120)
+    assert third["filter"]["accepted"] is True
+    assert third["vote"] == {
+        "sigma": 0.1,
+        "sigma_floored": False,
+        "conf_usd_gpu_hr": 0.1,
+    }
+
+
+def test_vote_sigma_dw_history_currency_round_trip_readmits_old_era():
+    """Ruling 2026-08-27 round-trip semantics, all engine-built state
+    (eight consecutive observations): the vote tail is NEVER era-reset on
+    currency confirmation — a source returning to a previously-recorded
+    currency re-admits its old-era same-label prints (deliberate; matches
+    the regression's treatment of the prices series). bravo prints USD
+    2.5, 2.6 (old era), flips to EUR 2.0 / 2.2 / 2.1 (confirms at the
+    third), then flips BACK to USD 2.4 / 2.3 / 2.5 (confirms at the
+    third), all inside history_days.
+
+    First confirmation (EUR, obs 4): tail = the EUR-scoped slice [2.0,
+    2.2] -> pstdev 0.10000000000000009 -> 0.1 > floor 3% of 2.1 = 0.063;
+    conf = 0.1 * fx 1.15 = 0.115. Second confirmation (USD, obs 7): tail
+    = old-era USD prints PLUS the pending USD prints minus today, in
+    stamp order — [2.5, 2.6, 2.4, 2.3] -> pstdev 0.11180339887498958 ->
+    0.111803 > floor 0.075; conf 0.111803 (fx 1.0). The legacy
+    queued[:-1] tail would have been [2.4, 2.3] (pstdev 0.05) — the
+    old-era re-admission is exactly the difference."""
+    import statistics
+
+    cfg = _config()
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_floor_pct"] = 3.0  # floor split, both 3%
+    cfg["calc"]["vote_sigma_source"] = "dw_history"
+    validate_panel_config(cfg)
+    state = _state()
+    def usd(value):
+        return _obs("H100", "hgx h100", value)
+
+    def eur(native):
+        return _obs(
+            "H100", "hgx h100", usd=None, native=native, currency="EUR"
+        )
+
+    rows = [
+        usd(2.5), usd(2.6),
+        eur(2.0), eur(2.2), eur(2.1),
+        usd(2.4), usd(2.3), usd(2.5),
+    ]
+    details = []
+    for i, row in enumerate(rows):
+        payload = _compute(
+            cfg,
+            _snapshot([_entry("bravo", [row])]),
+            state,
+            stamp=STAMP0 + i * 60,
+            fx=FX,
+        )
+        details.append(
+            {s["source_id"]: s for s in payload["sources"]}["bravo"]
+        )
+    # First confirmation: the EUR era has no older same-label history.
+    assert details[4]["filter"]["currency_confirmed"] is True
+    assert details[4]["vote"] == {
+        "sigma": 0.1,
+        "sigma_floored": False,
+        "conf_usd_gpu_hr": 0.115,
+    }
+    # Round-trip confirmation: old-era USD prints re-enter the tail.
+    assert details[7]["filter"]["currency_confirmed"] is True
+    assert details[7]["filter"]["window_currency"] == "EUR"
+    expected_sigma = round(statistics.pstdev([2.5, 2.6, 2.4, 2.3]), 6)
+    assert expected_sigma == 0.111803  # ≠ 0.05, the legacy queued[:-1]
+    assert details[7]["vote"] == {
+        "sigma": expected_sigma,
+        "sigma_floored": False,
+        "conf_usd_gpu_hr": expected_sigma,
+    }
+
+
+def test_compute_observation_refuses_ambiguous_floor_pair_in_params():
+    """Hardening 2026-08-27: config load refuses the floor pair and
+    panel_calc_params embeds exactly one key, but REPLAYED
+    artifact-embedded params bypass both — with both keys present the
+    binding floor is ambiguous, so the resolution site refuses loudly
+    naming both keys. No published artifact carries both (each carries
+    filter_sigma_floor alone or no floor key), so replays never hit
+    this."""
+    cfg = _config()
+    params = panel_calc_params(cfg)
+    assert "filter_sigma_floor" in params  # the absolute-mode embed
+    params["filter_sigma_floor_pct"] = 3.0  # the replayed-bypass shape
+    with pytest.raises(
+        ValueError, match="filter_sigma_floor and\\s+filter_sigma_floor_pct"
+    ):
+        compute_observation(
+            config=cfg,
+            obs_stamp=STAMP0,
+            snapshot=_snapshot([]),
+            fx_records={},
+            window_history={},
+            window_currencies={},
+            pending_currencies={},
+            weight_state=new_weight_state(),
+            calc_params=params,
+        )
+
+
+def test_config_vote_sigma_floor_pct_validation_and_conditional_embed():
+    """Floor split (founder ruling 2026-08-27): calc.vote_sigma_floor_pct
+    floors the median-vote band at pct/100 of the print's OWN filter-terms
+    price, filter_sigma_floor_pct becomes FENCE-ONLY. Load rules: finite
+    number >= 0; refuses without median_ci_votes (a vote floor without
+    votes is inert config, the vote_sigma_source rule); refuses alongside
+    the ABSOLUTE filter_sigma_floor (frozen both-sigmas semantics — the
+    pair is ambiguous); the reworked median_ci_votes gate demands
+    vote_sigma_floor_pct > 0 whenever the fence pct key is present (no
+    silent fallback to the fence floor), while the legacy absolute regime
+    still satisfies it via filter_sigma_floor > 0 untouched. The embed is
+    KEY-PRESENCE-CONDITIONAL like the floor pair, so published artifact
+    bytes never grow the key."""
+
+    def _pct(c, vote):
+        del c["calc"]["filter_sigma_floor"]
+        c["calc"]["filter_sigma_floor_pct"] = 3.0
+        if vote is not None:
+            c["calc"]["vote_sigma_floor_pct"] = vote
+
+    # Junk values refuse naming the key (finite number >= 0).
+    for bad in (-1, "3", True, None, float("nan"), float("inf")):
+        _reject("vote_sigma_floor_pct", lambda c, b=bad: _pct(c, b))
+    # The unknown-key fence stays armed AROUND the new key (typo class).
+    _reject(
+        "unrecognized key",
+        lambda c: _pct(c, None) or c["calc"].update(vote_sigma_floor_pcnt=3.0),
+    )
+
+    def _without_votes(c):
+        _pct(c, 3.0)
+        del c["calc"]["composite_statistic"]
+
+    _reject(
+        "vote_sigma_floor_pct requires calc.composite_statistic",
+        _without_votes,
+    )
+    # Alongside the ABSOLUTE floor: the absolute key's frozen semantics
+    # already govern both sigmas — carrying both is ambiguous.
+    _reject(
+        "absolute\\s+calc.filter_sigma_floor are mutually exclusive",
+        lambda c: c["calc"].update(vote_sigma_floor_pct=3.0),
+    )
+    # Percent-regime votes lane MISSING the vote floor now refuses (the
+    # reworked gate: no silent fallback to the fence floor)…
+    _reject("vote_sigma_floor_pct > 0", lambda c: _pct(c, None))
+    _reject("vote_sigma_floor_pct > 0", lambda c: _pct(c, 0))
+    # …while the legacy absolute regime satisfies the gate unchanged.
+    validate_panel_config(_config())
+    # Valid split lane: both pct knobs embed, floats, absolute absent.
+    cfg = _config()
+    _pct(cfg, 5)
+    validate_panel_config(cfg)
+    params = panel_calc_params(cfg)
+    assert params["vote_sigma_floor_pct"] == 5.0
+    assert params["filter_sigma_floor_pct"] == 3.0
+    assert "filter_sigma_floor" not in params
+    # Legacy absolute config: the key never rides (conditional embed).
+    assert "vote_sigma_floor_pct" not in panel_calc_params(_config())
+
+
+def test_compute_observation_fence_and_vote_floors_bite_independently():
+    """Floor split end-to-end (founder ruling 2026-08-27), fence pct 3.0 /
+    vote pct 5.0 on the same lane — the two knobs bite INDEPENDENTLY:
+
+      - bravo, frozen 11-print 2.5 window: the FENCE band floors at 3% of
+        the window MEAN — IEEE walk: 2.5 * (3.0/100.0) =
+        0.07499999999999999, band = 3.0 * that = 0.22499999999999998 ->
+        0.225 at the 6dp wire round, lo 2.275 / hi 2.725 — while its VOTE
+        floors at 5% of the print's OWN price: 2.5 * (5.0/100.0) = 0.125
+        exactly (NOT the fence's 0.075);
+      - charlie, [2.4, 2.6] x 6 window (pstdev 0.10000000000000009): the
+        real sd EXCEEDS the 3% fence floor, so the fence band is 3.0 * sd
+        = 0.30000000000000027 -> 0.3 (the fence floor does not bite), yet
+        its vote is STILL floored — 0.1 < the 0.125 vote floor — so
+        sigma_floored reflects the VOTE floor, conf 0.125. Under the
+        pre-split coupling (one 3% knob) this vote would have printed
+        sigma_floored False at conf 0.1."""
+    cfg = _config()
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_floor_pct"] = 5.0
+    validate_panel_config(cfg)
+    state = _state()
+    state["window_history"]["bravo"] = [2.5] * 11
+    state["window_currencies"]["bravo"] = "USD"
+    state["window_history"]["charlie"] = [2.4, 2.6] * 6
+    state["window_currencies"]["charlie"] = "USD"
+    snapshot = _snapshot(
+        [
+            _entry("bravo", [_obs("H100", "hgx h100", 2.5)]),
+            _entry("charlie", [_obs("H100", "sxm h100", 2.5)]),
+        ]
+    )
+    payload = _compute(cfg, snapshot, state)
+    assert payload["calc_params"]["filter_sigma_floor_pct"] == 3.0
+    assert payload["calc_params"]["vote_sigma_floor_pct"] == 5.0
+    assert "filter_sigma_floor" not in payload["calc_params"]
+    by_sid = {s["source_id"]: s for s in payload["sources"]}
+    # bravo's fence: floored at 3% of the window mean.
+    assert by_sid["bravo"]["filter"]["accepted"] is True
+    assert (
+        by_sid["bravo"]["filter"]["band"],
+        by_sid["bravo"]["filter"]["lo"],
+        by_sid["bravo"]["filter"]["hi"],
+    ) == (0.225, 2.275, 2.725)
+    # bravo's vote: floored at 5% of its OWN print — the vote knob.
+    assert by_sid["bravo"]["vote"] == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.125,
+    }
+    # charlie's fence: the real sd wins over the 3% floor (no bite)…
+    assert by_sid["charlie"]["filter"]["accepted"] is True
+    assert by_sid["charlie"]["filter"]["band"] == 0.3
+    # …but its vote is floored by the 5% vote knob regardless.
+    assert by_sid["charlie"]["vote"] == {
+        "sigma": 0.1,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.125,
+    }
+    assert payload["index"]["value_usd_gpu_hr"] == 2.5
+
+
+def test_compute_observation_refuses_percent_regime_params_missing_vote_floor():
+    """Era rule (floor split, 2026-08-27): a REPLAYED percent-regime
+    median-votes params dict WITHOUT vote_sigma_floor_pct fails LOUDLY —
+    the v8 family has published NOTHING, so no such artifact shape exists,
+    and silently falling back to the fence floor would price votes under a
+    rule the params never recorded (the ambiguous-pair doctrine). The
+    absolute regime is untouched: filter_sigma_floor alone still prices
+    votes byte-identically (the existing era tests)."""
+    cfg = _config()
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_floor_pct"] = 3.0
+    validate_panel_config(cfg)
+    params = panel_calc_params(cfg)
+    del params["vote_sigma_floor_pct"]  # the replayed-bypass shape
+    with pytest.raises(
+        ValueError, match="missing\\s+vote_sigma_floor_pct"
+    ):
+        compute_observation(
+            config=cfg,
+            obs_stamp=STAMP0,
+            snapshot=_snapshot([]),
+            fx_records={},
+            window_history={},
+            window_currencies={},
+            pending_currencies={},
+            weight_state=new_weight_state(),
+            calc_params=params,
+        )
+
+
+def test_compute_observation_refuses_vote_floor_alongside_absolute_params():
+    """Floor-split twin of the ambiguous-pair guard: REPLAYED params
+    carrying vote_sigma_floor_pct together with the ABSOLUTE
+    filter_sigma_floor raise loudly — the absolute key's frozen semantics
+    govern both sigmas, so the binding vote floor would be ambiguous. No
+    published artifact carries that pair."""
+    cfg = _config()
+    params = panel_calc_params(cfg)
+    assert "filter_sigma_floor" in params  # the absolute-mode embed
+    params["vote_sigma_floor_pct"] = 3.0  # the replayed-bypass shape
+    with pytest.raises(
+        ValueError,
+        match="vote_sigma_floor_pct without\\s+filter_sigma_floor_pct",
+    ):
+        compute_observation(
+            config=cfg,
+            obs_stamp=STAMP0,
+            snapshot=_snapshot([]),
+            fx_records={},
+            window_history={},
+            window_currencies={},
+            pending_currencies={},
+            weight_state=new_weight_state(),
+            calc_params=params,
+        )
+
+
+def test_compute_observation_iqm_alpha_prices_the_band_mean():
+    """On the hourly grain: a tuned lane prices the observation at
+    the band mean of the same warm-up ballot, echoes alpha + point median,
+    and embeds the alpha in calc_params. Hand-walk (4 passers, warm-up conf
+    = the 0.05 floor, W 0.8, 12 votes, alpha 0.25 band [0.6, 1.8] of 2.4):
+    overlaps 0.3*2.05 + 0.2*(2.95+3.0+3.05+3.95) + 0.1*4.0 = 3.605, and
+    3.605 / 1.2 = 3.00416... -> 3.004167; the median target 1.2 crosses
+    inside bravo's point vote 3.0."""
+    cfg = _config()
+    cfg["calc"]["iqm_alpha"] = 0.25
+    validate_panel_config(cfg)
+    snapshot = _snapshot(
+        [
+            _entry("alpha", [_obs("H100", "sxm h100", usd=2.0)]),
+            _entry("bravo", [_obs("H100", "hgx h100", usd=3.0)]),
+            _entry("charlie", [_obs("H100", "sxm h100", usd=4.0)]),
+            _entry("delta", [_obs("H100", "sxm h100", usd=5.0)]),
+        ]
+    )
+    payload = _compute(cfg, snapshot, _state())
+    index = payload["index"]
+    assert payload["calc_params"]["iqm_alpha"] == 0.25
+    votes = []
+    for source_id, price in (
+        ("alpha", 2.0),
+        ("bravo", 3.0),
+        ("charlie", 4.0),
+        ("delta", 5.0),
+    ):
+        weight = payload["weight_calc"]["weights"][source_id]
+        votes.extend(
+            [(price - 0.05, weight), (price, weight), (price + 0.05, weight)]
+        )
+    assert index["value_usd_gpu_hr"] == 3.004167
+    assert index["value_usd_gpu_hr"] == float(
+        round(_interquantile_mean(votes, Fraction("0.25")), 6)
+    )
+    assert index["iqm_alpha"] == 0.25
+    assert index["vote_median_usd_gpu_hr"] == 3.0
+    assert index["statistic"] == "median_ci_votes"
+    # The same world without the knob prices the median — the knob bites.
+    base = _compute(_config(), snapshot, _state())
+    assert base["index"]["value_usd_gpu_hr"] == 3.0
+    assert "iqm_alpha" not in base["index"]
+    assert "iqm_alpha" not in base["calc_params"]
+
+
 def test_load_panel_config_refuses_unparseable_json(tmp_path):
     path = tmp_path / "broken.json"
     path.write_text("{ this is not json")
@@ -677,7 +1490,7 @@ def test_config_record_exclusions_validation():
     )
     # Pre-genesis (never scheduled): would quarantine nothing, refused.
     _reject(
-        "not a scheduled observation hour",
+        "not a scheduled observation mark",
         lambda c: c.update(record_exclusions=[dict(base, date="2026-08-22")]),
     )
     _reject("must be a list", lambda c: c.update(record_exclusions={}))
@@ -1480,7 +2293,7 @@ def test_compute_observation_golden():
     # (sigma 0, floored at 0.05), so each member votes its weight at
     # price and price +/- 0.05. Sorted votes with weights
     # (alpha .3 @ 2.35/2.40/2.45, bravo .2 @ 2.45/2.50/2.55,
-    #  charlie .2 @ 2.55/2.60/2.65), total weight 2.1:
+    # charlie .2 @ 2.55/2.60/2.65), total weight 2.1:
     # median (1.05) -> 2.45; p25 (0.525) -> 2.40; p75 (1.575) -> 2.55.
     index = payload["index"]
     assert index["value_usd_gpu_hr"] == 2.45
@@ -1586,7 +2399,7 @@ def test_second_observation_advances_windows_and_attendance():
     cfg = _config()
     state = _state()
     _compute(cfg, _golden_snapshot(), state)
-    payload = _compute(cfg, _golden_snapshot(), state, stamp=STAMP0 + 1)
+    payload = _compute(cfg, _golden_snapshot(), state, stamp=STAMP0 + 60)
     by_sid = {s["source_id"]: s for s in payload["sources"]}
     assert by_sid["alpha"]["filter"]["n_history"] == 1
     alpha_wc = payload["weight_calc"]["sources"]["alpha"]
@@ -1594,7 +2407,7 @@ def test_second_observation_advances_windows_and_attendance():
     assert alpha_wc["attendance_scheduled"] == 1
     assert alpha_wc["attendance_ratio"] == 1.0
     assert state["window_history"]["alpha"] == [2.4, 2.4]
-    assert set(state["weight_state"]["vectors"]) == {STAMP0, STAMP0 + 1}
+    assert set(state["weight_state"]["vectors"]) == {STAMP0, STAMP0 + 60}
 
 
 def test_observation_missed_publishes_explicit_dark_artifact():
@@ -1637,13 +2450,13 @@ def test_config_hour_scoped_exclusion_must_land_on_the_era_grid():
         two_era(c)
         c["calc"]["manual_exclusions"] = [dict(base, hour=15)]
 
-    _reject("not a scheduled observation hour", off_grid)
+    _reject("not a scheduled observation mark", off_grid)
 
     # Pre-genesis date: no hour of it is ever scheduled.
     def pre_genesis(c):
         c["calc"]["manual_exclusions"] = [dict(base, date="2026-08-22", hour=4)]
 
-    _reject("not a scheduled observation hour", pre_genesis)
+    _reject("not a scheduled observation mark", pre_genesis)
 
     # On-grid hours validate in both eras.
     cfg = _config()
@@ -1669,7 +2482,7 @@ def test_manual_exclusions_hour_scoped_and_date_scoped():
     assert by_sid["alpha"]["excluded_reason"] == "bad tap"
     assert by_sid["bravo"]["status"] == "manually_excluded"
     assert state["window_history"].get("alpha") is None
-    at_h1 = _compute(cfg, _golden_snapshot(), state, stamp=STAMP0 + 1)
+    at_h1 = _compute(cfg, _golden_snapshot(), state, stamp=STAMP0 + 60)
     by_sid = {s["source_id"]: s for s in at_h1["sources"]}
     assert by_sid["alpha"]["status"] == "ok"  # hour scope: one observation
     assert by_sid["bravo"]["status"] == "manually_excluded"  # date scope
@@ -1689,7 +2502,7 @@ def test_quarantine_holds_the_member_out_of_index_windows_and_weights():
         ]
     )
     payload = _compute(
-        cfg, jumped, state, stamp=STAMP0 + 1,
+        cfg, jumped, state, stamp=STAMP0 + 60,
         ref=reference, ref_label="2026-08-23T00",
     )
     assert payload["jump_screen"]["quarantined"] == [
@@ -1704,7 +2517,7 @@ def test_quarantine_holds_the_member_out_of_index_windows_and_weights():
     # ... out of the filter window (preserved, print never entered) ...
     assert state["window_history"]["alpha"] == [2.4]
     # ... out of the weight series and the eligible vector.
-    assert (STAMP0 + 1) not in state["weight_state"]["prices"]["alpha"]
+    assert (STAMP0 + 60) not in state["weight_state"]["prices"]["alpha"]
     assert set(payload["weight_calc"]["weights"]) == {"bravo", "charlie"}
     # A quarantined print never serves as the next reference.
     assert "alpha" not in jump_reference_prints(payload)
@@ -1802,9 +2615,9 @@ def test_currency_change_fence_confirms_at_the_third_print():
         return _obs("H100", "H100", usd=None, native=2.0, currency="EUR")
     payloads = [
         _compute(cfg, _snap(_obs("H100", "H100", 2.5)), state, fx=FX),
-        _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 1, fx=FX),
-        _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 2, fx=FX),
-        _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 3, fx=FX),
+        _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 60, fx=FX),
+        _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 120, fx=FX),
+        _compute(cfg, _snap(eur()), state, stamp=STAMP0 + 180, fx=FX),
     ]
     verdicts = [
         {s["source_id"]: s for s in p["sources"]}["bravo"].get("filter")
@@ -1854,7 +2667,7 @@ def test_currency_change_fence_confirms_at_the_third_print():
     # AND the three EUR ones (mismatch verdicts included).
     bravo_prices = state["weight_state"]["prices"]["bravo"]
     assert bravo_prices[STAMP0] == {"usd": 2.5, "native": 2.5, "currency": "USD"}
-    for offset in (1, 2, 3):
+    for offset in (60, 120, 180):
         assert bravo_prices[STAMP0 + offset] == {
             "usd": 2.3,  # EUR 2.0 * 1.15
             "native": 2.0,

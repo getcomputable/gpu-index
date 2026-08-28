@@ -23,6 +23,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Sequence, Tuple
 
+MINUTES_PER_DAY = 1440
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -34,20 +36,24 @@ def rfc3339(ts: Optional[datetime] = None) -> str:
     return stamp.isoformat().replace("+00:00", "Z")
 
 
-def current_slot(now: datetime, slots_utc: Sequence[int]) -> Tuple[date, int]:
-    """(slot_date, slot_hour) for the latest slot mark at or before ``now``.
+def current_slot(
+    now: datetime, slot_minutes_utc: Sequence[int]
+) -> Tuple[date, int]:
+    """(slot_date, minute_of_day) for the latest slot mark at or before
+    ``now``.
 
-    Before the day's first mark, the run belongs to the PREVIOUS day's last
-    slot (e.g. slots [4,10,16,22]: an 02:24Z firing belongs to yesterday's
-    22:00 slot).
+    Before the day's first mark, the run belongs to the PREVIOUS day's
+    last slot (e.g. marks [240, 600, 960, 1320] == hours [4,10,16,22]:
+    an 02:24Z firing belongs to yesterday's 22:00 slot).
     """
-    if not slots_utc:
-        raise ValueError("capture_slots_utc is empty — nothing to gate on")
-    slots: List[int] = sorted(set(int(h) for h in slots_utc))
-    if slots[0] < 0 or slots[-1] > 23:
-        raise ValueError(f"capture_slots_utc out of range: {slots}")
+    if not slot_minutes_utc:
+        raise ValueError("capture slots are empty — nothing to gate on")
+    slots: List[int] = sorted(set(int(m) for m in slot_minutes_utc))
+    if slots[0] < 0 or slots[-1] > MINUTES_PER_DAY - 1:
+        raise ValueError(f"capture slot minutes out of range: {slots}")
     now = now.astimezone(timezone.utc)
-    todays = [h for h in slots if h <= now.hour]
+    now_minute = now.hour * 60 + now.minute
+    todays = [m for m in slots if m <= now_minute]
     if todays:
         return now.date(), todays[-1]
     yesterday = (now - timedelta(days=1)).date()
@@ -58,17 +64,56 @@ def snapshot_day_prefix(bucket_prefix: str, day: date) -> str:
     return f"{bucket_prefix}/snapshots/{day.isoformat()}"
 
 
-def slot_key_prefix(bucket_prefix: str, day: date, slot_hour: int) -> str:
-    return f"{snapshot_day_prefix(bucket_prefix, day)}/slot{slot_hour:02d}-"
+def slot_token(minute_of_day: int, *, minute_tokens: bool) -> str:
+    """The key token for one mark. Hour-vocabulary lanes keep the legacy
+    2-digit hour token (their marks are hour-aligned by construction --
+    LOUD otherwise: writing an off-hour mark under an hour token would
+    silently collapse two marks onto one key prefix); minute-vocabulary
+    lanes write the 4-digit HHMM token for every mark."""
+    minute_of_day = int(minute_of_day)
+    hour, minute = divmod(minute_of_day, 60)
+    if minute_tokens:
+        return f"slot{hour:02d}{minute:02d}"
+    if minute != 0:
+        raise ValueError(
+            f"hour-token lane cannot key sub-hour mark {minute_of_day} "
+            f"(minute {minute})"
+        )
+    return f"slot{hour:02d}"
 
 
-def snapshot_key(bucket_prefix: str, day: date, slot_hour: int, run_id: str) -> str:
-    return f"{slot_key_prefix(bucket_prefix, day, slot_hour)}{run_id}.json"
+def slot_key_prefix(
+    bucket_prefix: str,
+    day: date,
+    minute_of_day: int,
+    *,
+    minute_tokens: bool = False,
+) -> str:
+    token = slot_token(minute_of_day, minute_tokens=minute_tokens)
+    return f"{snapshot_day_prefix(bucket_prefix, day)}/{token}-"
+
+
+def snapshot_key(
+    bucket_prefix: str,
+    day: date,
+    minute_of_day: int,
+    run_id: str,
+    *,
+    minute_tokens: bool = False,
+) -> str:
+    return (
+        f"{slot_key_prefix(bucket_prefix, day, minute_of_day, minute_tokens=minute_tokens)}"
+        f"{run_id}.json"
+    )
 
 
 def latest_pointer_key(bucket_prefix: str) -> str:
     return f"{bucket_prefix}/latest.json"
 
 
-def is_canonical(slot_hour: int, canonical_slot_utc: Optional[int]) -> bool:
-    return canonical_slot_utc is not None and int(slot_hour) == int(canonical_slot_utc)
+def is_canonical(
+    minute_of_day: int, canonical_minute_utc: Optional[int]
+) -> bool:
+    return canonical_minute_utc is not None and int(minute_of_day) == int(
+        canonical_minute_utc
+    )

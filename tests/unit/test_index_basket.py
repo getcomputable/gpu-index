@@ -174,24 +174,26 @@ def test_explicit_config_path_beats_env(tmp_path, monkeypatch):
 
 
 def test_current_slot_picks_latest_mark_at_or_before_now():
-    slots = [4, 10, 16, 22]
+    slots = [h * 60 for h in (4, 10, 16, 22)]
     assert current_slot(_utc(2026, 8, 10, 16, 24), slots) == (
         datetime(2026, 8, 10).date(),
-        16,
+        16 * 60,
     )
     assert current_slot(_utc(2026, 8, 10, 15, 54), slots) == (
         datetime(2026, 8, 10).date(),
-        10,
+        10 * 60,
     )
     assert current_slot(_utc(2026, 8, 10, 4, 0), slots) == (
         datetime(2026, 8, 10).date(),
-        4,
+        4 * 60,
     )
 
 
 def test_current_slot_wraps_to_previous_day_before_first_mark():
-    day, slot = current_slot(_utc(2026, 8, 10, 2, 24), [4, 10, 16, 22])
-    assert (day.isoformat(), slot) == ("2026-08-09", 22)
+    day, slot = current_slot(
+        _utc(2026, 8, 10, 2, 24), [h * 60 for h in (4, 10, 16, 22)]
+    )
+    assert (day.isoformat(), slot) == ("2026-08-09", 22 * 60)
 
 
 # ------------------------------------------------------------------ http hardening
@@ -240,12 +242,12 @@ def test_read_body_capped_refuses_slow_drip():
 def test_slot_key_layout():
     day = datetime(2026, 8, 10).date()
     assert (
-        snapshot_key("index/b300_basket", day, 16, "20260810T162400Z")
+        snapshot_key("index/b300_basket", day, 16 * 60, "20260810T162400Z")
         == "index/b300_basket/snapshots/2026-08-10/slot16-20260810T162400Z.json"
     )
-    assert slot_key_prefix("index/b300_basket", day, 4).endswith("/slot04-")
+    assert slot_key_prefix("index/b300_basket", day, 4 * 60).endswith("/slot04-")
     assert latest_pointer_key("index/b300_basket") == "index/b300_basket/latest.json"
-    assert is_canonical(16, 16) and not is_canonical(4, 16)
+    assert is_canonical(16 * 60, 16 * 60) and not is_canonical(4 * 60, 16 * 60)
 
 
 # ------------------------------------------------------------------ parsers
@@ -999,17 +1001,17 @@ def test_slot_gate_and_missed_day_reads():
     day = datetime(2026, 8, 10).date()
     prev = datetime(2026, 8, 9).date()
     assert not slot_already_captured(
-        client, "curves", prefix="index/b300_basket", day=day, slot_hour=16
+        client, "curves", prefix="index/b300_basket", day=day, minute_of_day=16 * 60
     )
     assert not previous_day_has_snapshots(
         client, "curves", prefix="index/b300_basket", day=prev
     )
     upload_capture_snapshot(client, "curves", _snapshot(), prefix="index/b300_basket")
     assert slot_already_captured(
-        client, "curves", prefix="index/b300_basket", day=day, slot_hour=16
+        client, "curves", prefix="index/b300_basket", day=day, minute_of_day=16 * 60
     )
     assert not slot_already_captured(
-        client, "curves", prefix="index/b300_basket", day=day, slot_hour=4
+        client, "curves", prefix="index/b300_basket", day=day, minute_of_day=4 * 60
     )
     assert previous_day_has_snapshots(
         client, "curves", prefix="index/b300_basket", day=day

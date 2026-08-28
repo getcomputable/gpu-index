@@ -9,11 +9,14 @@ default ``./data``), the anonymous public HTTPS front
 returns a digest-verified envelope (``decode_and_verify_artifact``) —
 there is no unverified read path.
 
-Day files are MUTABLE BY DESIGN inside the publisher's 90-day window
-(the publisher re-reconciles them on every run and deletes files that
-age out of the window), so a
-missing day is an ordinary state — out of window, or not yet published —
-and reads return ``None`` for it rather than raising.
+Day files are MUTABLE BY DESIGN inside the publisher's 90-day window:
+the publisher re-reconciles them on every run. The 90 days are a
+SERVING window, not a retention policy — the publisher never deletes a
+published day file (permanent aggregate retention is a stated product
+invariant), so a day outside the window is simply not re-reconciled,
+not removed. A missing day is nonetheless an ordinary state — not yet
+published, or absent from whichever copy of the record this reader is
+pointed at — and reads return ``None`` for it rather than raising.
 """
 
 from __future__ import annotations

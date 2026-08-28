@@ -40,7 +40,7 @@ import re
 import secrets
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set, Tuple
 
 from gpu_index.common.bucket import (
     BucketConfig,
@@ -54,6 +54,7 @@ from gpu_index.common.slots import (
     latest_pointer_key,
     rfc3339,
     slot_key_prefix,
+    slot_token,
     snapshot_day_prefix,
     snapshot_key,
 )
@@ -67,7 +68,7 @@ __all__ = [
     "write_local_snapshot",
     "slot_already_captured",
     "previous_day_has_snapshots",
-    "slot_hours_present",
+    "slot_minutes_present",
     "upload_capture_snapshot",
     "read_day_snapshots",
     "day_slot_keys",
@@ -103,6 +104,15 @@ def make_run_id(when: Optional[datetime] = None, *, unique: bool = True) -> str:
     return f"{stamp}-{secrets.token_hex(2)}" if unique else stamp
 
 
+def payload_slot_minute(payload: Dict[str, Any]) -> int:
+    """A capture payload's slot mark as MINUTE-OF-DAY. Old snapshots
+    carry only slot_hour_utc (their mark's :00); minute-vocabulary
+    writers add slot_minute_utc (minute of the hour)."""
+    return int(payload["slot_hour_utc"]) * 60 + int(
+        payload.get("slot_minute_utc", 0)
+    )
+
+
 def snapshot_bytes(payload: Dict[str, Any]) -> bytes:
     return (json.dumps(payload, sort_keys=True, indent=2) + "\n").encode("utf-8")
 
@@ -112,20 +122,56 @@ def write_local_snapshot(
 ) -> Path:
     """Dev/debug mirror of the bucket layout; the bucket copy is the record."""
     day = payload["capture_date"]
-    slot = int(payload["slot_hour_utc"])
+    token = slot_token(
+        payload_slot_minute(payload),
+        minute_tokens="slot_minute_utc" in payload,
+    )
     out_dir = root / "snapshots" / day
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"slot{slot:02d}-{payload['run_id']}.json"
+    out = out_dir / f"{token}-{payload['run_id']}.json"
     out.write_bytes(snapshot_bytes(payload))
     return out
 
 
 def slot_already_captured(
-    client, bucket: str, *, prefix: str, day: date, slot_hour: int
+    client,
+    bucket: str,
+    *,
+    prefix: str,
+    day: date,
+    minute_of_day: int,
+    minute_tokens: bool = False,
 ) -> bool:
-    return bool(
-        list_object_keys(client, bucket, slot_key_prefix(prefix, day, slot_hour))
-    )
+    """Idempotency probe for one (day, mark). BOTH token formats are
+    checked for an hour-aligned mark, in BOTH writer directions: a
+    minute-vocabulary writer on the format-cutover day may find the mark
+    already held under the legacy hour token, and an hour-vocabulary
+    writer running AFTER minute keys exist (config rollback -- the
+    adversarial-review one-way-door finding, 2026-08-27) must find the
+    minute-token capture rather than record a duplicate. One extra LIST
+    beats a write-side dup either way; sub-hour marks have exactly one
+    representable token, so they probe once."""
+    if bool(
+        list_object_keys(
+            client,
+            bucket,
+            slot_key_prefix(
+                prefix, day, minute_of_day, minute_tokens=minute_tokens
+            ),
+        )
+    ):
+        return True
+    if int(minute_of_day) % 60 == 0:
+        return bool(
+            list_object_keys(
+                client,
+                bucket,
+                slot_key_prefix(
+                    prefix, day, minute_of_day, minute_tokens=not minute_tokens
+                ),
+            )
+        )
+    return False
 
 
 def previous_day_has_snapshots(
@@ -138,21 +184,45 @@ def previous_day_has_snapshots(
     )
 
 
-_SLOT_KEY_RE = re.compile(r"/slot(\d{2})-")
+# Slot key tokens come in two formats, ONE grain each (15-min cadence
+# design 2026-08-27): the legacy hour token slot<HH>- and the minute
+# token slot<HHMM>-. Both normalize to MINUTE-OF-DAY (hour token ==
+# that hour's :00). The alternation tries \d{2} first and backtracks to
+# \d{4} when the '-' does not follow, so both eras of one keyspace stay
+# readable forever; a token that parses out of range is skipped exactly
+# like a non-slot key.
+_SLOT_KEY_RE = re.compile(r"/slot(\d{2}|\d{4})-")
 
 
-def slot_hours_present(client, bucket: str, *, prefix: str, day: date) -> Set[int]:
-    """Which slot hours actually recorded on <day> — the partial-miss alarm's
-    read (a day that captured 22:00 but missed the canonical 16:00 must not
-    look healthy just because it is non-empty)."""
-    hours: Set[int] = set()
+def _slot_token_minute(token: str) -> Optional[int]:
+    """A matched slot token -> minute-of-day, or None when out of range."""
+    if len(token) == 2:
+        hour = int(token)
+        return hour * 60 if hour <= 23 else None
+    hour, minute = int(token[:2]), int(token[2:])
+    if hour > 23 or minute > 59:
+        return None
+    return hour * 60 + minute
+
+
+def slot_minutes_present(
+    client, bucket: str, *, prefix: str, day: date
+) -> Set[int]:
+    """Which slot marks (MINUTE-OF-DAY) actually recorded on <day> — the
+    partial-miss alarm's read (a day that captured 22:00 but missed the
+    canonical 16:00 must not look healthy just because it is non-empty).
+    Hour-token keys normalize to their :00 minute, so hour-grain callers
+    compare against {h*60 for h in config slots}."""
+    minutes: Set[int] = set()
     for key in list_object_keys(
         client, bucket, snapshot_day_prefix(prefix, day) + "/"
     ):
         m = _SLOT_KEY_RE.search(key)
         if m:
-            hours.add(int(m.group(1)))
-    return hours
+            minute = _slot_token_minute(m.group(1))
+            if minute is not None:
+                minutes.add(minute)
+    return minutes
 
 
 def build_pointer(
@@ -184,12 +254,36 @@ def build_pointer(
     }
 
 
+def slot_hours_present(
+    client, bucket: str, *, prefix: str, day: date
+) -> Set[int]:
+    """Hour-view of slot_minutes_present for hour-token keyspaces (the
+    basket lanes and their tests): REFUSES a day holding any sub-hour
+    mark -- an hour-view caller reading a minute-grain keyspace is a
+    unit bug, never something to floor."""
+    minutes = slot_minutes_present(client, bucket, prefix=prefix, day=day)
+    off_hour = sorted(m for m in minutes if m % 60)
+    if off_hour:
+        raise ValueError(
+            f"hour-view reader found sub-hour slot mark(s) {off_hour} on "
+            f"{day} under {prefix!r}"
+        )
+    return {m // 60 for m in minutes}
+
+
 def read_day_snapshots(
     client, bucket: str, *, prefix: str, day: date
 ) -> Dict[int, Dict[str, Any]]:
     """{slot_hour: payload} for a day, honoring the duplicate-slot rule:
     the EARLIEST key per slot wins (lexicographic == chronological — see the
-    module docstring); later duplicates are tolerated history, never read."""
+    module docstring); later duplicates are tolerated history, never read.
+
+    HOUR-grain by contract: this is the DAY-mode lanes' whole-day reader
+    (their bytes depend on it) and their keyspaces only ever hold hour
+    tokens; a minute token (slot<HHMM>-) in the listed keyspace is
+    REFUSED loudly rather than mis-keyed -- a daily lane must never
+    silently price a sub-hour record (the minute-grain readers are
+    day_slot_keys / slot_minutes_present)."""
     chosen_key_per_slot: Dict[int, str] = {}
     for key in sorted(
         list_object_keys(client, bucket, snapshot_day_prefix(prefix, day) + "/")
@@ -197,6 +291,11 @@ def read_day_snapshots(
         m = _SLOT_KEY_RE.search(key)
         if m is None:
             continue
+        if len(m.group(1)) != 2:
+            raise ValueError(
+                f"day-mode reader found a minute-grain slot key {key!r} -- "
+                f"daily lanes read hour-token keyspaces only"
+            )
         slot = int(m.group(1))
         if slot not in chosen_key_per_slot:  # sorted → first seen is earliest
             chosen_key_per_slot[slot] = key
@@ -211,23 +310,37 @@ def read_day_snapshots(
 def day_slot_keys(
     client, bucket: str, *, prefix: str, day: date
 ) -> Dict[int, str]:
-    """{slot_hour: chosen snapshot key} for a day -- read_day_snapshots'
-    duplicate-slot selection rule VERBATIM (EARLIEST key per slot wins;
-    lexicographic == chronological) with the GETs left out, so an hourly
-    reader (the panel CLI) can LIST a day once and fetch only the hours
-    it actually needs. read_day_snapshots itself is untouched: the daily
+    """{minute_of_day: chosen snapshot key} for a day -- read_day_snapshots'
+    duplicate-slot selection rule with the GETs left out, so the panel
+    CLI can LIST a day once and fetch only the marks it actually needs.
+
+    MINUTE-normalized (15-min cadence design 2026-08-27): hour tokens map
+    to their :00 minute, and the EARLIEST CAPTURE per normalized minute
+    wins -- ordered by the run_id that follows the slot token (run_ids
+    are zero-padded UTC timestamps, so run_id order IS capture order),
+    never by raw key bytes: raw-key order would let a LATER hour-token
+    capture beat an EARLIER minute-token one for the same mark
+    ('slot16-' < 'slot1600-' because '-' < '0'), the inversion an
+    out-of-order writer (config rollback, old-SHA image, --force) could
+    smuggle in (adversarial review 2026-08-27). Within one token format
+    the two orders agree, so single-format days -- every day outside a
+    rollback incident -- choose exactly what raw-key order chose
+    (test-pinned). read_day_snapshots itself stays hour-grain: the daily
     lanes read whole days and their bytes depend on it."""
-    chosen_key_per_slot: Dict[int, str] = {}
-    for key in sorted(
-        list_object_keys(client, bucket, snapshot_day_prefix(prefix, day) + "/")
+    best_per_slot: Dict[int, Tuple[str, str]] = {}
+    for key in list_object_keys(
+        client, bucket, snapshot_day_prefix(prefix, day) + "/"
     ):
         m = _SLOT_KEY_RE.search(key)
         if m is None:
             continue
-        slot = int(m.group(1))
-        if slot not in chosen_key_per_slot:  # sorted → first seen is earliest
-            chosen_key_per_slot[slot] = key
-    return chosen_key_per_slot
+        minute = _slot_token_minute(m.group(1))
+        if minute is None:
+            continue
+        order = (key[m.end() :], key)  # run_id (capture time), then key
+        if minute not in best_per_slot or order < best_per_slot[minute]:
+            best_per_slot[minute] = (order[0], key)
+    return {minute: key for minute, (_, key) in best_per_slot.items()}
 
 
 def get_snapshot_by_key(client, bucket: str, key: str) -> Optional[Dict[str, Any]]:
@@ -395,7 +508,9 @@ def upload_composite(
 # B200 hourly lanes) -- collision-safe because composites key per
 # methodology_id, and every hourly lane is a fresh mint by construction.
 
-_PANEL_OBSERVATION_RE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])")
+_PANEL_OBSERVATION_RE = re.compile(
+    r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])(?:[0-5]\d)?"
+)
 
 
 def panel_composite_key(prefix: str, methodology_id: str, observation: str) -> str:
@@ -411,8 +526,9 @@ def panel_composite_key(prefix: str, methodology_id: str, observation: str) -> s
     text = str(observation)
     if not _PANEL_OBSERVATION_RE.fullmatch(text):
         raise ValueError(
-            f"panel observation key must be fixed-width 'YYYY-MM-DDTHH' "
-            f"(zero-padded hour 00-23), got {observation!r}"
+            f"panel observation key must be fixed-width 'YYYY-MM-DDTHH' or "
+            f"'YYYY-MM-DDTHHMM' (zero-padded, hour 00-23, minute 00-59), "
+            f"got {observation!r}"
         )
     return composite_key(prefix, methodology_id, text)
 
@@ -533,7 +649,11 @@ def upload_capture_snapshot(
     """
     day = date.fromisoformat(payload["capture_date"])
     key = snapshot_key(
-        prefix, day, int(payload["slot_hour_utc"]), payload["run_id"]
+        prefix,
+        day,
+        payload_slot_minute(payload),
+        payload["run_id"],
+        minute_tokens="slot_minute_utc" in payload,
     )
     data = snapshot_bytes(payload)
     digest = _put_immutable(client, bucket, key, data)
