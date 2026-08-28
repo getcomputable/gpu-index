@@ -56,7 +56,7 @@
     "fx_max_staleness_days": 7,
     "drift_scan_days": 14,
     "fallback_pool_sku": "B200",
-    "fallback_pool_sources": ["nebius", "e2e", "shadeform", "computedesk"]
+    "fallback_pool_sources": ["nebius", "e2e", "shadeform"]
   },
   "filter_note": "per-source sigma fence over trailing 20 valid observations — NOT computed in this lane; recorded here so the capture cadence is sized to feed it",
   "sources": [
@@ -146,15 +146,6 @@
       "source_type": "reseller_pool",
       "skus": ["B200"],
       "notes": "EXCLUDED for B300 (its only B300 listing re-publishes Verda — would double-count); B200 rows across its listed providers feed the fallback pool"
-    },
-    {
-      "source_id": "computedesk",
-      "display_name": "Compute Desk",
-      "role": "b200_pool",
-      "weight": null,
-      "source_type": "index_provider",
-      "skus": ["B200"],
-      "notes": "fallback proxy pool only; methodology undisclosed — treated as a reference print, never a basket constituent. UNIMPLEMENTED: Compute Desk (The Compute Index, Inc., compute-desk.com) has a documented index API (data-api.compute-index.com /v1/prices/current?gpu=B200) but every data endpoint 401s — keys are issued manually by the vendor. No public print exists to record; revisit if access is granted."
     }
   ]
 }

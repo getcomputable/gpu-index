@@ -202,7 +202,7 @@ def calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         "fallback_pool_sources": list(
             calc.get(
                 "fallback_pool_sources",
-                ["nebius", "e2e", "shadeform", "computedesk"],
+                ["nebius", "e2e", "shadeform"],
             )
         ),
         # calc_v2: hand-audited (date, source) exclusions for
