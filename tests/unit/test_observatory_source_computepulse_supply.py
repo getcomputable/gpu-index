@@ -5,20 +5,33 @@
 supply_selling.json is the REAL /api/supply?intent=selling&include_ended=
 false&limit=200 body captured live 2026-08-25, trimmed from 25 to 7 rows
 (envelope kept verbatim -- page.total 25, next_offset null; each kept row
-is a byte-identical span of the fetched body). Edge rows preserved:
+is a byte-identical span of the fetched body apart from the seller
+identity fields below).
 
-  - portal-labs-infrastructure-h100-cf5243: priced, min_duration_hours
+SELLER IDENTITY IS SYNTHETIC: every row's slug (mirrored into
+links.canonical) and company are sequential stand-ins -- the slug keeps
+the live `<seller>-<gpu>-<6 hex>` shape the stable-public-key dedup pins
+key on, and the same seller maps to the same name in every row, so the
+two-offers-from-one-seller relationship still exercises. The marketplace's
+own "Anonymous" placeholder is not an identity and rides verbatim. Prices,
+counts, availability windows, regions, seller notes, the envelope and
+every field shape are as recorded. Edge rows preserved:
+
+  - example-seller-one-h100-aa0001: priced, min_duration_hours
     null -> on-demand; min_bookable_gpus null.
-  - packet-ai-l40s-b8d333: 730h floor -> monthly-commit; PCIe.
-  - packet-ai-a100-87e501: region is the em-dash placeholder (U+2014).
-  - daring-pelican: the REAL Anonymous UNPRICED 8x H100 InfiniBand offer
+  - example-seller-two-l40s-aa0002: 730h floor -> monthly-commit; PCIe.
+  - example-seller-two-a100-aa0003: region is the em-dash placeholder
+    (U+2014); same seller as the L40S row above.
+  - example-handle: the REAL Anonymous UNPRICED 8x H100 InfiniBand offer
     (price + price_currency null, min_duration_hours exactly 720,
-    gpus_per_node 8, available_from set).
-  - sharon-ai-h200-8d7a74: 1016-GPU block, 8736h floor, full
+    gpus_per_node 8, available_from set), and the one row whose live slug
+    carried no discriminator -- the stand-in keeps that shape too.
+  - example-seller-three-h200-aa0004: 1016-GPU block, 8736h floor, full
     available_from/available_until window, min_bookable_gpus 128.
-  - neevcloud-t4-5b8d41: 168h floor -> on-demand; both window dates.
-  - btc-com-rtx-4090-0f9238: 672h floor -> on-demand (just under the
-    720h monthly-commit boundary); 160 GPUs.
+  - example-seller-four-t4-aa0005: 168h floor -> on-demand; both window
+    dates.
+  - example-seller-five-rtx-4090-aa0006: 672h floor -> on-demand (just
+    under the 720h monthly-commit boundary); 160 GPUs.
 """
 
 from __future__ import annotations
@@ -51,11 +64,12 @@ def _fixture_body() -> str:
 
 def _row(**overrides):
     """A synthetic capacity offer shaped like the live surface (defaults
-    are real field values from the 2026-08-25 capture)."""
+    are the recorded field values from the 2026-08-25 capture, carrying
+    the fixture's synthetic seller identity)."""
     base = {
-        "slug": "packet-ai-l40s-b8d333",
+        "slug": "example-seller-two-l40s-aa0002",
         "intent": "capacity_offer",
-        "company": "packet.ai",
+        "company": "Example Seller Two",
         "gpu_model": "L40S",
         "gpu_key": "L40S",
         "gpu_count": 4,
@@ -82,7 +96,7 @@ def _row(**overrides):
         "shareable_spec": False,
         "notes": None,
         "links": {
-            "canonical": "https://compute-pulse.com/supply/packet-ai-l40s-b8d333",
+            "canonical": "https://compute-pulse.com/supply/example-seller-two-l40s-aa0002",
             "marketplace": "https://compute-pulse.com/supply",
             "next_action": "https://compute-pulse.com/rfq",
         },
@@ -149,11 +163,11 @@ def test_fixture_envelope_and_counts(book):
     assert book["skips"] == {}
     # The unpriced Anonymous offer is NOT an observation under any slug.
     slugs = {o["extra"]["slug"] for o in book["observations"]}
-    assert "daring-pelican" not in slugs
+    assert "example-handle" not in slugs
 
 
 def test_no_min_duration_prices_on_demand_with_full_extra(book):
-    row = _by_slug(book, "portal-labs-infrastructure-h100-cf5243")
+    row = _by_slug(book, "example-seller-one-h100-aa0001")
     assert row["sku_identifier"] == "H100"
     assert row["price_usd_gpu_hr"] == 1.49
     assert row["currency"] == "USD"
@@ -162,9 +176,9 @@ def test_no_min_duration_prices_on_demand_with_full_extra(book):
     assert row["gpu_count_basis"] == 4
     assert row["tier"] == "on-demand"  # min_duration_hours null -> else-branch
     assert row["region"] == "ap-australia"
-    assert "Portal Labs Infrastructure capacity offer" in row["notes"]
+    assert "Example Seller One capacity offer" in row["notes"]
     extra = row["extra"]
-    assert extra["company"] == "Portal Labs Infrastructure"
+    assert extra["company"] == "Example Seller One"
     assert extra["intent"] == "capacity_offer"
     assert extra["available_now"] is True
     assert extra["availability_state"] == "now"
@@ -178,7 +192,7 @@ def test_no_min_duration_prices_on_demand_with_full_extra(book):
 
 
 def test_monthly_floor_derives_monthly_commit(book):
-    row = _by_slug(book, "packet-ai-l40s-b8d333")
+    row = _by_slug(book, "example-seller-two-l40s-aa0002")
     assert row["tier"] == "monthly-commit"  # 730h >= 720h
     assert row["price_usd_gpu_hr"] == 0.92
     assert row["extra"]["min_duration_hours"] == 730
@@ -187,7 +201,7 @@ def test_monthly_floor_derives_monthly_commit(book):
 
 
 def test_availability_window_rides_verbatim(book):
-    row = _by_slug(book, "sharon-ai-h200-8d7a74")
+    row = _by_slug(book, "example-seller-three-h200-aa0004")
     assert row["sku_identifier"] == "H200"
     assert row["price_usd_gpu_hr"] == 2.95
     assert row["gpu_count_basis"] == 1016
@@ -199,10 +213,10 @@ def test_availability_window_rides_verbatim(book):
 
 
 def test_sub_monthly_floors_price_on_demand(book):
-    t4 = _by_slug(book, "neevcloud-t4-5b8d41")
+    t4 = _by_slug(book, "example-seller-four-t4-aa0005")
     assert (t4["tier"], t4["extra"]["min_duration_hours"]) == ("on-demand", 168)
     assert t4["price_usd_gpu_hr"] == 0.29
-    rtx = _by_slug(book, "btc-com-rtx-4090-0f9238")
+    rtx = _by_slug(book, "example-seller-five-rtx-4090-aa0006")
     # 672h (28 days) sits just under the 720h boundary.
     assert (rtx["tier"], rtx["extra"]["min_duration_hours"]) == ("on-demand", 672)
     assert rtx["gpu_count_basis"] == 160
@@ -210,7 +224,7 @@ def test_sub_monthly_floors_price_on_demand(book):
 
 
 def test_em_dash_region_placeholder_recorded_verbatim(book):
-    row = _by_slug(book, "packet-ai-a100-87e501")
+    row = _by_slug(book, "example-seller-two-a100-aa0003")
     assert row["region"] == "\u2014"  # the marketplace's own em-dash placeholder
     assert row["price_usd_gpu_hr"] == 1.43
 
@@ -259,7 +273,7 @@ def test_buyer_requirement_rows_are_never_supply_prices():
     ]
     page = parse_supply_page(_body(rows))
     assert [o["extra"]["slug"] for o in page["observations"]] == [
-        "packet-ai-l40s-b8d333"
+        "example-seller-two-l40s-aa0002"
     ]
     assert page["skips"] == {"non_offer_intent": 2}
 

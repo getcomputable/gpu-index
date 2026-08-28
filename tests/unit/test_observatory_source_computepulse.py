@@ -4,7 +4,14 @@
 
 Fixtures are REAL /api/listings bodies captured live 2026-08-22, trimmed to
 row subsets (envelope kept verbatim, each kept row's content byte-identical
-to the fetched response; mi325x_listings.json is the full body untouched).
+to the fetched response apart from the listing id; mi325x_listings.json is
+the full body untouched -- it carries no rows and so no ids).
+
+The per-row ``id`` values are SYNTHETIC -- sequential 6-digit stand-ins
+(900001...) assigned once across all four fixtures, so the same row keeps
+one id everywhere and the cross-file uniqueness the listing-id dedup pins
+key on still holds. Prices, providers, availability flags, source
+provenance, envelopes and every field shape are as recorded.
 Edge cases preserved:
 
   - b300_listings.json: USD spot/on_demand rows across all three
@@ -17,7 +24,7 @@ Edge cases preserved:
     provider_scrape row (source_updated_at null); SXM/PCIe variants.
   - mi325x_listings.json: genuinely empty book (data [], total 0).
   - b300_available_probe.json: REAL ?gpu=nvidia-b300&available=true&limit=1
-    body captured live 2026-08-25, FULL and untouched (1 row, page.total 3)
+    body captured live 2026-08-25, the FULL response (1 row, page.total 3)
     -- the whole-book available_total probe envelope.
 """
 
@@ -48,9 +55,10 @@ def _page(name: str, slug: str):
 
 def _row(**overrides):
     """A synthetic listing row shaped like the live surface (defaults are
-    real field values from the 2026-08-22 capture)."""
+    the recorded field values from the 2026-08-22 capture, carrying the
+    fixture's synthetic listing id)."""
     base = {
-        "id": "11629",
+        "id": "900001",
         "provider": "Verda",
         "gpu_model": "B300",
         "gpu_count": 8,
@@ -132,7 +140,7 @@ def test_source_id_matches_module():
 
 
 def test_usd_spot_row_pins_exactly(b300):
-    row = _by_listing_id(b300, "11629")
+    row = _by_listing_id(b300, "900001")
     assert row["sku_identifier"] == "B300"
     assert row["price_usd_gpu_hr"] == 3.75
     assert row["price_native_per_gpu_hr"] == 3.75
@@ -161,7 +169,7 @@ def test_eur_native_row_recorded_natively_not_as_usd(b300):
     """Scaleway quotes EUR; the aggregator publishes its own USD conversion.
     The record must stay native (FX at aggregation time is the aggregator's
     number, visible in extra but never a USD list price)."""
-    row = _by_listing_id(b300, "11966")
+    row = _by_listing_id(b300, "900007")
     assert row["currency"] == "EUR"
     assert row["price_usd_gpu_hr"] is None
     assert row["price_native_per_gpu_hr"] == 7.5
@@ -178,7 +186,7 @@ def test_eur_native_row_recorded_natively_not_as_usd(b300):
 
 
 def test_chf_native_row_and_compact_label(rtx4090):
-    row = _by_listing_id(rtx4090, "3250")
+    row = _by_listing_id(rtx4090, "900013")
     assert row["sku_identifier"] == "RTX4090"  # aggregator's compact label
     assert row["currency"] == "CHF"
     assert row["price_usd_gpu_hr"] is None
@@ -191,7 +199,7 @@ def test_chf_native_row_and_compact_label(rtx4090):
 
 
 def test_inr_reserved_scrape_row(h100):
-    row = _by_listing_id(h100, "16195")
+    row = _by_listing_id(h100, "900017")
     assert row["currency"] == "INR"
     assert row["price_native_per_gpu_hr"] == 205.75
     assert row["price_usd_gpu_hr"] is None
@@ -204,20 +212,20 @@ def test_inr_reserved_scrape_row(h100):
 
 
 def test_reserved_and_spot_tiers_map(h100):
-    hyperstack = _by_listing_id(h100, "7933")
+    hyperstack = _by_listing_id(h100, "900016")
     assert hyperstack["tier"] == "reserved"
     assert hyperstack["price_usd_gpu_hr"] == 1.75
     assert hyperstack["extra"]["gpu_variant"] == "PCIe"
-    vast_spot = _by_listing_id(h100, "17947")
+    vast_spot = _by_listing_id(h100, "900014")
     assert vast_spot["tier"] == "spot"
     assert vast_spot["price_usd_gpu_hr"] == 0.302
     assert vast_spot["gpu_count_basis"] == 2
 
 
 def test_availability_states_ride_through(b300):
-    assert _by_listing_id(b300, "1754")["extra"]["available"] is True
-    assert _by_listing_id(b300, "8385")["extra"]["available"] is False
-    assert _by_listing_id(b300, "11370")["extra"]["available"] is None
+    assert _by_listing_id(b300, "900005")["extra"]["available"] is True
+    assert _by_listing_id(b300, "900006")["extra"]["available"] is False
+    assert _by_listing_id(b300, "900004")["extra"]["available"] is None
 
 
 def test_empty_book_page_parses_to_zero_rows_without_raising():
@@ -249,7 +257,7 @@ def test_identity_pin_skips_rows_attributed_to_another_slug():
         _row(id="4", links={"provider": "x", "source": None}),
     ]
     page = parse_listings_page(_body(rows), "nvidia-b300")
-    assert [o["extra"]["listing_id"] for o in page["observations"]] == ["11629"]
+    assert [o["extra"]["listing_id"] for o in page["observations"]] == ["900001"]
     assert page["skips"] == {"identity_mismatch": 3}
 
 
