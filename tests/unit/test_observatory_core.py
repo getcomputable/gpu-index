@@ -250,8 +250,9 @@ def test_real_config_loads_and_validates(real_config):
     assert real_config["lane_id"] == "raw_observatory_v1"
     assert real_config["bucket_prefix"] == "index/raw_observatory"
     assert real_config["canonical_slot_utc"] in real_config["capture_slots_utc"]
-    # Hourly cadence (ruled 2026-08-23): all 24 marks, canonical 16 —
-    # dropping marks again is a deliberate edit, this pin makes it loud.
+    # Hourly cadence: all 24 marks, canonical 16 — changing the marks (or
+    # moving to the minute vocabulary, which the loader now also accepts)
+    # is a deliberate edit, and this pin makes it loud.
     assert real_config["capture_slots_utc"] == list(range(24))
     sids = [s["source_id"] for s in real_config["sources"]]
     assert len(sids) == len(set(sids))

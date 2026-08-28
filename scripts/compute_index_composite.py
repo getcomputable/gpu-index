@@ -450,7 +450,10 @@ def verify_published(args, config) -> int:
     else:
         run_id = stored.get("snapshot_run_id")
         slot_hour = canonical_hour if substituted is None else int(substituted)
-        pinned_key = snapshot_key(prefix, day, slot_hour, run_id)
+        # The frozen daily lanes are hour-vocabulary by construction; the
+        # shared key helper speaks the minute lattice, so the hour lifts
+        # to its :00 mark and keeps writing the legacy slot<HH>- token.
+        pinned_key = snapshot_key(prefix, day, slot_hour * 60, run_id)
         snapshot_raw = get_object_bytes(client, bucket, pinned_key)
         if snapshot_raw is None:
             error(

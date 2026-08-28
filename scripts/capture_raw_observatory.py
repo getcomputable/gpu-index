@@ -38,6 +38,7 @@ from gpu_index.common.slots import current_slot, is_canonical, utc_now  # noqa: 
 from gpu_index.observatory.catalog import load_sku_catalog  # noqa: E402
 from gpu_index.observatory.collect import collect_all  # noqa: E402
 from gpu_index.observatory.config import (  # noqa: E402
+    capture_grid,
     load_observatory_config,
     resolve_catalog_path,
 )
@@ -48,7 +49,7 @@ from gpu_index.observatory.store import (  # noqa: E402
     make_client,
     make_run_id,
     slot_already_captured,
-    slot_hours_present,
+    slot_minutes_present,
     upload_capture_snapshot,
     write_local_snapshot,
 )
@@ -193,8 +194,14 @@ def main() -> int:
     config = load_observatory_config(args.config)
     catalog = load_sku_catalog(resolve_catalog_path(config))
     now = utc_now()
-    slot_date, slot_hour = current_slot(now, config["capture_slots_utc"])
-    canonical = is_canonical(slot_hour, config.get("canonical_slot_utc"))
+    # ONE normalization of the slot vocabulary (gpu_index.observatory.config): marks
+    # are minute-of-day; hour-vocabulary configs keep the legacy hour key
+    # tokens, minute-vocabulary configs (15-min cadence) write slot<HHMM>-.
+    grid_minutes, canonical_minute, minute_tokens = capture_grid(config)
+    slot_date, slot_minute = current_slot(now, grid_minutes)
+    slot_hh, slot_mm = divmod(slot_minute, 60)
+    slot_label = f"{slot_hh:02d}:{slot_mm:02d}Z"
+    canonical = is_canonical(slot_minute, canonical_minute)
     prefix = config["bucket_prefix"]
 
     client = None
@@ -210,10 +217,10 @@ def main() -> int:
         # 22:00 but missed the canonical 16:00 must not look healthy just
         # because it is non-empty.
         prev_day = slot_date - timedelta(days=1)
-        prev_present = slot_hours_present(
+        prev_present = slot_minutes_present(
             client, bucket, prefix=prefix, day=prev_day
         )
-        prev_missing = sorted(set(config["capture_slots_utc"]) - prev_present)
+        prev_missing = sorted(set(grid_minutes) - prev_present)
         previous_day_empty = not prev_present
         if previous_day_empty:
             warn(
@@ -222,40 +229,77 @@ def main() -> int:
                 "alarm; expected on every firing of the lane's FIRST day)"
             )
         elif prev_missing:
-            canonical_hour = config.get("canonical_slot_utc")
-            canonical_note = (
-                " including the CANONICAL slot"
-                if canonical_hour in prev_missing
-                else ""
-            )
-            warn(
-                f"raw observatory: previous day {prev_day} missed slot(s) "
-                f"{prev_missing}{canonical_note} — those observations are "
-                "permanently lost (partial-miss alarm)"
-            )
+            # Marks BEFORE the day's first capture get their own softer
+            # label: on the day a denser grid deploys, yesterday's
+            # pre-flip marks were never scheduled and reporting them as
+            # "permanently lost" would bury a REAL interior miss in two
+            # days of false alarms (adversarial review 2026-08-27). A
+            # genuinely missed leading mark still prints -- just labeled
+            # honestly as possibly-never-scheduled.
+            first_present = min(prev_present)
+            leading = [m for m in prev_missing if m < first_present]
+            interior = [m for m in prev_missing if m >= first_present]
+            if leading:
+                notice(
+                    f"raw observatory: previous day {prev_day} has no "
+                    f"snapshots before "
+                    f"{first_present // 60:02d}:{first_present % 60:02d} "
+                    f"({len(leading)} configured mark(s) — a mid-day grid "
+                    f"change leaves exactly this shape; a real leading "
+                    f"miss looks identical and is equally unrecoverable)"
+                )
+            if interior:
+                canonical_note = (
+                    " including the CANONICAL slot"
+                    if canonical_minute in interior
+                    else ""
+                )
+                missing_labels = [
+                    f"{m // 60:02d}:{m % 60:02d}" for m in interior
+                ]
+                warn(
+                    f"raw observatory: previous day {prev_day} missed "
+                    f"slot(s) {missing_labels}{canonical_note} — those "
+                    "observations are permanently lost (partial-miss alarm)"
+                )
         if slot_already_captured(
-            client, bucket, prefix=prefix, day=slot_date, slot_hour=slot_hour
+            client,
+            bucket,
+            prefix=prefix,
+            day=slot_date,
+            minute_of_day=slot_minute,
+            minute_tokens=minute_tokens,
         ):
             if args.force:
                 notice(
-                    f"slot {slot_date} {slot_hour:02d}:00Z already captured — "
+                    f"slot {slot_date} {slot_label} already captured — "
                     "--force records another snapshot"
                 )
             else:
                 notice(
-                    f"raw observatory slot {slot_date} {slot_hour:02d}:00Z "
+                    f"raw observatory slot {slot_date} {slot_label} "
                     "already captured — nothing to do"
                 )
                 return 0
-        elif args.slot_gated and now.hour not in config["capture_slots_utc"]:
+        elif args.slot_gated and (now.hour * 60 + now.minute) not in grid_minutes:
             notice(
-                f"claiming slot {slot_date} {slot_hour:02d}:00Z at "
+                f"claiming slot {slot_date} {slot_label} at "
                 f"{now.strftime('%H:%M')}Z (first firing since the mark)"
             )
 
     run_id = make_run_id(now)
-    # Recorded after the mark hour (a later firing filled the slot)?
-    late_fill = not (now.date() == slot_date and now.hour == slot_hour)
+    # Recorded after the mark's own wall-clock HOUR (a later firing
+    # filled the slot)? Faithful generalization of the original
+    # now.hour == slot_hour test: late means recorded outside
+    # [mark, mark + 60min) on the mark's own date -- byte-identical on
+    # every hour grid (sparse basket grids included), and on a 15-min
+    # grid any within-window fill is inside the mark's hour by
+    # construction, so late marks exactly the wrapped/stale claims.
+    now_minute_of_day = now.hour * 60 + now.minute
+    late_fill = not (
+        now.date() == slot_date
+        and slot_minute <= now_minute_of_day < slot_minute + 60
+    )
     results = collect_all(
         config, COLLECTORS, only=set(args.only_sources or []) or None
     )
@@ -266,7 +310,8 @@ def main() -> int:
         captured_at=now,
         run_id=run_id,
         slot_date=slot_date,
-        slot_hour_utc=slot_hour,
+        slot_hour_utc=slot_hh,
+        slot_minute_utc=(slot_mm if minute_tokens else None),
         canonical=canonical,
         capturer={
             "job": "github-actions"
@@ -284,7 +329,7 @@ def main() -> int:
 
     print(
         f"raw observatory capture: {payload['capture_date']} "
-        f"slot {slot_hour:02d}:00Z run {run_id}"
+        f"slot {slot_label} run {run_id}"
         f"{' (canonical)' if canonical else ''}"
     )
     print_summary(payload)

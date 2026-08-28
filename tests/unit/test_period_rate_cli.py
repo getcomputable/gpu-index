@@ -437,8 +437,12 @@ def test_sparse_era_slot_stays_open_until_its_next_mark(
     )
     assert rc == 0
     report, err = _report(capsys)
-    # Last CLOSED stamp is the 04Z slot; the 10Z slot is open.
-    assert report["period"]["clipped_at"] == "2026-08-11T05"
+    # Last CLOSED stamp is the 04Z slot; the 10Z slot is open. The clip
+    # label is the first NOT-closed scheduled mark (grid-aware frontier,
+    # 15-min re-base 2026-08-27) -- the pre-re-base label was the hour
+    # after last_closed, an hour-lattice artifact this sparse-grid test
+    # existed to expose.
+    assert report["period"]["clipped_at"] == "2026-08-11T10"
     assert report["coverage"]["scheduled"] == 1
     assert report["coverage"]["filled"] == 1
     assert "clipping" in err

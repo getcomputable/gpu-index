@@ -83,7 +83,13 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from gpu_index.index.panel_schedule import PanelSchedule, stamp_to_hour_iso
+# stamp_to_hour_iso is a pinned public re-export
+# (tests/unit/test_public_api.py): the minute re-base stopped using it
+# here, but downstream consumers import it by this name.
+from gpu_index.index.panel_schedule import (  # noqa: F401
+    PanelSchedule,
+    stamp_to_hour_iso,
+)
 
 __all__ = [
     "FILL_LOOKBACK_HOURS",
@@ -111,10 +117,21 @@ class PeriodRateError(ValueError):
     a settlement convention must refuse before it guesses."""
 
 
-# The ONE index parameter of section 9.3 (parameter table: 12.2). Counted in
-# scheduled stamps == hours on the hourly grid; changing it is a
-# versioned change.
+# The ONE index parameter of section 9.3 (parameter table: 12.2), in
+# WALL-CLOCK HOURS -- the parameter keeps its name, value, and unit at
+# every cadence. The stamp COUNT derives from the lane's final-era
+# spacing (fill_lookback_stamps): 72 on an hourly grid -- byte-identical
+# to the pre-re-base behavior and to the published vectors -- and 288 on
+# a 15-minute era. Changing the 72 is a versioned change.
 FILL_LOOKBACK_HOURS = 72
+
+
+def fill_lookback_stamps(schedule: PanelSchedule) -> int:
+    """The L parameter as a stamp count on this lane's grid: 72
+    wall-clock hours divided by the FINAL era's spacing (the era the
+    lane lives in forever -- the same anchor the dynamic-weights horizon
+    validator uses). Floor-divided; every real grid divides evenly."""
+    return (FILL_LOOKBACK_HOURS * 60) // schedule.slot_spacing_minutes
 
 # Recommended contract defaults (sections 9.4 / 12.2) -- thresholds a
 # referencing contract may adopt or replace; the period rate computes
@@ -212,9 +229,11 @@ def find_gaps(
             current = None
             continue
         if cause not in _CAUSES:
+            from gpu_index.index.panel_schedule import stamp_to_obs_key
+
             raise PeriodRateError(
-                f"stamp {stamp_to_hour_iso(stamp)} carries no value and an "
-                f"unknown cause {cause!r}"
+                f"stamp {stamp_to_obs_key(stamp, minute_keyed=True)} "
+                f"carries no value and an unknown cause {cause!r}"
             )
         if current is None:
             current = {
@@ -250,15 +269,18 @@ def coverage_band(
 
 
 def _fill_window(
-    preceding_filled: Sequence[Tuple[int, float]], gap_length: int
+    preceding_filled: Sequence[Tuple[int, float]],
+    gap_length: int,
+    lookback_stamps: int,
 ) -> Optional[Dict[str, Any]]:
     """The fill for one gap: mean of the last min(G, L) filled stamps
-    immediately preceding it. `preceding_filled` is every filled
+    immediately preceding it, L expressed as this lane's stamp count
+    (fill_lookback_stamps). `preceding_filled` is every filled
     (stamp, value) strictly before the gap, ascending. None when no
     filled stamp precedes (genesis drop)."""
     if not preceding_filled:
         return None
-    want = min(gap_length, FILL_LOOKBACK_HOURS)
+    want = min(gap_length, lookback_stamps)
     window = preceding_filled[-want:]
     mean = sum(v for _, v in window) / len(window)
     return {
@@ -297,8 +319,8 @@ def period_report(
     """
     if end_stamp <= start_stamp:
         raise PeriodRateError(
-            f"period end {stamp_to_hour_iso(end_stamp)} must be after start "
-            f"{stamp_to_hour_iso(start_stamp)}"
+            f"period end {schedule.stamp_key(end_stamp)} must be after start "
+            f"{schedule.stamp_key(start_stamp)}"
         )
     frontier = end_stamp if frontier_stamp is None else int(frontier_stamp)
     if frontier < end_stamp:
@@ -309,8 +331,8 @@ def period_report(
     scheduled = schedule.scheduled_stamps(start_stamp, end_stamp)
     if not scheduled:
         raise PeriodRateError(
-            f"no scheduled stamps in [{stamp_to_hour_iso(start_stamp)}, "
-            f"{stamp_to_hour_iso(end_stamp)}) -- period precedes the lane's "
+            f"no scheduled stamps in [{schedule.stamp_key(start_stamp)}, "
+            f"{schedule.stamp_key(end_stamp)}) -- period precedes the lane's "
             f"genesis or is narrower than its grid"
         )
 
@@ -320,14 +342,16 @@ def period_report(
     # Context: every filled SCHEDULED stamp strictly before the period,
     # ascending. Off-grid keys are never evidence (a stamp the schedule
     # does not own cannot enter a fill window), and only the trailing
-    # FILL_LOOKBACK_HOURS can ever enter one.
+    # L stamps (72 wall-clock hours on this lane's grid) can ever enter
+    # one.
+    lookback_stamps = fill_lookback_stamps(schedule)
     context = [
         (stamp, statuses[stamp][0])
         for stamp in sorted(statuses)
         if stamp < start_stamp
         and statuses[stamp][0] is not None
         and schedule.is_scheduled(stamp)
-    ][-FILL_LOOKBACK_HOURS:]
+    ][-lookback_stamps:]
 
     gaps = find_gaps(scheduled, statuses)
 
@@ -377,7 +401,7 @@ def period_report(
         run_length = gap["length"] + gap["extends_before"] + gap["extends_after"]
         gap["run_length"] = run_length
         fills_by_start[gap["start_stamp"]] = _fill_window(
-            context + preceding, run_length
+            context + preceding, run_length, lookback_stamps
         )
 
     filled_count = 0
@@ -398,7 +422,7 @@ def period_report(
             observed_sum += value
             entering.append(value)
             entry: Dict[str, Any] = {
-                "stamp": stamp_to_hour_iso(stamp),
+                "stamp": schedule.stamp_key(stamp),
                 "source": SOURCE_OBSERVED,
                 "value_usd_gpu_hr": round(value, 6),
             }
@@ -408,7 +432,7 @@ def period_report(
             if fill is None:
                 dropped += 1
                 entry = {
-                    "stamp": stamp_to_hour_iso(stamp),
+                    "stamp": schedule.stamp_key(stamp),
                     "source": SOURCE_DROPPED_GENESIS,
                     "value_usd_gpu_hr": None,
                     "cause": cause,
@@ -417,7 +441,7 @@ def period_report(
                 carried += 1
                 entering.append(fill["value"])
                 entry = {
-                    "stamp": stamp_to_hour_iso(stamp),
+                    "stamp": schedule.stamp_key(stamp),
                     "source": SOURCE_FILLED,
                     "value_usd_gpu_hr": round(fill["value"], 6),
                     "cause": cause,
@@ -436,11 +460,11 @@ def period_report(
         "methodology_id": methodology_id,
         "panel_id": panel_id,
         "period": {
-            "start": stamp_to_hour_iso(start_stamp),
-            "end": stamp_to_hour_iso(end_stamp),
+            "start": schedule.stamp_key(start_stamp),
+            "end": schedule.stamp_key(end_stamp),
             "half_open": True,
             "clipped_at": (
-                stamp_to_hour_iso(clipped_at_stamp)
+                schedule.stamp_key(clipped_at_stamp)
                 if clipped_at_stamp is not None
                 else None
             ),
@@ -466,8 +490,8 @@ def period_report(
             "causes": cause_totals,
             "gaps": [
                 {
-                    "start": stamp_to_hour_iso(gap["start_stamp"]),
-                    "end": stamp_to_hour_iso(gap["end_stamp"]),
+                    "start": schedule.stamp_key(gap["start_stamp"]),
+                    "end": schedule.stamp_key(gap["end_stamp"]),
                     "length": gap["length"],
                     # The physical outage (module docstring): in-period
                     # length plus its extensions across the period
@@ -488,10 +512,10 @@ def period_report(
                             "window_stamps": fills_by_start[gap["start_stamp"]][
                                 "window_stamps"
                             ],
-                            "window_start": stamp_to_hour_iso(
+                            "window_start": schedule.stamp_key(
                                 fills_by_start[gap["start_stamp"]]["window_start"]
                             ),
-                            "window_end": stamp_to_hour_iso(
+                            "window_end": schedule.stamp_key(
                                 fills_by_start[gap["start_stamp"]]["window_end"]
                             ),
                         }

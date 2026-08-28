@@ -84,9 +84,12 @@ scheduled revisit is ≥ 60 daily prints.
   samples — ~2.5 days of slots.
 - **R-terminology** — "confidence interval"
   language is retired from code identifiers and docs in favor of "standard
-  deviation" (the vote band IS the floored trailing-window σ; the published
-  aggregate dispersion remains the 25th/75th weighted-vote-percentile
-  distance). WIRE FORMAT IS PINNED: the artifact keys `conf_usd_gpu_hr` /
+  deviation" (the vote band IS the floored σ — the trailing-window σ by
+  default, or the floored dw-history σ under the optional panel calc key
+  `vote_sigma_source: dw_history`; key absent = the legacy trailing-window
+  tail, byte-identical, which is what every live lane publishes under
+  today; the published aggregate dispersion remains the 25th/75th
+  weighted-vote-percentile distance). WIRE FORMAT IS PINNED: the artifact keys `conf_usd_gpu_hr` /
   `confidence_usd_gpu_hr` and the `composite_statistic` value
   `median_ci_votes` are frozen-series bytes read by downstream consumers —
   renaming them is a separate cross-consumer decision.
@@ -98,7 +101,11 @@ scheduled revisit is ≥ 60 daily prints.
 - **R-series** — the weight series holds every real TRUSTED print: accepted
   and held-out both enter (the filter-window membership rule); untrusted-
   currency prints never enter; manual exclusions are gaps. No carry-forward
-  anywhere: a return needs real prints at both exact endpoints.
+  anywhere: a return needs real prints at both exact endpoints. Under the
+  optional `vote_sigma_source: dw_history` key this per-source price series
+  has a second consumer: the vote stddev becomes the population σ of its
+  currency-scoped trailing slice (same series, same membership rules — the
+  vote inherits every clause above).
 - **R-fixed** — LOO returns hold weights AND composition fixed at the sample
   time τ: the pinned vector of τ's day at both endpoints, over sources
   printing at both endpoints. **Divergence from the schema-literal

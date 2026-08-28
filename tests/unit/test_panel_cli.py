@@ -7,9 +7,14 @@ Pins: the observation-keyed store discipline (fixed-width YYYY-MM-DDTHH
 keys, append-only first-write-wins, run_id-in-pointer-only, pointer
 no-regress across hour stamps); the era-stitched replay loop (basket-era
 4-slot days then observatory-era hourly days publishing artifacts for
-EXACTLY the scheduled stamps); the closure rule (a seeded but not-yet-
-closed hour is never computed; a missing hour publishes an explicit
-observation_missed artifact only once the next mark has passed);
+EXACTLY the scheduled stamps); the closure rule (amended for early compose:
+a stamp whose slot snapshot EXISTS on the record LIST composes on the
+next firing, before its window closes at the next mark, byte-identical
+to a late compose; a stamp with NO snapshot stays open until its mark,
+and its observation_missed / record_quarantined artifact publishes only
+once next mark + MISSED_PUBLISH_GRACE_MINUTES has passed -- a
+within-grace firing defers, publishes nothing at or after the deferred
+stamp, and exits 0);
 publish-in-order refusal; the D2 calc_params-drift refusal; hour-scoped
 and day-scoped exclusion pinning with conflict refusal; the
 --max-observations valve resuming byte-identically; replay determinism
@@ -62,16 +67,20 @@ FX = {
     }
 }
 
-# The seeded world's clock marks (all UTC): NOW1 closes the hourly grid
-# through T05 (T06's mark, 07:00, has not passed); NOW2 closes T06.
+# The seeded world's clock marks (all UTC): at NOW1 the hourly grid is
+# closed through T05 by marks, and T06 -- seeded but with its 07:00 mark
+# unpassed -- closes EARLY on its existing snapshot (early compose), so the
+# whole seeded world is computable at NOW1; NOW2 merely passes T06's
+# mark (T07 has no snapshot and stays open at both clocks).
 NOW1 = datetime(2026, 8, 12, 6, 30, tzinfo=timezone.utc)
 NOW2 = datetime(2026, 8, 12, 7, 35, tzinfo=timezone.utc)
 
 BASKET_STAMPS = [
     f"2026-08-{day}T{hour:02d}" for day in ("10", "11") for hour in (4, 10, 16, 22)
 ]
-HOURLY_STAMPS_NOW1 = [f"2026-08-12T{h:02d}" for h in range(6)]  # T04 missed
-CLOSED_AT_NOW1 = BASKET_STAMPS + HOURLY_STAMPS_NOW1
+# T04 missed; T06 early-closes on its snapshot at NOW1.
+HOURLY_STAMPS_NOW1 = [f"2026-08-12T{h:02d}" for h in range(7)]
+COMPUTABLE_AT_NOW1 = BASKET_STAMPS + HOURLY_STAMPS_NOW1
 
 
 @pytest.fixture(autouse=True)
@@ -249,8 +258,9 @@ def _seed_slot(client, prefix, day, hour, prices=None, run_id=None):
 
 def _seed_world(client):
     """Basket-era days 08-10/08-11 (all four slots), observatory-era
-    08-12 hours 0-3 and 5-6 (hour 4 deliberately MISSING; hour 6 exists
-    but is still open at NOW1)."""
+    08-12 hours 0-3 and 5-6 (hour 4 deliberately MISSING; hour 6's mark
+    has not passed at NOW1 but its snapshot exists, so it closes EARLY
+    for early compose)."""
     for day in ("2026-08-10", "2026-08-11"):
         for hour in (4, 10, 16, 22):
             _seed_slot(client, BASKET_PREFIX, day, hour)
@@ -453,11 +463,14 @@ def test_cli_era_stitched_sync_publishes_exactly_the_scheduled_stamps(
     assert cli.main() == 0
     out = capsys.readouterr().out
 
-    # Exactly the closed scheduled stamps -- basket-era 4-slot days then
-    # hourly days; T06 is seeded but its mark (07:00) has not passed.
-    assert set(_artifacts(client)) == {_key(s) for s in CLOSED_AT_NOW1}
-    assert "observations written: 14" in out
-    assert _key("2026-08-12T06") not in client.objects
+    # Exactly the computable scheduled stamps -- basket-era 4-slot days
+    # then hourly days; T06's mark (07:00) has not passed but its
+    # snapshot exists, so it composes EARLY (early compose).
+    assert set(_artifacts(client)) == {_key(s) for s in COMPUTABLE_AT_NOW1}
+    assert "observations written: 15" in out
+    t06 = json.loads(client.objects[_key("2026-08-12T06")])
+    assert t06["observation_missed"] is False
+    assert t06["panel_dark"] is False
 
     # The missing hour published an explicit dark artifact after close.
     missed = json.loads(client.objects[_key("2026-08-12T04")])
@@ -487,15 +500,16 @@ def test_cli_era_stitched_sync_publishes_exactly_the_scheduled_stamps(
     # was never fetched (the conditional-fetch rule).
     assert fx_calls and all(call[1] == PREFIX for call in fx_calls)
     assert all(call[0] == "stored" for call in fx_calls)
-    # Pointer sits at the newest observation.
+    # Pointer sits at the newest observation (the early-composed T06).
     pointer = json.loads(client.objects[f"{PREFIX}/composites/{MID}/latest.json"])
-    assert pointer["date"] == "2026-08-12T05"
+    assert pointer["date"] == "2026-08-12T06"
 
-    # NOW2 closes T06: one new artifact, replay silent about the rest.
+    # NOW2 passes T06's mark: nothing new (it already composed early),
+    # replay silent about the rest.
     cli = _wire_cli(monkeypatch, client, NOW2, ["--config", str(cfg_path), "--sync"])
     assert cli.main() == 0
     out = capsys.readouterr().out
-    assert "observations written: 1" in out
+    assert "observations written: 0" in out
     assert "DRIFT" not in out
     assert _key("2026-08-12T06") in client.objects
 
@@ -526,7 +540,7 @@ def test_cli_replay_determinism_across_restarts(monkeypatch, capsys, tmp_path):
     world_b = FakeS3()
     _seed_world(world_b)
     for run_now in (
-        datetime(2026, 8, 10, 17, 0, tzinfo=timezone.utc),  # closes T04,T10
+        datetime(2026, 8, 10, 17, 0, tzinfo=timezone.utc),  # T04,T10 by mark; T16 early
         datetime(2026, 8, 11, 12, 0, tzinfo=timezone.utc),
         NOW1,
         NOW2,
@@ -599,11 +613,15 @@ def test_cli_restarts_cross_fenced_quarantined_and_held_out_artifacts(
 
     incremental = FakeS3()
     _seed_fence_world(incremental)
+    # Every hour is seeded, so each chunk's LAST in-range hour closes
+    # EARLY on its snapshot (early compose) -- the chunk clocks sit just past
+    # each boundary hour's own stamp, keeping the boundaries exactly
+    # after the fenced artifact (12) and the quarantined one (13).
     for run_now, written in (
-        (datetime(2026, 8, 10, 5, 30, tzinfo=timezone.utc), 5),  # hours 0-4
-        (datetime(2026, 8, 10, 13, 30, tzinfo=timezone.utc), 8),  # ..fenced 12
-        (datetime(2026, 8, 10, 14, 30, tzinfo=timezone.utc), 1),  # quarantine 13
-        (datetime(2026, 8, 10, 15, 30, tzinfo=timezone.utc), 1),  # hour 14
+        (datetime(2026, 8, 10, 4, 30, tzinfo=timezone.utc), 5),  # hours 0-4
+        (datetime(2026, 8, 10, 12, 30, tzinfo=timezone.utc), 8),  # ..fenced 12
+        (datetime(2026, 8, 10, 13, 30, tzinfo=timezone.utc), 1),  # quarantine 13
+        (datetime(2026, 8, 10, 14, 30, tzinfo=timezone.utc), 1),  # hour 14
     ):
         cli = _wire_cli(
             monkeypatch, incremental, run_now, ["--config", str(cfg_path), "--sync"]
@@ -655,6 +673,153 @@ def test_cli_restarts_cross_fenced_quarantined_and_held_out_artifacts(
     assert by_sid["bravo"]["filter"]["accepted"] is True
 
 
+def _dw_history_world_config():
+    """The fence/quarantine/holdout world REARMED with the live-lane vote
+    rule (ruling 2026-08-27): vote_sigma_source dw_history over the
+    percent floor (the six-mint posture), fx_lane ecb so a currency
+    change can CONFIRM across a restart boundary."""
+    cfg = _fence_world_config()
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    # Floor split (ruling 2026-08-27): the armed world carries the vote
+    # floor knob too, so the restart byte-identity pin exercises the
+    # fence/vote floor SPLIT exactly as the six live mints run it.
+    cfg["calc"]["vote_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_source"] = "dw_history"
+    cfg["calc"]["fx_lane"] = "ecb"
+    return cfg
+
+
+def _seed_dw_history_world(client, hours=range(18)):
+    """Hours 0..17 of genesis day: stable prints through hour 11 (warm-up
+    10 completes), a pct-fence-held alpha outlier at hour 12 (+12.5% —
+    inside the 25% jump fence, dev 0.3 > band 3.0 * (3% of 2.4) = 0.216),
+    an uncorroborated bravo jump at hour 13 (+32%, quarantined), charlie
+    repricing USD -> EUR over hours 14-16 (pending 1/3, 2/3, CONFIRMED at
+    the third print), and a normal hour 17 (the first post-confirmation
+    dw vote). ``hours`` narrows the seed to a sub-range so a chunked
+    replay can land each capture at its own clock (capture-time
+    seeding)."""
+    for hour in hours:
+        prices = {"alpha": 2.4, "bravo": 2.5, "charlie": 2.6, "vast": 2.0}
+        if hour == 12:
+            prices["alpha"] = 2.7
+        if hour == 13:
+            prices["bravo"] = 3.3
+        if hour >= 14:
+            prices["charlie"] = dict(
+                _row(2.0), price_usd_gpu_hr=None, currency="EUR"
+            )
+        _seed_slot(client, OBS_PREFIX, GENESIS, hour, prices=prices)
+
+
+def test_cli_replay_determinism_across_restarts_dw_history(
+    monkeypatch, capsys, tmp_path
+):
+    """The restart-determinism pin with vote_sigma_source dw_history
+    ARMED (ruling 2026-08-27): the vote tail now reads the weight-state
+    PRICES series, so a restart must rebuild that series from published
+    artifacts byte-exactly or the first post-restart vote forks. The
+    world holds every per-status replay shape — a pct-fence-held print
+    (in the series, held out of the index), a jump-quarantined hour
+    (advances nothing), the permanently held-out vast seat — plus a
+    currency change whose CONFIRMATION lands AFTER a restart boundary
+    (the pending streak and the mismatch prints' series entries must
+    both survive the rebuild). One-shot world A vs world B synced in
+    four chunks with a fresh main() each and each capture landing at
+    its own chunk's clock: identical artifact sets, every artifact
+    byte-identical."""
+    cfg_path = _write_config(
+        tmp_path, _dw_history_world_config(), name="dw_history.json"
+    )
+
+    # Captures land AT THEIR CHUNK CLOCKS (capture-time seeding), so the
+    # chunk counts are invariant to the closure rule: a mark that has
+    # passed is closed under any rule, and the next hour's snapshot has
+    # not landed yet, so it cannot close early either (early compose's
+    # snapshot-exists closure on main merges cleanly into this lane and
+    # would otherwise pull one extra stamp into the first chunk).
+    incremental = FakeS3()
+    for seed_hours, run_now, written, code in (
+        # hours 0-12: warm-up + the fenced print (fence is not red).
+        (range(0, 13), datetime(2026, 8, 10, 13, 30, tzinfo=timezone.utc), 13, 0),
+        # hour 13: quarantine (loud, not red).
+        (range(13, 14), datetime(2026, 8, 10, 14, 30, tzinfo=timezone.utc), 1, 0),
+        # hours 14-15: currency mismatches (red, still published).
+        (range(14, 16), datetime(2026, 8, 10, 16, 30, tzinfo=timezone.utc), 2, 1),
+        # hours 16-17: confirmation (green) after the restart + normal.
+        (range(16, 18), datetime(2026, 8, 10, 18, 30, tzinfo=timezone.utc), 2, 0),
+    ):
+        _seed_dw_history_world(incremental, seed_hours)
+        cli = _wire_cli(
+            monkeypatch, incremental, run_now,
+            ["--config", str(cfg_path), "--sync"],
+        )
+        assert cli.main() == code
+        out = capsys.readouterr().out
+        assert f"observations written: {written}" in out
+
+    control = FakeS3()
+    _seed_dw_history_world(control)
+    cli = _wire_cli(
+        monkeypatch, control,
+        datetime(2026, 8, 10, 18, 30, tzinfo=timezone.utc),
+        ["--config", str(cfg_path), "--sync"],
+    )
+    assert cli.main() == 1  # the mismatch firings redden the one-shot too
+    out = capsys.readouterr().out
+    assert "JUMP QUARANTINED" in out
+    assert "currency change CONFIRMED USD -> EUR" in out
+
+    art_control = _artifacts(control)
+    art_incremental = _artifacts(incremental)
+    assert len(art_control) == 18
+    assert set(art_control) == set(art_incremental)
+    for key, blob in art_control.items():
+        assert art_incremental[key] == blob, key
+
+    # The world genuinely contains every shape the pin rides on.
+    t12 = json.loads(art_control[_key("2026-08-10T12")])
+    assert t12["calc_params"]["vote_sigma_source"] == "dw_history"
+    assert t12["calc_params"]["filter_sigma_floor_pct"] == 3.0
+    assert t12["calc_params"]["vote_sigma_floor_pct"] == 3.0
+    assert "filter_sigma_floor" not in t12["calc_params"]
+    by_sid = {s["source_id"]: s for s in t12["sources"]}
+    assert by_sid["alpha"]["filter"]["accepted"] is False  # pct-fenced
+    assert by_sid["alpha"]["filter"]["unfiltered"] is False
+    t13 = json.loads(art_control[_key("2026-08-10T13")])
+    by_sid = {s["source_id"]: s for s in t13["sources"]}
+    assert by_sid["bravo"]["status"] == "uncorroborated_jump"
+    t16 = json.loads(art_control[_key("2026-08-10T16")])
+    by_sid = {s["source_id"]: s for s in t16["sources"]}
+    assert by_sid["charlie"]["filter"]["currency_confirmed"] is True
+    # The confirmed vote reads the EUR-scoped dw slice (the two mismatch
+    # prints, entered at their own stamps): frozen -> floored at 3% of
+    # the 2.0 NATIVE print, converted at the day's 1.15 rate.
+    assert by_sid["charlie"]["vote"] == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.069,
+    }
+    for key in sorted(art_control):
+        artifact = json.loads(art_control[key])
+        vast = {s["source_id"]: s for s in artifact["sources"]}["vast"]
+        assert vast["status"] == "held_out", key
+    # The last chunk's FIRST artifact (hour 16, computed fresh after the
+    # restart): alpha's vote must carry the REAL dw sigma — the fenced
+    # 2.7 lives in the REBUILT series ([2.4]*12 + 2.7 + [2.4]*3 ->
+    # pstdev 0.07261843774138912 -> 0.072618, a hair over the 0.072
+    # floor) — so a state-rebuild fork would show here first. (By hour
+    # 17 one more flat print dilutes the sigma back under the floor.)
+    t16i = json.loads(art_incremental[_key("2026-08-10T16")])
+    by_sid = {s["source_id"]: s for s in t16i["sources"]}
+    assert by_sid["alpha"]["vote"] == {
+        "sigma": 0.072618,
+        "sigma_floored": False,
+        "conf_usd_gpu_hr": 0.072618,
+    }
+
+
 # ------------------------------------------------- targets, order, valve
 
 
@@ -680,13 +845,31 @@ def test_cli_target_guards_and_publish_in_order(monkeypatch, capsys, tmp_path):
     assert cli.main() == 1
     assert "outside the replayable range" in capsys.readouterr().out
 
-    # Scheduled, in range, but the next mark has not passed.
+    # Scheduled, in range, next mark unpassed AND no snapshot: still
+    # open (early closure needs the snapshot to exist -- early compose).
+    t06_keys = [k for k in client.objects if "/snapshots/2026-08-12/slot06" in k]
+    assert len(t06_keys) == 1
+    t06_snapshot = client.objects.pop(t06_keys[0])
     cli = _wire_cli(
         monkeypatch, client, NOW1,
         ["--config", str(cfg_path), "--observation", "2026-08-12T06"],
     )
     assert cli.main() == 1
     assert "not yet closed" in capsys.readouterr().out
+    assert _key("2026-08-12T06") not in client.objects
+
+    # With the snapshot back, T06 closes EARLY -- but publish-in-order
+    # still governs: every earlier stamp is unpublished, so the target
+    # refuses on ORDER now, not on closure.
+    client.objects[t06_keys[0]] = t06_snapshot
+    cli = _wire_cli(
+        monkeypatch, client, NOW1,
+        ["--config", str(cfg_path), "--observation", "2026-08-12T06"],
+    )
+    assert cli.main() == 1
+    out = capsys.readouterr().out
+    assert "not yet closed" not in out
+    assert "earlier unpublished" in out
     assert _key("2026-08-12T06") not in client.objects
 
     # Publish-in-order: targeting the second stamp while the first is
@@ -813,6 +996,9 @@ def test_cli_refuses_to_extend_on_calc_params_drift(monkeypatch, capsys, tmp_pat
     assert cli.main() == 0
     capsys.readouterr()
 
+    # A fresh hour-7 snapshot: T07 closes early at NOW2 (early compose), so
+    # the drifted config has a NEW observation to refuse.
+    _seed_slot(client, OBS_PREFIX, "2026-08-12", 7)
     drifted = _config()
     drifted["calc"]["filter_sigma"] = 2.5
     drifted_path = _write_config(tmp_path, drifted, name="drifted.json")
@@ -825,12 +1011,132 @@ def test_cli_refuses_to_extend_on_calc_params_drift(monkeypatch, capsys, tmp_pat
     assert "'filter_sigma'" in out
     assert "mint a new methodology_id" in out
     assert "NOT published" in out
-    assert _key("2026-08-12T06") not in client.objects
+    assert _key("2026-08-12T07") not in client.objects
 
     # The unchanged config still extends the series cleanly.
     cli = _wire_cli(monkeypatch, client, NOW2, ["--config", str(cfg_path), "--sync"])
     assert cli.main() == 0
-    assert _key("2026-08-12T06") in client.objects
+    assert _key("2026-08-12T07") in client.objects
+
+
+def test_cli_refuses_a_floor_key_swap_without_a_mint(monkeypatch, capsys, tmp_path):
+    """Ruling 2026-08-26 under the D2 fence: swapping the floor SEMANTICS
+    (absolute filter_sigma_floor -> percent filter_sigma_floor_pct) against
+    published observations is calc_params drift on BOTH keys and refuses
+    to extend — the swap is a mint, never an edit. No adoption grace may
+    ever grow around the floor pair: the two keys are different RULES, not
+    a vocabulary addition."""
+    cfg_path = _write_config(tmp_path)
+    client = FakeS3()
+    _seed_world(client)
+    cli = _wire_cli(monkeypatch, client, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    capsys.readouterr()
+
+    # A fresh hour-7 snapshot: T07 closes early at NOW2 (early compose), so
+    # the swapped config has a NEW observation to refuse.
+    _seed_slot(client, OBS_PREFIX, "2026-08-12", 7)
+    swapped = _config()
+    del swapped["calc"]["filter_sigma_floor"]
+    swapped["calc"]["filter_sigma_floor_pct"] = 3.0
+    # Floor split (ruling 2026-08-27): a percent-regime median-votes lane
+    # must carry its own vote floor to load at all.
+    swapped["calc"]["vote_sigma_floor_pct"] = 3.0
+    swapped_path = _write_config(tmp_path, swapped, name="swapped.json")
+    cli = _wire_cli(
+        monkeypatch, client, NOW2, ["--config", str(swapped_path), "--sync"]
+    )
+    assert cli.main() == 1
+    out = capsys.readouterr().out
+    assert "calc_params drift" in out
+    assert "'filter_sigma_floor'" in out
+    assert "'filter_sigma_floor_pct'" in out
+    assert "mint a new methodology_id" in out
+    assert "NOT published" in out
+    assert _key("2026-08-12T07") not in client.objects
+
+
+def test_cli_refuses_a_vote_sigma_floor_pct_flip_without_a_mint(
+    monkeypatch, capsys, tmp_path
+):
+    """Floor split (ruling 2026-08-27) under the D2 fence: ADDING
+    calc.vote_sigma_floor_pct against published observations is
+    calc_params drift (the fence symmetric-diffs the key sets, so a NEW
+    key is auto-covered) and refuses to extend — the floor split is a
+    mint, never an edit. The smallest VALID config carrying the key is the
+    full percent-regime flip (the vote floor refuses alongside the
+    absolute floor at load), so the drift names all three floor keys. No
+    adoption grace may ever grow around this key: absent-vs-present is a
+    different vote conviction RULE, not a vocabulary addition (the
+    floor-pair doctrine)."""
+    cfg_path = _write_config(tmp_path)
+    client = FakeS3()
+    _seed_world(client)
+    cli = _wire_cli(monkeypatch, client, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    capsys.readouterr()
+    published = set(_artifacts(client))
+
+    # A fresh hour-7 capture: NOW2 has a NEW frontier observation to
+    # refuse under EITHER closure rule (T06's mark has passed at NOW2;
+    # under main's snapshot-exists closure T06 already composed
+    # at NOW1 and T07 closes early on this snapshot instead).
+    _seed_slot(client, OBS_PREFIX, "2026-08-12", 7)
+    flipped = _config()
+    del flipped["calc"]["filter_sigma_floor"]
+    flipped["calc"]["filter_sigma_floor_pct"] = 3.0
+    flipped["calc"]["vote_sigma_floor_pct"] = 3.0
+    flipped_path = _write_config(tmp_path, flipped, name="flipped.json")
+    cli = _wire_cli(
+        monkeypatch, client, NOW2, ["--config", str(flipped_path), "--sync"]
+    )
+    assert cli.main() == 1
+    out = capsys.readouterr().out
+    assert "calc_params drift" in out
+    assert "'vote_sigma_floor_pct'" in out
+    assert "mint a new methodology_id" in out
+    assert "NOT published" in out
+    assert _key("2026-08-12T07") not in client.objects
+    assert set(_artifacts(client)) == published  # refusal wrote NOTHING
+
+
+def test_cli_refuses_a_vote_sigma_source_flip_without_a_mint(
+    monkeypatch, capsys, tmp_path
+):
+    """Ruling 2026-08-27 under the D2 fence: ADDING calc.vote_sigma_source
+    against published observations is calc_params drift (the fence
+    symmetric-diffs the key sets, so a NEW key is auto-covered) and
+    refuses to extend — the vote-sigma decouple is a mint, never an edit.
+    No adoption grace may ever grow around this key: absent-vs-present is
+    a different vote RULE, not a vocabulary addition (the floor-pair
+    doctrine)."""
+    cfg_path = _write_config(tmp_path)
+    client = FakeS3()
+    _seed_world(client)
+    cli = _wire_cli(monkeypatch, client, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    capsys.readouterr()
+    published = set(_artifacts(client))
+
+    # A fresh hour-7 capture: NOW2 has a NEW frontier observation to
+    # refuse under EITHER closure rule (T06's mark has passed at NOW2;
+    # under main's snapshot-exists closure T06 already composed
+    # at NOW1 and T07 closes early on this snapshot instead).
+    _seed_slot(client, OBS_PREFIX, "2026-08-12", 7)
+    flipped = _config()
+    flipped["calc"]["vote_sigma_source"] = "dw_history"
+    flipped_path = _write_config(tmp_path, flipped, name="flipped.json")
+    cli = _wire_cli(
+        monkeypatch, client, NOW2, ["--config", str(flipped_path), "--sync"]
+    )
+    assert cli.main() == 1
+    out = capsys.readouterr().out
+    assert "calc_params drift" in out
+    assert "'vote_sigma_source'" in out
+    assert "mint a new methodology_id" in out
+    assert "NOT published" in out
+    assert _key("2026-08-12T07") not in client.objects
+    assert set(_artifacts(client)) == published  # refusal wrote NOTHING
 
 
 def test_cli_exclusion_pinning_hour_and_day_scoped(monkeypatch, capsys, tmp_path):
@@ -845,7 +1151,9 @@ def test_cli_exclusion_pinning_hour_and_day_scoped(monkeypatch, capsys, tmp_path
     cfg_path = _write_config(tmp_path, cfg)
     client = FakeS3()
     _seed_world(client)
-    now = datetime(2026, 8, 11, 5, 0, tzinfo=timezone.utc)  # closes 08-10
+    # 03:59: 08-10's T22 early-closes on its snapshot (early compose) but
+    # 08-11's T04 stamp is not yet scheduled -- exactly the 08-10 slots.
+    now = datetime(2026, 8, 11, 3, 59, tzinfo=timezone.utc)
     cli = _wire_cli(monkeypatch, client, now, ["--config", str(cfg_path), "--sync"])
     assert cli.main() == 0
     capsys.readouterr()
@@ -1018,6 +1326,218 @@ def test_cli_false_missed_guard_re_lists_before_publishing_missed(
     assert control.list_prefixes.count(day_prefix) == 2  # cache + confirm
 
 
+# ------------------------------------- early closure + drain grace
+
+
+def _hourly_config():
+    """A single-era hourly observatory lane from GENESIS, fx none -- the
+    minimal world for the closure-predicate pins."""
+    cfg = _config()
+    cfg["record_sources"] = [
+        {"kind": "observatory", "prefix": OBS_PREFIX, "from_date": GENESIS}
+    ]
+    cfg["slot_grids"] = [{"from_date": GENESIS, "slot_hours_utc": list(range(24))}]
+    cfg["calc"]["fx_lane"] = "none"
+    return cfg
+
+
+def test_cli_early_compose_is_byte_identical_to_late_compose(
+    monkeypatch, capsys, tmp_path
+):
+    """Early compose's load-bearing property: an observation composed EARLY
+    (snapshot exists, closing mark unpassed) is BYTE-IDENTICAL to the
+    same observation composed LATE (after its mark) -- composite bytes
+    are a pure function of the record, so the closure predicate cannot
+    move a single published byte."""
+    cfg_path = _write_config(tmp_path)
+    early = FakeS3()
+    _seed_world(early)
+    cli = _wire_cli(monkeypatch, early, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "observations written: 15" in out  # T06 composed at NOW1
+
+    late = FakeS3()
+    _seed_world(late)
+    t06_keys = [k for k in late.objects if "/snapshots/2026-08-12/slot06" in k]
+    assert len(t06_keys) == 1
+    t06_snapshot = late.objects.pop(t06_keys[0])
+    cli = _wire_cli(monkeypatch, late, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "observations written: 14" in out  # no snapshot: T06 stays open
+    assert _key("2026-08-12T06") not in late.objects
+    late.objects[t06_keys[0]] = t06_snapshot  # the capture lands late
+    cli = _wire_cli(monkeypatch, late, NOW2, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    assert "observations written: 1" in capsys.readouterr().out
+
+    art_early = _artifacts(early)
+    art_late = _artifacts(late)
+    assert set(art_early) == set(art_late)
+    for key, blob in art_early.items():
+        assert art_late[key] == blob, key
+
+
+def test_cli_missed_waits_for_drain_grace_then_self_heals(
+    monkeypatch, capsys, tmp_path
+):
+    """Early compose's missingness half: a closed stamp with NO snapshot does
+    not publish observation_missed inside next mark + grace (the firing
+    defers, exits 0, publishes nothing at or after the deferred stamp);
+    a snapshot landing INSIDE the grace composes values on the next
+    firing -- the late self-heal case the grace exists for."""
+    cfg_path = _write_config(tmp_path, _hourly_config(), name="hourly.json")
+    client = FakeS3()
+    for hour in range(4):
+        _seed_slot(client, OBS_PREFIX, GENESIS, hour)
+    # Hour 4 has NO snapshot; its mark (05:00) has passed at 05:10 but
+    # the 20-minute drain grace (until 05:20) has not.
+    within_grace = datetime(2026, 8, 10, 5, 10, tzinfo=timezone.utc)
+    cli = _wire_cli(
+        monkeypatch, client, within_grace, ["--config", str(cfg_path), "--sync"]
+    )
+    assert cli.main() == 0  # routine deferral, never a red firing
+    out = capsys.readouterr().out
+    assert "observations written: 4" in out  # hours 0-3
+    assert "drain grace" in out and "deferring" in out
+    assert _key("2026-08-10T04") not in client.objects
+
+    # The self-heal lands inside the grace: the next firing composes
+    # VALUES immediately (composition is never grace-gated once the
+    # snapshot exists) -- no false missed print was ever pinned.
+    _seed_slot(client, OBS_PREFIX, GENESIS, 4)
+    heal_now = datetime(2026, 8, 10, 5, 15, tzinfo=timezone.utc)
+    cli = _wire_cli(
+        monkeypatch, client, heal_now, ["--config", str(cfg_path), "--sync"]
+    )
+    assert cli.main() == 0
+    assert "observations written: 1" in capsys.readouterr().out
+    t04 = json.loads(client.objects[_key("2026-08-10T04")])
+    assert t04["observation_missed"] is False
+    assert t04["panel_dark"] is False
+
+
+def test_cli_missed_publishes_at_next_mark_plus_grace(
+    monkeypatch, capsys, tmp_path
+):
+    """Early-compose boundary: with no snapshot ever landing, observation_missed
+    publishes on the first firing with utc_now >= next mark +
+    MISSED_PUBLISH_GRACE_MINUTES -- and not one minute earlier."""
+    cli_mod = _load_cli()
+    assert cli_mod.MISSED_PUBLISH_GRACE_MINUTES == 20
+    cfg_path = _write_config(tmp_path, _hourly_config(), name="hourly.json")
+    client = FakeS3()
+    for hour in range(4):
+        _seed_slot(client, OBS_PREFIX, GENESIS, hour)
+    just_before = datetime(2026, 8, 10, 5, 19, tzinfo=timezone.utc)
+    cli = _wire_cli(
+        monkeypatch, client, just_before, ["--config", str(cfg_path), "--sync"]
+    )
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "deferring" in out
+    assert _key("2026-08-10T04") not in client.objects
+
+    at_deadline = datetime(2026, 8, 10, 5, 20, tzinfo=timezone.utc)
+    cli = _wire_cli(
+        monkeypatch, client, at_deadline, ["--config", str(cfg_path), "--sync"]
+    )
+    assert cli.main() == 0
+    capsys.readouterr()
+    missed = json.loads(client.objects[_key("2026-08-10T04")])
+    assert missed["observation_missed"] is True
+    assert missed["panel_dark"] is True
+    assert missed["index"] is None
+
+
+def test_cli_publish_in_order_holds_across_a_deferred_missed_stamp(
+    monkeypatch, capsys, tmp_path
+):
+    """Early compose meets the existing publish-in-order guard: an
+    early-composable H (snapshot exists) must NOT publish while H-1 is a
+    missed candidate still inside the drain grace -- the firing stops AT
+    the deferred stamp (H-1's verdict could still flip to a value via a
+    draining self-heal, and H's provenance must replay after H-1's).
+    Once the grace passes, H-1's missed artifact and H's composite
+    publish in stamp order on one firing."""
+    cfg_path = _write_config(tmp_path, _hourly_config(), name="hourly.json")
+    client = FakeS3()
+    for hour in (0, 1, 2, 4):  # hour 3 missing; hour 4 captured
+        _seed_slot(client, OBS_PREFIX, GENESIS, hour)
+    # 04:10: hour 3 closed at its 04:00 mark but inside the grace
+    # (until 04:20); hour 4 is early-composable on its snapshot.
+    now = datetime(2026, 8, 10, 4, 10, tzinfo=timezone.utc)
+    cli = _wire_cli(monkeypatch, client, now, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "observations written: 3" in out  # hours 0-2 only
+    assert "deferring" in out
+    assert _key("2026-08-10T03") not in client.objects
+    assert _key("2026-08-10T04") not in client.objects  # in-order held
+
+    # Targeting the early-composable H while H-1 defers is LOUD -- a
+    # targeted stamp that cannot publish must never look like a no-op.
+    cli = _wire_cli(
+        monkeypatch, client, now,
+        ["--config", str(cfg_path), "--observation", "2026-08-10T04"],
+    )
+    assert cli.main() == 1
+    assert "deferring" in capsys.readouterr().out
+    assert _key("2026-08-10T04") not in client.objects
+
+    # Grace passed: both publish, in stamp order, on one firing.
+    later = datetime(2026, 8, 10, 4, 25, tzinfo=timezone.utc)
+    cli = _wire_cli(monkeypatch, client, later, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    assert "observations written: 2" in capsys.readouterr().out
+    missed = json.loads(client.objects[_key("2026-08-10T03")])
+    assert missed["observation_missed"] is True
+    composed = json.loads(client.objects[_key("2026-08-10T04")])
+    assert composed["observation_missed"] is False
+    order = [
+        k
+        for k in client.put_order
+        if "/composites/" in k and not k.endswith("latest.json")
+    ]
+    assert order.index(_key("2026-08-10T03")) < order.index(_key("2026-08-10T04"))
+
+
+def test_cli_quarantine_publish_waits_for_drain_grace(
+    monkeypatch, capsys, tmp_path
+):
+    """Early compose: record_quarantined artifacts are grace-gated exactly
+    like observation_missed -- both are immutable verdicts about the
+    record's readable bytes at the stamp, and neither may pin before the
+    drain settles. No premature quarantine warn either: the verdict line
+    prints only when the artifact actually publishes."""
+    cfg = _hourly_config()
+    cfg["record_exclusions"] = [
+        {"date": GENESIS, "hour": 3, "reason": "poisoned snapshot object"}
+    ]
+    cfg_path = _write_config(tmp_path, cfg, name="quarantine_grace.json")
+    client = FakeS3()
+    for hour in (0, 1, 2, 3):
+        _seed_slot(client, OBS_PREFIX, GENESIS, hour)
+    within = datetime(2026, 8, 10, 4, 10, tzinfo=timezone.utc)
+    cli = _wire_cli(monkeypatch, client, within, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "observations written: 3" in out
+    assert "deferring" in out
+    assert "record quarantined by config" not in out
+    assert _key("2026-08-10T03") not in client.objects
+
+    after = datetime(2026, 8, 10, 4, 25, tzinfo=timezone.utc)
+    cli = _wire_cli(monkeypatch, client, after, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "record quarantined by config" in out
+    t03 = json.loads(client.objects[_key("2026-08-10T03")])
+    assert t03["record_quarantined"] == "poisoned snapshot object"
+    assert t03["observation_missed"] is False
+
+
 # -------------------------------------------------------------- drift scan
 
 
@@ -1044,8 +1564,8 @@ def test_cli_drift_scan_gated_and_warns_without_failing(
         client, OBS_PREFIX, "2026-08-12", 4,
         run_id="20260812T040900Z-9999",
     )
-    # GATED (perf stage): NOW1 is 06:30Z, not the DRIFT_SCAN_HOUR_UTC
-    # firing and no --drift-scan -- the scan does not run and no record
+    # GATED (perf stage): NOW1 is 06:30Z, outside the DRIFT_SCAN_WINDOW_MINUTES
+    # arming window and no --drift-scan -- the scan does not run and no record
     # is read for published observations.
     cli = _wire_cli(monkeypatch, client, NOW1, ["--config", str(cfg_path), "--sync"])
     client.reset_reads()
@@ -1069,12 +1589,12 @@ def test_cli_drift_scan_gated_and_warns_without_failing(
     assert "observations written: 0" in out
     assert _artifacts(client) == published  # artifacts untouched
 
-    # The 16:00Z firing runs the sweep on its own (module constant
-    # DRIFT_SCAN_HOUR_UTC). --dry-run keeps the newly-closed hours from
-    # publishing so only the scan's output is under test.
+    # A firing inside [16:00Z, 16:30Z) runs the sweep on its own (module
+    # constant DRIFT_SCAN_WINDOW_MINUTES). --dry-run keeps the newly-closed
+    # hours from publishing so only the scan's output is under test.
     cli = _load_cli()
-    assert cli.DRIFT_SCAN_HOUR_UTC == 16
-    at_16 = datetime(2026, 8, 12, 16, 30, tzinfo=timezone.utc)
+    assert cli.DRIFT_SCAN_WINDOW_MINUTES == (16 * 60, 16 * 60 + 30)
+    at_16 = datetime(2026, 8, 12, 16, 15, tzinfo=timezone.utc)
     cli = _wire_cli(
         monkeypatch, client, at_16,
         ["--config", str(cfg_path), "--sync", "--dry-run"],
@@ -1303,9 +1823,10 @@ LONG_LAST_DAY = 17  # record seeded 2026-08-01 .. 2026-08-17
 
 
 def _long_config():
-    """A 4-slot single-era lane with tiny dw params: STATE_WINDOW_HOURS =
-    history 48h + max forward 6h + PRUNE_MARGIN_HOURS (168) = 222h, small
-    enough that a two-week world's genesis predates the window."""
+    """A 4-slot single-era lane with tiny dw params: the state window =
+    history 48h + max forward 6h + PRUNE_MARGIN_MINUTES (168h) = 222h in
+    minute stamps, small enough that a two-week world's genesis predates
+    the window."""
     cfg = _config()
     cfg["genesis_date"] = LONG_GENESIS
     cfg["record_sources"] = [
@@ -1354,7 +1875,7 @@ def test_cli_bounded_replay_is_byte_identical_to_full_replay(
     dynamic-weight switch, which lands BEFORE the final run's window so
     the seed GET (mode latch) is genuinely load-bearing."""
     from gpu_index.index.panel_schedule import hour_iso_to_stamp
-    from gpu_index.index.weights import PRUNE_MARGIN_HOURS
+    from gpu_index.index.weights import PRUNE_MARGIN_MINUTES
 
     cfg_path = tmp_path / "long.json"
     cfg_path.write_text(json.dumps(_long_config()))
@@ -1391,9 +1912,10 @@ def test_cli_bounded_replay_is_byte_identical_to_full_replay(
     # The fixture is not vacuous: the final run's window truncated real
     # history (genesis predates window_start), the switch fired BEFORE
     # that window (the seed carried the latch), and the last artifact is
-    # dynamic-mode.
-    frontier = hour_iso_to_stamp("2026-08-14T22")  # first unpublished at run 3
-    window_start = frontier - (2 * 24 + 6 + PRUNE_MARGIN_HOURS)
+    # dynamic-mode. (Run 2's clock, 08-15T01, early-closes 08-14T22 on
+    # its snapshot -- early compose -- so run 3's frontier is 08-15T04.)
+    frontier = hour_iso_to_stamp("2026-08-15T04")  # first unpublished at run 3
+    window_start = frontier - (2 * 24 * 60 + 6 * 60 + PRUNE_MARGIN_MINUTES)
     assert window_start > hour_iso_to_stamp(f"{LONG_GENESIS}T04")
     switched = [
         json.loads(blob)["weight_calc"]["switched_on"]
@@ -1417,7 +1939,7 @@ def test_cli_list_frontier_bounds_the_reads(monkeypatch, capsys, tmp_path):
     slot-granular (a day's keys LIST once, only unpublished hours GET --
     the drift scan is gated off at this hour)."""
     from gpu_index.index.panel_schedule import hour_iso_to_stamp, stamp_to_hour_iso
-    from gpu_index.index.weights import PRUNE_MARGIN_HOURS
+    from gpu_index.index.weights import PRUNE_MARGIN_MINUTES
 
     cfg_path = tmp_path / "long.json"
     cfg_path.write_text(json.dumps(_long_config()))
@@ -1443,9 +1965,12 @@ def test_cli_list_frontier_bounds_the_reads(monkeypatch, capsys, tmp_path):
     out = capsys.readouterr().out
     assert "observations written: 12" in out
 
-    frontier = hour_iso_to_stamp("2026-08-14T22")
-    window_start = frontier - (2 * 24 + 6 + PRUNE_MARGIN_HOURS)
-    window_start_iso = stamp_to_hour_iso(window_start)  # 2026-08-05T16
+    # Run 2's clock (08-15T01) early-closed 08-14T22 on its snapshot
+    # (early compose), so the final run's frontier is 08-15T04 -- and the
+    # final run itself early-closes 08-17T22.
+    frontier = hour_iso_to_stamp("2026-08-15T04")
+    window_start = frontier - (2 * 24 * 60 + 6 * 60 + PRUNE_MARGIN_MINUTES)
+    window_start_iso = stamp_to_hour_iso(window_start)  # 2026-08-05T22
     composites_base = f"{PREFIX}/composites/{MID}/"
 
     # Exactly ONE LIST of the composite keyspace (the frontier read).
@@ -1461,18 +1986,19 @@ def test_cli_list_frontier_bounds_the_reads(monkeypatch, capsys, tmp_path):
         if k.startswith(composites_base) and not k.endswith("latest.json")
     ]
     pre_window = [s for s in stems if s < window_start_iso]
-    assert pre_window == ["2026-08-05T10"]  # the seed, exactly once
+    assert pre_window == ["2026-08-05T16"]  # the seed, exactly once
 
     # Slot-granular record reads: only the 12 unpublished hours' chosen
     # snapshot keys GET (nothing for published stamps -- drift gated off),
-    # and each needed day's snapshot keyspace LISTs exactly once.
+    # and each needed day's snapshot keyspace LISTs exactly once (the
+    # early-closure probe's LIST of 08-17 seeds the cache the walk uses).
     snapshot_gets = sorted(k for k in client.get_keys if "/snapshots/" in k)
     expected_stamps = [
         f"2026-08-{day:02d}T{hour:02d}"
         for day in (14, 15, 16, 17)
         for hour in LONG_SLOTS
-        if f"2026-08-{day:02d}T{hour:02d}" > "2026-08-14T16"
-        and f"2026-08-{day:02d}T{hour:02d}" <= "2026-08-17T16"
+        if f"2026-08-{day:02d}T{hour:02d}" > "2026-08-14T22"
+        and f"2026-08-{day:02d}T{hour:02d}" <= "2026-08-17T22"
     ]
     assert len(expected_stamps) == 12
     expected_days = sorted({s[:10] for s in expected_stamps})
@@ -1672,16 +2198,16 @@ def test_cli_currency_change_is_loud_publishes_and_replays_identically(
     t04_stamp = hour_iso_to_stamp("2026-08-10T04")
     assert weight_state["prices"]["bravo"] == {
         t04_stamp: {"usd": 2.5, "native": 2.5, "currency": "USD"},
-        t04_stamp + 6: {"usd": 2.3, "native": 2.0, "currency": "EUR"},
-        t04_stamp + 12: {"usd": 2.3, "native": 2.0, "currency": "EUR"},
-        t04_stamp + 18: {"usd": 2.3, "native": 2.0, "currency": "EUR"},
+        t04_stamp + 6 * 60: {"usd": 2.3, "native": 2.0, "currency": "EUR"},
+        t04_stamp + 12 * 60: {"usd": 2.3, "native": 2.0, "currency": "EUR"},
+        t04_stamp + 18 * 60: {"usd": 2.3, "native": 2.0, "currency": "EUR"},
     }
     assert set(weight_state["vectors"]) == {
-        t04_stamp, t04_stamp + 6, t04_stamp + 12, t04_stamp + 18,
+        t04_stamp, t04_stamp + 6 * 60, t04_stamp + 12 * 60, t04_stamp + 18 * 60,
     }
     # The mismatch prints stayed weight-eligible: every vector holds all
     # three members at the config fallback weights.
-    assert weight_state["vectors"][t04_stamp + 6] == {
+    assert weight_state["vectors"][t04_stamp + 6 * 60] == {
         "alpha": 0.5, "bravo": 0.3, "charlie": 0.2,
     }
     assert weight_state["mode"] == "fallback"
@@ -1729,16 +2255,22 @@ def test_d2_adoption_grace_then_full_ownership(monkeypatch, capsys, tmp_path):
     assert doctored["calc_params"].pop("availability_verified_sources") == ["bravo"]
     client.objects[newest] = json.dumps(doctored).encode()
 
-    # Extending under the keyed live config must NOT refuse (grace).
+    # Extending under the keyed live config must NOT refuse (grace) --
+    # a fresh hour-7 snapshot makes T07 computable at NOW2 (early
+    # closure) so the extension genuinely publishes.
+    _seed_slot(client, OBS_PREFIX, "2026-08-12", 7)
     cli = _wire_cli(monkeypatch, client, NOW2, ["--config", str(cfg_path), "--sync"])
     assert cli.main() == 0
     out = capsys.readouterr().out
     assert "calc_params drift" not in out
+    assert "observations written: 1" in out
 
-    # The newest artifact now carries the key -> a retune refuses.
+    # The newest artifact (T07) now carries the key -> a retune refuses
+    # at the next computable observation (T08 goes missed-computable
+    # once its 09:00 mark plus the drain grace has passed).
     cfg["calc"]["availability_verified_sources"] = []
     cfg_path2 = _write_config(tmp_path, cfg, name="retuned.json")
-    later = datetime(2026, 8, 12, 8, 35, tzinfo=timezone.utc)
+    later = datetime(2026, 8, 12, 9, 25, tzinfo=timezone.utc)
     cli = _wire_cli(monkeypatch, client, later, ["--config", str(cfg_path2), "--sync"])
     assert cli.main() == 1
     out = capsys.readouterr().out

@@ -6,7 +6,10 @@ Keyspace (consumed READ-ONLY by the hourly panel-index calc lanes since
 2026-08-23 -- METHODOLOGY.md; nothing but this lane
 ever writes under it):
 
-  index/raw_observatory/snapshots/<YYYY-MM-DD>/slot<HH>-<run_id>.json  immutable
+  index/raw_observatory/snapshots/<YYYY-MM-DD>/slot<HH>-<run_id>.json    immutable
+    (legacy hour-token era; the minute-vocabulary writer keys
+    slot<HHMM>-<run_id>.json, and the shared readers normalize both
+    tokens to minute-of-day)
   index/raw_observatory/latest.json                                    pointer,
                                                                        moved LAST
 
@@ -39,10 +42,12 @@ from gpu_index.common.store import (
     make_client,
     make_run_id,
     move_pointer_no_regress,
+    payload_slot_minute,
     previous_day_has_snapshots,
     put_immutable,
     slot_already_captured,
-    slot_hours_present,
+    slot_hours_present,  # noqa: F401  pinned public re-export
+    slot_minutes_present,
     snapshot_bytes,
 )
 
@@ -53,7 +58,11 @@ __all__ = [
     "make_run_id",
     "previous_day_has_snapshots",
     "slot_already_captured",
+    # slot_hours_present is the hour-view kept for downstream consumers
+    # that predate the minute re-base; slot_minutes_present is the lattice
+    # native form every caller in this repo now uses.
     "slot_hours_present",
+    "slot_minutes_present",
     "write_local_snapshot",
     "upload_capture_snapshot",
 ]
@@ -72,11 +81,16 @@ def write_local_snapshot(
     payload: Dict[str, Any], *, root: Path = DEFAULT_LOCAL_ROOT
 ) -> Path:
     """Dev/debug mirror of the bucket layout; the bucket copy is the record."""
+    from gpu_index.common.slots import slot_token
+
     day = payload["capture_date"]
-    slot = int(payload["slot_hour_utc"])
+    token = slot_token(
+        payload_slot_minute(payload),
+        minute_tokens="slot_minute_utc" in payload,
+    )
     out_dir = root / "snapshots" / day
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"slot{slot:02d}-{payload['run_id']}.json"
+    out = out_dir / f"{token}-{payload['run_id']}.json"
     out.write_bytes(snapshot_bytes(payload))
     return out
 
@@ -99,6 +113,11 @@ def build_pointer(
         "run_id": payload["run_id"],
         "capture_date": payload["capture_date"],
         "slot_hour_utc": payload["slot_hour_utc"],
+        **(
+            {"slot_minute_utc": payload["slot_minute_utc"]}
+            if "slot_minute_utc" in payload
+            else {}
+        ),
         "canonical_slot": payload["canonical_slot"],
         "late_fill": payload.get("late_fill", False),
         "captured_at": payload["captured_at"],
@@ -126,7 +145,11 @@ def upload_capture_snapshot(
     """
     day = date.fromisoformat(payload["capture_date"])
     key = snapshot_key(
-        prefix, day, int(payload["slot_hour_utc"]), payload["run_id"]
+        prefix,
+        day,
+        payload_slot_minute(payload),
+        payload["run_id"],
+        minute_tokens="slot_minute_utc" in payload,
     )
     data = snapshot_bytes(payload)
     digest = put_immutable(client, bucket, key, data)

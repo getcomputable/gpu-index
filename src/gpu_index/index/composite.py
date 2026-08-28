@@ -35,7 +35,14 @@ METHODOLOGY.md; the R*/D* labels below are pinned rule names):
     and the band floors at ``filter_sigma_floor`` recorded-currency units:
     band = filter_sigma * max(sigma, filter_sigma_floor). The floor
     SUPERSEDES the retired sigma_zero accept-iff-deviation==0 special case
-    (the ``sigma_zero`` flag remains, informational only). Currency
+    (the ``sigma_zero`` flag remains, informational only). Percent-form
+    floor (for NEW mints; mutually exclusive with the absolute key):
+    ``filter_sigma_floor_pct`` floors the band at pct/100 of the
+    trailing-window mean instead — one knob that scales across SKUs.
+    Floor split: that key is FENCE-ONLY; the separate
+    ``vote_sigma_floor_pct`` floors a vote's stddev at pct/100 of the
+    print's own filter-terms price (only the legacy ABSOLUTE key still
+    governs both sigmas, frozen semantics). Currency
     anomalies fail CLOSED (rule D1): a print whose filter input is
     untrusted (non-USD label with no native price, or an UNKNOWN/malformed
     label) is held out with the window preserved and never enters it; a
@@ -129,6 +136,18 @@ DEFAULT_FALLBACK_POOL_SKU = "B200"
 # filter_terms "recorded_currency" and filter_sigma_floor 0.05 under their
 # minted methodology ids.
 DEFAULT_FILTER_SIGMA_FLOOR = 0.0
+# Percent-form floor (superseding the absolute floor for NEW mints):
+# filter_sigma_floor_pct is a PERCENT — the fence floors at pct/100 of the
+# trailing-window mean — so the rule scales across SKUs whose prices differ
+# by an order of magnitude. FENCE-ONLY since the floor split: the separate
+# vote_sigma_floor_pct floors a vote's stddev at pct/100 of the print's own
+# filter-terms price (only the legacy ABSOLUTE key still governs both
+# sigmas, frozen semantics). Mutually exclusive with the absolute key at
+# load; frozen series replay under whichever key their artifacts embed.
+# This default is consumed ONLY by the panel loader's unconditional params
+# slot (a config setting neither key); the daily basket's calc_params stays
+# presence-gated (absent stays absent).
+DEFAULT_FILTER_SIGMA_FLOOR_PCT = 3.0
 DEFAULT_FILTER_TERMS = "usd"
 VALID_FILTER_TERMS = ("usd", "recorded_currency")
 # calc_v4 composite statistic. The default preserves the legacy
@@ -242,6 +261,23 @@ def calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         # filter_sigma_floor), in recorded-currency units — supersedes the
         # retired sigma_zero accept-iff-deviation==0 special case.
         params["filter_sigma_floor"] = float(calc["filter_sigma_floor"])
+    if "filter_sigma_floor_pct" in calc:
+        # Percent-form floor: the fence band floors at pct/100 of the
+        # trailing-window mean; a vote's stddev floors at pct/100 of the
+        # print's own filter-terms price. Mutually exclusive with the
+        # absolute key (enforced at load), conditional like every lane
+        # knob: frozen series keep their artifact bytes.
+        params["filter_sigma_floor_pct"] = float(calc["filter_sigma_floor_pct"])
+    if "vote_sigma_floor_pct" in calc:
+        # Floor split: filter_sigma_floor_pct is FENCE-ONLY; this key
+        # floors the median-vote band at pct/100 of the print's OWN
+        # filter-terms price. Load-validated to require median_ci_votes
+        # and to refuse the absolute floor alongside (the absolute key's
+        # frozen semantics govern both sigmas). Conditional like every
+        # lane knob: frozen series keep their artifact bytes — today's
+        # daily configs are frozen absolute, so this is vocabulary +
+        # future-mint parity with the panel engine.
+        params["vote_sigma_floor_pct"] = float(calc["vote_sigma_floor_pct"])
     if "composite_statistic" in calc:
         # calc_v4: "median_ci_votes" (pinned wire value; a later
         # terminology change renamed only code and docs) supersedes the
@@ -252,6 +288,15 @@ def calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         # votes. Conditional like every lane knob: frozen series must keep
         # their exact artifact bytes.
         params["composite_statistic"] = str(calc["composite_statistic"])
+    if "iqm_alpha" in calc:
+        # The composite prices the day at the interquantile mean — the
+        # mean of the weighted vote band [1/2 - alpha, 1/2 + alpha] —
+        # instead of the point median (alpha 0 IS the median branch,
+        # bit-for-bit; 1/2 is the full weighted mean of the votes).
+        # Load-validated to [0, 0.5] and to require the median_ci_votes
+        # statistic. Conditional like every lane knob: frozen series keep
+        # their exact artifact bytes.
+        params["iqm_alpha"] = float(calc["iqm_alpha"])
     if "dynamic_weights" in calc:
         # calc_v5 mint (dynamic predictive weighting): the day's weight
         # vector is DERIVED — predictiveness
@@ -768,6 +813,7 @@ def evaluate_filter(
     sigma: float = DEFAULT_FILTER_SIGMA,
     warmup: int = DEFAULT_FILTER_WARMUP,
     sigma_floor: float = DEFAULT_FILTER_SIGMA_FLOOR,
+    sigma_floor_pct: Optional[float] = None,
     currency: Optional[str] = None,
 ) -> Dict[str, Any]:
     """The §6.4 fence verdict for one print against ITS OWN trailing window.
@@ -788,9 +834,24 @@ def evaluate_filter(
     currency: when given (the recorded-currency mode) the verdict records
     it. The explicit fence bounds band/lo/hi (legibility rule) are
     recorded whenever the fence is non-legacy — ``currency`` given OR
-    ``sigma_floor`` > 0 (the floor changes the band even in USD terms);
+    the resolved floor > 0 (the floor changes the band even in USD terms);
     at the legacy defaults (floor 0, currency None) both are left out so
     legacy-methodology verdicts keep their published byte shape.
+
+    Percent-form floor: ``sigma_floor_pct`` given (mutually exclusive with
+    ``sigma_floor``, enforced at config load) floors the band at pct/100
+    of MU — the trailing-window mean, the corridor's own center, so the
+    fence stays symmetric around mu and the floor cannot be moved by the
+    print under judgment. The floor scale then rides the instrument's
+    price level instead of a per-SKU absolute rule. Resolution happens
+    HERE and nowhere else: mu exists only inside this function, and the
+    floor only binds post-warm-up, where mu is always defined. Percent
+    mode fails CLOSED on mu <= 0 (a non-positive window mean is garbage
+    upstream; mu*(pct/100) would silently disarm the floor exactly when
+    the window is degenerate), and always records the fence bounds
+    band/lo/hi — the verdict's byte shape is keyed on the CONFIG (the pct
+    key's presence), never on the data. Legacy mode (absolute floor / no
+    pct key) is byte-identical to before the percent rule.
     """
     extra = {} if currency is None else {"currency": currency}
     if len(window_history) < warmup:
@@ -803,7 +864,18 @@ def evaluate_filter(
     tail = list(window_history[-window:])
     mu = float(statistics.mean(tail))
     sd = float(statistics.pstdev(tail))
-    band = sigma * max(sd, sigma_floor)
+    if sigma_floor_pct is not None and mu <= 0:
+        raise ValueError(
+            f"evaluate_filter: sigma_floor_pct requires a positive "
+            f"trailing-window mean, got mu={mu!r} — a non-positive mean "
+            "is garbage upstream and would disarm the percent floor"
+        )
+    floor = (
+        mu * (sigma_floor_pct / 100.0)
+        if sigma_floor_pct is not None
+        else sigma_floor
+    )
+    band = sigma * max(sd, floor)
     deviation = abs(price - mu)
     verdict = {
         "accepted": deviation <= band,
@@ -814,7 +886,7 @@ def evaluate_filter(
         "n_history": len(tail),
         **extra,
     }
-    if currency is not None or sigma_floor > 0:
+    if currency is not None or sigma_floor_pct is not None or floor > 0:
         verdict["band"] = round(band, 6)
         verdict["lo"] = round(mu - band, 6)
         verdict["hi"] = round(mu + band, 6)
@@ -862,20 +934,68 @@ def _weighted_quantile(
     raise ValueError("weighted quantile of an empty/zero-weight book")
 
 
+def _interquantile_mean(
+    pairs: Sequence[Tuple[float, float]], alpha: Fraction
+) -> Fraction:
+    """The mean of the weighted quantile band [1/2 - alpha, 1/2 + alpha]
+    over (value, weight>0) pairs — the interquantile (symmetrically
+    trimmed) mean. Each vote contributes its value in proportion to how
+    much of its cumulative-weight span lies inside the band (fractional at
+    the band edges), so the aggregate moves continuously with every vote
+    in the central band, while votes wholly outside it still have no
+    direct effect — the median's robustness with the mean's
+    responsiveness, dialed by alpha. alpha -> 0 recovers the weighted
+    median and alpha = 1/2 the weighted mean of the votes; the caller
+    takes the alpha == 0 branch through ``_weighted_quantile`` so the
+    degenerate case stays bit-for-bit the frozen median path.
+
+    Everything here is EXACT rational arithmetic: weights via the
+    ``Fraction(str(w))`` doctrine (float dust must never price a day), and
+    vote VALUES via their shortest-repr decimals — the SAME rational the
+    TS mirror derives from ``String(number)``, so both sides agree to the
+    last digit. Returns the exact Fraction; the caller quantizes once."""
+    if not 0 < alpha <= Fraction(1, 2):
+        raise ValueError(f"iqm alpha must be in (0, 1/2], got {alpha}")
+    if any(w <= 0 for _, w in pairs):
+        raise ValueError("interquantile mean requires positive weights")
+    ordered = sorted(pairs)
+    total = sum(
+        (Fraction(str(w)) for _, w in ordered), start=Fraction(0)
+    )
+    if total == 0:
+        raise ValueError("interquantile mean of an empty/zero-weight book")
+    lo = (Fraction(1, 2) - alpha) * total
+    hi = (Fraction(1, 2) + alpha) * total
+    acc = Fraction(0)
+    cum = Fraction(0)
+    for value, weight in ordered:
+        prev = cum
+        cum += Fraction(str(weight))
+        overlap = min(cum, hi) - max(prev, lo)
+        if overlap > 0:
+            acc += Fraction(str(value)) * overlap
+    return acc / (hi - lo)
+
+
 def vote_stddev(
     vote_tail: Sequence[float],
     *,
     sigma_floor: float,
     fx_factor: float,
+    sigma_floor_pct: Optional[float] = None,
+    filter_price: Optional[float] = None,
 ) -> Dict[str, Any]:
     """calc_v4: one passing source's vote standard deviation (this band
     was formerly called the vote's "confidence interval"; the artifact
     keys conf_usd_gpu_hr / confidence_usd_gpu_hr are PINNED wire format
     from the frozen series and keep their names).
 
-    sigma is the POPULATION stdev of the same trailing window the outlier
-    fence judged today's print against — the pre-advance window, so a print
-    never self-reports its own dispersion — in the filter's operating
+    sigma is the POPULATION stdev of the CALLER-SUPPLIED ``vote_tail`` —
+    which history that is is the caller's (mode-dependent) contract: the
+    outlier-fence window on legacy/daily lanes, the source's trailing
+    dynamic-weights history under calc.vote_sigma_source "dw_history"
+    (panel lanes). In every mode the tail is the PRE-advance history (a
+    print never self-reports its own dispersion) in the filter's operating
     currency. The floor is ``filter_sigma_floor`` in those same units (the
     calc_v3 floor): a frozen list price has sigma 0, and without the floor
     its three coincident votes would claim infinite conviction the source
@@ -883,12 +1003,43 @@ def vote_stddev(
     to USD at the print's own fx rate (cross-source votes must be
     common-currency). Fewer than two window entries
     (day-one, early warm-up) means sigma 0 → the floor IS the interval.
+
+    Percent-form floor: ``sigma_floor_pct`` given (mutually exclusive with
+    the absolute key at config load) floors the vote's stddev at pct/100
+    of ``filter_price`` — the print's OWN price in the filter's operating
+    currency, i.e. the value the vote is cast at. Floor split: the value
+    callers pass here is the VOTE floor ``vote_sigma_floor_pct`` — the
+    fence's ``filter_sigma_floor_pct`` is fence-only and never reaches
+    this function; only the legacy ABSOLUTE ``sigma_floor`` still governs
+    both sigmas (frozen semantics). The print anchors here, NOT the window
+    mean the fence uses: a day-one vote has an empty tail (no mean
+    exists), and "a source cannot claim conviction tighter than pct of its
+    own quote" is the rule's unit. ``filter_price`` is required in percent
+    mode and must be > 0: a non-positive print would resolve a floor of 0
+    and mint a conf-0 vote — infinite conviction off a garbage price — so
+    it fails loudly instead (the floor>0 invariant the median_ci_votes
+    gate is built on).
     """
+    if sigma_floor_pct is not None:
+        if filter_price is None:
+            raise ValueError(
+                "vote_stddev: sigma_floor_pct requires filter_price "
+                "(the percent floor anchors on the print being voted)"
+            )
+        if filter_price <= 0:
+            raise ValueError(
+                "vote_stddev: sigma_floor_pct requires filter_price > 0 "
+                f"(got {filter_price!r}) — a non-positive print would "
+                "disarm the floor and vote with conviction it never earned"
+            )
+        floor_native = filter_price * (sigma_floor_pct / 100.0)
+    else:
+        floor_native = sigma_floor
     sigma = float(statistics.pstdev(vote_tail)) if len(vote_tail) >= 2 else 0.0
-    stddev_native = max(sigma, sigma_floor)
+    stddev_native = max(sigma, floor_native)
     return {
         "sigma": round(sigma, 6),
-        "sigma_floored": sigma < sigma_floor,
+        "sigma_floored": sigma < floor_native,
         "conf_usd_gpu_hr": round(stddev_native * fx_factor, 6),
     }
 
@@ -896,6 +1047,8 @@ def vote_stddev(
 def median_stddev_composite(
     passing: Sequence[Tuple[str, float, float]],
     vote_stddevs: Dict[str, float],
+    *,
+    iqm_alpha: float = 0.0,
 ) -> Optional[Dict[str, Any]]:
     """calc_v4, superseding the legacy weighted mean: the median-of-votes
     aggregate (adapted from Pyth Network's price-aggregation design). Each
@@ -910,13 +1063,42 @@ def median_stddev_composite(
     (widens exactly when sources disagree). Votes use each source's ROUNDED
     published standard deviation (the day's ``vote`` blocks), so the aggregate is
     recomputable from the artifact alone. The prior weighted mean stays in
-    the artifact as a diagnostic, never the headline."""
+    the artifact as a diagnostic, never the headline.
+
+    ``iqm_alpha`` (the calc.iqm_alpha knob): nonzero prices the
+    day at the interquantile mean of the SAME ballot — the mean of the
+    weighted vote band [1/2 - alpha, 1/2 + alpha] — instead of the point
+    median (see ``_interquantile_mean``). 0 (every mint through calc_v6 /
+    a2 calc_v5; the default when the config elides the knob) takes the
+    frozen median branch untouched, bit-for-bit. When nonzero, the block
+    echoes the alpha and keeps the point median as a diagnostic
+    (``vote_median_usd_gpu_hr``), so a tuned day remains recomputable and
+    comparable from the artifact alone; the published dispersion anchors
+    at the PUBLISHED (rounded) value. TWO rounding regimes coexist here,
+    deliberately, and a mirror must route them per key: the HEADLINE's
+    exact band-mean rational is quantized once (half-even at 6dp) and
+    never passes through a raw float, while the vote_median diagnostic
+    keeps the frozen path's float round() — it exists to print exactly
+    what the alpha-0 branch would have published for the same ballot
+    (pinned by test at an exact-boundary midpoint where the two regimes
+    genuinely differ: 1.0000005 prints 1.0 as a band mean but 1.000001 as
+    the frozen median)."""
     if not passing:
         return None
     votes: List[Tuple[float, float]] = []
     for source_id, weight, price in passing:
         stddev = vote_stddevs[source_id]
-        if not (math.isfinite(price) and math.isfinite(stddev) and stddev >= 0):
+        # The DERIVED vote values are guarded too (the review): a
+        # finite price and finite stddev can still overflow price ± stddev
+        # to an infinity, which the sort would seat at the ladder's edge
+        # and price a silently plausible day around.
+        if not (
+            math.isfinite(price)
+            and math.isfinite(stddev)
+            and stddev >= 0
+            and math.isfinite(price - stddev)
+            and math.isfinite(price + stddev)
+        ):
             # Fail CLOSED (the D1 posture): published composites are never
             # revised, so a poisoned vote must kill the day's publish
             # loudly rather than price it — NaN compares False both ways,
@@ -930,14 +1112,29 @@ def median_stddev_composite(
         votes.append((price - stddev, weight))
         votes.append((price, weight))
         votes.append((price + stddev, weight))
-    value = _weighted_quantile(votes, Fraction(1, 2))
+    median = _weighted_quantile(votes, Fraction(1, 2))
+    if iqm_alpha:
+        # Fraction(str(...)) reads the alpha as WRITTEN in the config —
+        # the same doctrine as the weights, and the same rational the TS
+        # mirror derives — then the exact mean is quantized at the
+        # artifact's 6dp grain (round() on a Fraction is half-even, like
+        # the float round the median branch feeds the writer). The block
+        # writer below re-rounds this float; that second round is a
+        # proven no-op (a 6dp decimal's nearest double re-rounds to
+        # itself at 6dp), so the exact rational is still quantized
+        # effectively once.
+        value = float(
+            round(_interquantile_mean(votes, Fraction(str(iqm_alpha))), 6)
+        )
+    else:
+        value = median
     p25 = _weighted_quantile(votes, Fraction(1, 4))
     p75 = _weighted_quantile(votes, Fraction(3, 4))
     # The retired weighted-mean statistic rides as a diagnostic — DERIVED from
     # the same frozen helper that priced v1-v3, so the diagnostic and the
     # frozen series' math can never drift.
     base = weighted_composite(passing)
-    return {
+    block = {
         "value_usd_gpu_hr": round(value, 6),
         "statistic": MEDIAN_STDDEV_VOTES,
         "confidence_usd_gpu_hr": round(max(value - p25, p75 - value), 6),
@@ -948,6 +1145,14 @@ def median_stddev_composite(
         "renormalized_weights": base["renormalized_weights"],
         "sources_used_count": base["sources_used_count"],
     }
+    if iqm_alpha:
+        # Conditional like the knob itself: an alpha-0 lane's artifact
+        # bytes must not grow keys. The echoed alpha + point median make
+        # a tuned day self-describing (mirror recomputes need the alpha
+        # from the DAY, not a live config that may since have re-minted).
+        block["iqm_alpha"] = iqm_alpha
+        block["vote_median_usd_gpu_hr"] = round(median, 6)
+    return block
 
 
 def weighted_composite(
@@ -1020,8 +1225,43 @@ def compute_day(
             "cannot detect recorded-currency changes (rule D2)"
         )
     pending = pending_currencies if pending_currencies is not None else {}
+    if "filter_sigma_floor_pct" in params and "filter_sigma_floor" in params:
+        # Load validation refuses the pair, but params can also arrive
+        # from an artifact-embedded/unvalidated dict — with both keys the
+        # binding floor is ambiguous, and no published artifact carries
+        # both, so this raise is unreachable on every replay.
+        raise ValueError(
+            "params carry BOTH filter_sigma_floor and "
+            "filter_sigma_floor_pct — one floor semantics per mint; "
+            "the binding floor would be ambiguous"
+        )
+    if (
+        "vote_sigma_floor_pct" in params
+        and "filter_sigma_floor_pct" not in params
+    ):
+        # Floor split: the vote floor is a percent-regime key. Alongside
+        # the ABSOLUTE filter_sigma_floor — whose frozen semantics govern
+        # BOTH sigmas — the binding vote floor would be ambiguous; no
+        # published artifact carries that pair, so this raise is
+        # unreachable on every replay.
+        raise ValueError(
+            "params carry vote_sigma_floor_pct without "
+            "filter_sigma_floor_pct — the vote floor is a percent-regime "
+            "key and the absolute filter_sigma_floor keeps its frozen "
+            "both-sigmas semantics; the binding vote floor would be "
+            "ambiguous"
+        )
     sigma_floor = float(
         params.get("filter_sigma_floor", DEFAULT_FILTER_SIGMA_FLOOR)
+    )
+    # Percent-form floor. None ≠ 0.0 here: None selects the legacy
+    # absolute-floor path; 0.0 is a real percent rule. Load validation
+    # guarantees the two keys never coexist. FENCE-ONLY since the floor
+    # split — the vote floor resolves below.
+    sigma_floor_pct = (
+        float(params["filter_sigma_floor_pct"])
+        if "filter_sigma_floor_pct" in params
+        else None
     )
     # calc_v4: which cross-source statistic prices the day. The
     # legacy path must stay byte-identical, so EVERYTHING vote-related below
@@ -1030,6 +1270,29 @@ def compute_day(
     median_votes = (
         params.get("composite_statistic", DEFAULT_COMPOSITE_STATISTIC)
         == MEDIAN_STDDEV_VOTES
+    )
+    # Vote floor split (founder ruling 2026-08-27, mirrored from the panel
+    # engine): a percent-regime median-votes params set MUST carry the
+    # vote floor — silently falling back to the fence floor would price
+    # votes under a rule the params never recorded (no published daily
+    # series is percent-regime, so no artifact-embedded params
+    # legitimately lack the key). The legacy absolute regime is untouched:
+    # filter_sigma_floor feeds both sigmas verbatim.
+    if (
+        median_votes
+        and sigma_floor_pct is not None
+        and "vote_sigma_floor_pct" not in params
+    ):
+        raise ValueError(
+            "percent-regime median_ci_votes params missing "
+            "vote_sigma_floor_pct — the vote floor is its own knob "
+            "(ruling 2026-08-27) and never silently falls back to the "
+            "fence floor filter_sigma_floor_pct"
+        )
+    vote_sigma_floor_pct = (
+        float(params["vote_sigma_floor_pct"])
+        if median_votes and sigma_floor_pct is not None
+        else None
     )
     vote_stddevs: Dict[str, float] = {}
     # One constituent role per basket lane — THE shared predicate (see
@@ -1256,6 +1519,7 @@ def compute_day(
                     sigma=params["filter_sigma"],
                     warmup=params["filter_warmup"],
                     sigma_floor=sigma_floor,
+                    sigma_floor_pct=sigma_floor_pct,
                     currency=filter_currency if recorded_terms else None,
                 )
         detail.update({"status": "ok", "chosen": chosen, "filter": verdict})
@@ -1301,6 +1565,11 @@ def compute_day(
                 vote = vote_stddev(
                     vote_tail or [],
                     sigma_floor=sigma_floor,
+                    # The VOTE floor (ruling 2026-08-27), never the
+                    # fence's: None on legacy absolute lanes (sigma_floor
+                    # governs both, frozen semantics).
+                    sigma_floor_pct=vote_sigma_floor_pct,
+                    filter_price=filter_price,
                     fx_factor=fx_factor,
                 )
                 detail["vote"] = vote
@@ -1345,7 +1614,11 @@ def compute_day(
     min_claim = int(params.get("min_sources_to_claim", 1))
     if len(passing) >= min_claim:
         composite = (
-            median_stddev_composite(passing, vote_stddevs)
+            median_stddev_composite(
+                passing,
+                vote_stddevs,
+                iqm_alpha=float(params.get("iqm_alpha", 0.0)),
+            )
             if median_votes
             else weighted_composite(passing)
         )

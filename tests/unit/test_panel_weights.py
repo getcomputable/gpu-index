@@ -45,7 +45,7 @@ from gpu_index.index.panel_schedule import (
     stamp_to_hour_iso,
 )
 from gpu_index.index.weights import (
-    PRUNE_MARGIN_HOURS,
+    PRUNE_MARGIN_MINUTES,
     advance_panel_weight_state,
     attendance,
     compute_panel_weights,
@@ -120,7 +120,7 @@ def _core_walk_state(schedule, obs_stamp, span_hours):
     rest-of-basket by construction (the day-suite fixture, re-anchored
     to the schedule grid). One pinned vector at the window's first stamp
     (vector resolution is last-at-or-below tau)."""
-    stamps = schedule.scheduled_stamps(obs_stamp - span_hours, obs_stamp)
+    stamps = schedule.scheduled_stamps(obs_stamp - span_hours * 60, obs_stamp)
     state = new_weight_state()
     levels = [0.0]
     for i in range(1, len(stamps)):
@@ -213,7 +213,7 @@ def test_scheduled_stamps_window_counts_per_era_and_clips_at_genesis():
 
 def test_iter_scheduled_is_inclusive_from_genesis():
     schedule = _boundary_schedule()
-    head = list(schedule.iter_scheduled(schedule.genesis_stamp + 24))
+    head = list(schedule.iter_scheduled(schedule.genesis_stamp + 24 * 60))
     assert head[0] == schedule.genesis_stamp
     assert [stamp_to_hour_iso(s) for s in head] == [
         "2026-08-10T04",
@@ -309,24 +309,24 @@ def test_attendance_counts_per_era_scheduled_stamps_across_the_boundary():
     schedule = _boundary_schedule()
     obs = date_hour_to_stamp("2026-08-25", 0)  # window spans both eras
     prices = {"full": {}, "old": {}}
-    for stamp in schedule.scheduled_stamps(obs - 96, obs):
+    for stamp in schedule.scheduled_stamps(obs - 96 * 60, obs):
         prices["full"][stamp] = _entry(5.0)
         if stamp < date_hour_to_stamp("2026-08-24", 0):
             prices["old"][stamp] = _entry(5.0)
     # A print at an UNSCHEDULED stamp neither helps nor hurts.
     prices["old"][date_hour_to_stamp("2026-08-23", 23)] = _entry(5.0)
     full = attendance(
-        prices, "full", obs_stamp=obs, schedule=schedule, history_hours=96
+        prices, "full", obs_stamp=obs, schedule=schedule, window_minutes=96 * 60
     )
     assert full == {"printed": 36, "scheduled": 36, "ratio": 1.0}
     old = attendance(
-        prices, "old", obs_stamp=obs, schedule=schedule, history_hours=96
+        prices, "old", obs_stamp=obs, schedule=schedule, window_minutes=96 * 60
     )
     assert old["printed"] == 12  # only the 4-slot-era stamps
     assert old["scheduled"] == 36  # 3 x 4 basket days + 24 hourly
     assert old["ratio"] == pytest.approx(12 / 36)
     ghost = attendance(
-        prices, "ghost", obs_stamp=obs, schedule=schedule, history_hours=96
+        prices, "ghost", obs_stamp=obs, schedule=schedule, window_minutes=96 * 60
     )
     assert ghost == {"printed": 0, "scheduled": 36, "ratio": 0.0}
 
@@ -338,17 +338,17 @@ def test_attendance_genesis_clip_and_zero_scheduled_window():
     # NOTHING was missed -- ratio 1.0 for everyone (the rule that keeps
     # the vacuous switch clause from firing at genesis).
     first = attendance(
-        {}, "any", obs_stamp=genesis, schedule=schedule, history_hours=96
+        {}, "any", obs_stamp=genesis, schedule=schedule, window_minutes=96 * 60
     )
     assert first == {"printed": 0, "scheduled": 0, "ratio": 1.0}
     # One observation later the denominator is 1 and prints decide.
     second = date_hour_to_stamp("2026-08-10", 10)
     prices = {"there": {genesis: _entry(5.0)}}
     assert attendance(
-        prices, "there", obs_stamp=second, schedule=schedule, history_hours=96
+        prices, "there", obs_stamp=second, schedule=schedule, window_minutes=96 * 60
     ) == {"printed": 1, "scheduled": 1, "ratio": 1.0}
     assert attendance(
-        prices, "absent", obs_stamp=second, schedule=schedule, history_hours=96
+        prices, "absent", obs_stamp=second, schedule=schedule, window_minutes=96 * 60
     ) == {"printed": 0, "scheduled": 1, "ratio": 0.0}
 
 
@@ -448,7 +448,7 @@ def test_attendance_passer_without_q_holds_the_switch():
     obs = date_hour_to_stamp("2026-08-15", 12)
     dw = _dw(min_train_samples=40)
     state, _ = _core_walk_state(schedule, obs, span_hours=60)
-    window = schedule.scheduled_stamps(obs - 48, obs)
+    window = schedule.scheduled_stamps(obs - 48 * 60, obs)
     _add_flat_prints(state, "newbie", 8.0, window[-30:])  # 30/48 attendance
     block = compute_panel_weights(
         state,
@@ -480,7 +480,7 @@ def test_sparse_below_floor_source_does_not_hold_the_switch():
     obs = date_hour_to_stamp("2026-08-15", 12)
     dw = _dw()
     state, _ = _core_walk_state(schedule, obs, span_hours=60)
-    window = schedule.scheduled_stamps(obs - 48, obs)
+    window = schedule.scheduled_stamps(obs - 48 * 60, obs)
     _add_flat_prints(state, "ghost", 7.0, window[::3])  # 16/48 attendance
     block = compute_panel_weights(
         state,
@@ -553,7 +553,7 @@ def test_switch_latch_is_permanent_and_stamps_switched_on():
     assert state["mode"] == "dynamic"
     second = compute_panel_weights(
         state,
-        obs_stamp=obs + 1,
+        obs_stamp=obs + 60,
         eligible=["lead"],  # below quorum forever after: irrelevant
         dw_params=dw,
         fallback_weights={sid: 0.2 for sid in CORE},
@@ -574,7 +574,7 @@ def test_zero_attendance_passers_hold_the_switch():
     schedule = _hourly_schedule()
     obs = date_hour_to_stamp("2026-08-15", 12)
     dw = _dw()
-    window = schedule.scheduled_stamps(obs - 48, obs)
+    window = schedule.scheduled_stamps(obs - 48 * 60, obs)
     state = new_weight_state()
     for sid in CORE:
         _add_flat_prints(state, sid, 9.0, window[::3])  # 16/48 < floor 0.5
@@ -602,7 +602,7 @@ def test_attendance_floor_boundary_at_exactly_the_floor():
     schedule = _hourly_schedule()
     obs = date_hour_to_stamp("2026-08-15", 12)
     dw = _dw(min_train_samples=40)  # CORE define; a 24-print seat cannot
-    window = schedule.scheduled_stamps(obs - 48, obs)
+    window = schedule.scheduled_stamps(obs - 48 * 60, obs)
     assert len(window) == 48
 
     at_floor, _ = _core_walk_state(schedule, obs, span_hours=60)
@@ -737,7 +737,7 @@ def _naive_scores(state, obs_stamp, source_ids, dw, schedule):
     vectors = state.get("vectors") or {}
     lookbacks = [int(x) for x in dw["lookback_horizons_hours"]]
     horizons = [int(x) for x in dw["forward_horizons_hours"]]
-    history_hours = int(dw["history_days"]) * 24
+    history_minutes = int(dw["history_days"]) * 1440
     max_abs = dw.get("max_abs_log_return")
     out = {}
     for sid in source_ids:
@@ -747,7 +747,7 @@ def _naive_scores(state, obs_stamp, source_ids, dw, schedule):
         for h in horizons:
             samples = []
             for tau in sorted(series):
-                if tau < cutoff - history_hours or tau + h > cutoff:
+                if tau < cutoff - history_minutes or tau + h * 60 > cutoff:
                     continue
                 vector_stamp = None
                 for vs in sorted(vectors):  # linear scan on purpose
@@ -758,16 +758,18 @@ def _naive_scores(state, obs_stamp, source_ids, dw, schedule):
                 vector = vectors[vector_stamp]
                 if not vector:
                     continue
-                target = _naive_loo(prices, vector, sid, tau, tau + h, max_abs)
+                target = _naive_loo(
+                    prices, vector, sid, tau, tau + h * 60, max_abs
+                )
                 if target is None:
                     continue
                 feats = []
                 for lb in lookbacks:
                     own_r = source_return(
-                        series, tau - lb, tau, max_abs_log_return=max_abs
+                        series, tau - lb * 60, tau, max_abs_log_return=max_abs
                     )
                     rest_r = _naive_loo(
-                        prices, vector, sid, tau - lb, tau, max_abs
+                        prices, vector, sid, tau - lb * 60, tau, max_abs
                     )
                     if own_r is None or rest_r is None:
                         feats = None
@@ -780,7 +782,7 @@ def _naive_scores(state, obs_stamp, source_ids, dw, schedule):
                 samples,
                 anchor=cutoff,
                 ridge_lambda=float(dw["ridge_lambda"]),
-                half_life=float(dw["half_life_days"]) * 24.0,
+                half_life=float(dw["half_life_days"]) * 1440.0,
                 min_train_samples=int(dw["min_train_samples"]),
                 target_variance_floor=float(dw["target_variance_floor"]),
             )
@@ -859,7 +861,7 @@ def test_pruning_provably_changes_no_computable_score():
     dw = _dw()
     obs = date_hour_to_stamp("2026-07-20", 8)
     state, stamps = _core_walk_state(schedule, obs, span_hours=400)
-    threshold = obs - (48 + 2 + PRUNE_MARGIN_HOURS)
+    threshold = obs - (48 * 60 + 2 * 60 + PRUNE_MARGIN_MINUTES)
     assert stamps[0] < threshold  # deep history: pruning has work to do
     row = {"lead": 10.0, "echo": 10.0, "s1": 10.0, "s2": 9.0, "s3": 11.0}
     prints = {sid: _entry(price) for sid, price in row.items()}
@@ -881,7 +883,7 @@ def test_pruning_provably_changes_no_computable_score():
     assert min(min(s) for s in pruned["prices"].values()) >= threshold
     # The only pre-threshold vector survives as the resolution anchor.
     assert stamps[0] in pruned["vectors"]
-    next_obs = obs + 1
+    next_obs = obs + 60
     kwargs = dict(dw_params=dw, schedule=schedule)
     scores_pruned = predictive_scores_obs(
         pruned, obs_stamp=next_obs, source_ids=sorted(row), **kwargs
@@ -913,7 +915,7 @@ def test_pruning_refuses_a_lookback_wider_than_the_margin():
         lookback_horizons_hours=[1, 200],
         forward_horizons_hours=[1, 2],
     )
-    with pytest.raises(ValueError, match="PRUNE_MARGIN_HOURS"):
+    with pytest.raises(ValueError, match="PRUNE_MARGIN_MINUTES"):
         advance_panel_weight_state(
             new_weight_state(),
             obs_stamp=date_hour_to_stamp("2026-08-15", 12),
@@ -934,7 +936,7 @@ def test_prune_sweep_defers_until_the_threshold_advances_a_day():
     fence sweeps everything up to ITS threshold."""
     schedule = _hourly_schedule("2026-06-01")
     dw = _dw()
-    span = 48 + 2 + PRUNE_MARGIN_HOURS  # the strict per-advance bound
+    span = 48 * 60 + 2 * 60 + PRUNE_MARGIN_MINUTES  # the strict per-advance bound
     obs = date_hour_to_stamp("2026-07-20", 8)
     state, stamps = _core_walk_state(schedule, obs, span_hours=400)
     assert state["_prune_threshold"] is None  # new_weight_state seeds it
@@ -958,14 +960,14 @@ def test_prune_sweep_defers_until_the_threshold_advances_a_day():
     stale = obs - span - 1
     state["prices"]["lead"][stale] = _entry(10.0)
     for hour in range(1, 24):
-        _advance(obs + hour)
+        _advance(obs + hour * 60)
     assert state["_prune_threshold"] == obs - span  # unchanged: deferred
     assert stale in state["prices"]["lead"]
     # 24h of threshold advance later the sweep fires and catches up.
-    _advance(obs + 24)
-    assert state["_prune_threshold"] == obs + 24 - span
+    _advance(obs + 24 * 60)
+    assert state["_prune_threshold"] == obs + 24 * 60 - span
     assert stale not in state["prices"]["lead"]
-    assert min(min(s) for s in state["prices"].values()) >= obs + 24 - span
+    assert min(min(s) for s in state["prices"].values()) >= obs + 24 * 60 - span
 
 
 # ------------------------------------------------------------------ replay
@@ -1058,7 +1060,7 @@ def test_replay_from_pinned_facts_rebuilds_state_and_next_vector():
             dw_params=dw,
         )
     assert replayed == live
-    next_stamp = last + 1
+    next_stamp = last + 60
     next_live = compute_panel_weights(
         live,
         obs_stamp=next_stamp,

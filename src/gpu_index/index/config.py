@@ -10,6 +10,7 @@ methodology_id, never a code change.
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -137,6 +138,80 @@ def _validate(cfg: Dict[str, Any]) -> None:
         raise BasketConfigError(
             f"calc.filter_sigma_floor must be a number >= 0, got {sigma_floor!r}"
         )
+    # Validated on key PRESENCE, exactly the predicate calc_params embeds
+    # on (the composite_statistic precedent): a `null` must fail HERE with
+    # the key's name, never as a bare TypeError at embed time. Finite,
+    # unlike the legacy absolute check: inf would pin an accept-everything
+    # band into the series' published params.
+    sigma_floor_pct = calc.get("filter_sigma_floor_pct")
+    if "filter_sigma_floor_pct" in calc and not (
+        isinstance(sigma_floor_pct, (int, float))
+        and not isinstance(sigma_floor_pct, bool)
+        and math.isfinite(sigma_floor_pct)
+        and sigma_floor_pct >= 0
+    ):
+        raise BasketConfigError(
+            f"calc.filter_sigma_floor_pct must be a finite number >= 0, "
+            f"got {sigma_floor_pct!r}"
+        )
+    if "filter_sigma_floor" in calc and "filter_sigma_floor_pct" in calc:
+        # One floor semantics per mint (ruling 2026-08-26): the band floors
+        # in recorded-currency units OR at a percent of the trailing-window
+        # mean — a config carrying both would leave the binding floor
+        # ambiguous in the pinned artifact params.
+        raise BasketConfigError(
+            "calc.filter_sigma_floor and calc.filter_sigma_floor_pct are "
+            "mutually exclusive — one floor semantics per mint"
+        )
+    # Floor split (founder ruling 2026-08-27, mirrored from the panel
+    # loader): filter_sigma_floor_pct is FENCE-ONLY; vote_sigma_floor_pct
+    # floors the median-vote band at pct/100 of the print's OWN
+    # filter-terms price. NOT panel-only (unlike vote_sigma_source): the
+    # daily engine has median voting and honors it — today's daily configs
+    # are frozen absolute, so this is vocabulary + future-mint parity.
+    vote_sigma_floor_pct = calc.get("vote_sigma_floor_pct")
+    if "vote_sigma_floor_pct" in calc:
+        # Lazy import: composite is the single home of the statistic
+        # vocabulary (the SOURCE_STATISTIC_FNS rule).
+        from gpu_index.index.composite import MEDIAN_STDDEV_VOTES as _MEDIAN_VOTES_KEY
+
+        if not (
+            isinstance(vote_sigma_floor_pct, (int, float))
+            and not isinstance(vote_sigma_floor_pct, bool)
+            and math.isfinite(vote_sigma_floor_pct)
+            and vote_sigma_floor_pct >= 0
+        ):
+            raise BasketConfigError(
+                f"calc.vote_sigma_floor_pct must be a finite number >= 0, "
+                f"got {vote_sigma_floor_pct!r}"
+            )
+        if calc.get("composite_statistic") != _MEDIAN_VOTES_KEY:
+            # A vote floor without votes is inert config and refuses (the
+            # panel loader's rule verbatim).
+            raise BasketConfigError(
+                "calc.vote_sigma_floor_pct requires calc.composite_statistic "
+                f"'median_ci_votes', got {calc.get('composite_statistic')!r}"
+            )
+        if "filter_sigma_floor" in calc:
+            # The ABSOLUTE floor governs BOTH sigmas by frozen semantics
+            # (every published daily vote replays under it) — a percent
+            # vote floor alongside it would leave the binding vote floor
+            # ambiguous.
+            raise BasketConfigError(
+                "calc.vote_sigma_floor_pct and the absolute "
+                "calc.filter_sigma_floor are mutually exclusive — the "
+                "absolute floor already governs both sigmas by frozen "
+                "semantics (ruling 2026-08-27)"
+            )
+    if "vote_sigma_source" in calc:
+        # PANEL-ONLY key (ruling 2026-08-27, gpu_index.index.panel_config owns it):
+        # the daily engine never reads it, so accepting it here would let a
+        # daily config document a vote rule its own series never runs —
+        # silent config-vs-behavior divergence.
+        raise BasketConfigError(
+            "calc.vote_sigma_source is a panel-only key (hourly panel "
+            "lanes, gpu_index.index.panel_config) — the daily engine never reads it"
+        )
     filter_terms = calc.get("filter_terms")
     if filter_terms is not None:
         # Lazy import for the same reason as SOURCE_STATISTIC_FNS below:
@@ -171,16 +246,62 @@ def _validate(cfg: Dict[str, Any]) -> None:
             # voting with conviction it never earned — the ruling the
             # median-of-votes mint is built on. A lane config that copies
             # the statistic without the floor must fail at load, not
-            # quietly pin floor-less params as that series' law.
-            if not (
-                isinstance(sigma_floor, (int, float))
-                and not isinstance(sigma_floor, bool)
-                and sigma_floor > 0
-            ):
+            # quietly pin floor-less params as that series' law. Floor
+            # split (founder ruling 2026-08-27): in the percent regime
+            # the knob that satisfies it is the VOTE floor —
+            # filter_sigma_floor_pct is fence-only, so a positive fence
+            # floor may never silently back the vote's conviction rule.
+            # The legacy absolute regime keeps its frozen both-sigmas
+            # semantics unchanged.
+            def _positive(value: Any) -> bool:
+                return (
+                    isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and value > 0
+                )
+
+            if "filter_sigma_floor_pct" in calc:
+                if not _positive(vote_sigma_floor_pct):
+                    raise BasketConfigError(
+                        "calc.composite_statistic 'median_ci_votes' in the "
+                        "percent floor regime requires "
+                        "calc.vote_sigma_floor_pct > 0 (ruling 2026-08-27: "
+                        "filter_sigma_floor_pct is fence-only, no silent "
+                        "fallback to the fence floor), got "
+                        f"{vote_sigma_floor_pct!r}"
+                    )
+            elif not _positive(sigma_floor):
                 raise BasketConfigError(
                     "calc.composite_statistic 'median_ci_votes' requires "
-                    f"calc.filter_sigma_floor > 0, got {sigma_floor!r}"
+                    "calc.filter_sigma_floor > 0 (legacy absolute, both "
+                    "sigmas) or the percent pair calc.filter_sigma_floor_pct "
+                    "+ calc.vote_sigma_floor_pct > 0, got "
+                    f"{sigma_floor!r}/{vote_sigma_floor_pct!r}"
                 )
+    if "iqm_alpha" in calc:
+        # The interquantile-mean band half-width — the composite
+        # averages the weighted vote band [1/2 - alpha, 1/2 + alpha]
+        # (0 IS the median; 1/2 the full weighted mean of the votes). A
+        # calc param embedded in every artifact, same absence discipline
+        # as the knobs above; malformed values must fail at LOAD. The knob
+        # is a band of the VOTE ladder, so it is meaningless — and refused
+        # — without the median_ci_votes statistic on the same config.
+        from gpu_index.index.composite import MEDIAN_STDDEV_VOTES as _MEDIAN_VOTES
+
+        iqm_alpha = calc["iqm_alpha"]
+        if not (
+            isinstance(iqm_alpha, (int, float))
+            and not isinstance(iqm_alpha, bool)
+            and 0 <= iqm_alpha <= 0.5
+        ):
+            raise BasketConfigError(
+                f"calc.iqm_alpha must be a number in [0, 0.5], got {iqm_alpha!r}"
+            )
+        if calc.get("composite_statistic") != _MEDIAN_VOTES:
+            raise BasketConfigError(
+                "calc.iqm_alpha requires calc.composite_statistic "
+                f"'median_ci_votes', got {calc.get('composite_statistic')!r}"
+            )
     if "dynamic_weights" in calc:
         # calc_v5 mint: dynamic predictive weighting. Every knob below is a
         # calc param embedded in every artifact — same absence discipline

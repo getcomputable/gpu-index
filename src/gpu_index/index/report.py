@@ -395,8 +395,18 @@ def _kpi_tiles(
     statistic = index.get("statistic") or (
         ((latest or {}).get("calc_params") or {}).get("composite_statistic")
     )
+    # a tuned day self-describes (the block echoes iqm_alpha and
+    # keeps the point median as a diagnostic) — surface both so operators
+    # never have to open the raw artifact to see which band priced the day.
+    iqm_alpha = index.get("iqm_alpha")
+    vote_median = index.get("vote_median_usd_gpu_hr")
     statistic_label = (
-        "median of stddev votes, weighted"
+        (
+            f"band mean &#177;{_esc(iqm_alpha)} of stddev votes"
+            f"{', median $' + _idx(vote_median) if vote_median is not None else ''}"
+        )
+        if statistic == MEDIAN_STDDEV_VOTES and iqm_alpha
+        else "median of stddev votes, weighted"
         if statistic == MEDIAN_STDDEV_VOTES
         else "weighted mean, renormalized"
     )
@@ -781,6 +791,11 @@ def _day_breakdown(day: str, comp: Dict[str, Any], *, visible: bool) -> str:
     if "filter_sigma_floor" in params:
         params_line += (
             f" &#183; sigma-floor {_esc(params.get('filter_sigma_floor'))}"
+        )
+    if "filter_sigma_floor_pct" in params:
+        params_line += (
+            f" &#183; sigma-floor "
+            f"{_esc(params.get('filter_sigma_floor_pct'))}%"
         )
     if "composite_statistic" in params:
         params_line += (

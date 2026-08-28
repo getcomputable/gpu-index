@@ -48,7 +48,7 @@ from gpu_index.common.store import (  # noqa: E402
     make_client,
     make_run_id,
     slot_already_captured,
-    slot_hours_present,
+    slot_minutes_present,
     upload_capture_snapshot,
     write_local_snapshot,
 )
@@ -251,8 +251,15 @@ def main() -> int:
 
     config = load_basket_config(args.config)
     now = utc_now()
-    slot_date, slot_hour = current_slot(now, config["capture_slots_utc"])
-    canonical = is_canonical(slot_hour, config.get("canonical_slot_utc"))
+    # Hour-vocabulary lane: marks normalize to minute-of-day for the
+    # shared slot machinery (15-min cadence re-base 2026-08-27); keys keep
+    # the legacy hour tokens, snapshot bytes are unchanged.
+    grid_minutes = [int(h) * 60 for h in config["capture_slots_utc"]]
+    canonical_cfg = config.get("canonical_slot_utc")
+    canonical_minute = None if canonical_cfg is None else int(canonical_cfg) * 60
+    slot_date, slot_minute = current_slot(now, grid_minutes)
+    slot_hour = slot_minute // 60
+    canonical = is_canonical(slot_minute, canonical_minute)
     prefix = config["bucket_prefix"]
 
     client = None
@@ -268,10 +275,12 @@ def main() -> int:
         # 22:00 but missed the canonical 16:00 must not look healthy just
         # because it is non-empty.
         prev_day = slot_date - timedelta(days=1)
-        prev_present = slot_hours_present(
+        prev_present = slot_minutes_present(
             client, bucket, prefix=prefix, day=prev_day
         )
-        prev_missing = sorted(set(config["capture_slots_utc"]) - prev_present)
+        prev_missing = sorted(
+            m // 60 for m in set(grid_minutes) - prev_present
+        )
         previous_day_empty = not prev_present
         if previous_day_empty:
             warn(
@@ -280,10 +289,9 @@ def main() -> int:
                 "alarm; expected once on the lane's first day)"
             )
         elif prev_missing:
-            canonical_hour = config.get("canonical_slot_utc")
             canonical_note = (
                 " including the CANONICAL slot"
-                if canonical_hour in prev_missing
+                if canonical_cfg in prev_missing
                 else ""
             )
             warn(
@@ -292,7 +300,11 @@ def main() -> int:
                 "permanently lost (partial-miss alarm)"
             )
         if slot_already_captured(
-            client, bucket, prefix=prefix, day=slot_date, slot_hour=slot_hour
+            client,
+            bucket,
+            prefix=prefix,
+            day=slot_date,
+            minute_of_day=slot_minute,
         ):
             if args.force:
                 notice(
@@ -316,7 +328,13 @@ def main() -> int:
 
     run_id = make_run_id(now)
     # Recorded after the mark hour (a later firing filled the slot)?
-    late_fill = not (now.date() == slot_date and now.hour == slot_hour)
+    # late = recorded outside the mark's own wall-clock hour (the
+    # original now.hour == slot_hour rule, expressed on the shared
+    # minute machinery -- byte-identical for this hour-grid lane).
+    late_fill = not (
+        now.date() == slot_date
+        and slot_minute <= (now.hour * 60 + now.minute) < slot_minute + 60
+    )
     results = collect_all(config, only=set(args.only_sources or []) or None)
     payload = build_capture_snapshot(
         config=config,

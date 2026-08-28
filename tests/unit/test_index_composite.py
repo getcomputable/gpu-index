@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from gpu_index.index.composite import (
+    _interquantile_mean,
     _weighted_median,
     _weighted_quantile,
     calc_params,
@@ -619,6 +620,92 @@ def test_golden_first_live_capture():
     }
 
 
+def test_compute_day_percent_floor_end_to_end_with_eur_seat():
+    """Ruling 2026-08-26 through the DAILY engine: compute_day resolves
+    filter_sigma_floor_pct, the fence floors at 3% of the trailing-window
+    MEAN, votes floor at 3% of each print's OWN filter-terms price
+    (converted at the print's own rate for the EUR seat), and calc_params
+    embeds the pct key only. The massedcompute contrast pins the two
+    semantics apart end-to-end: a 6.15 print off a frozen 5.95 window is
+    ACCEPTED at 3% (band 3.0 * 0.1785 = 0.5355 >= dev 0.20) but HELD OUT
+    under the absolute 0.05 config (band 0.15 < 0.20) — and its vote conf
+    is 0.1845 (3% of the 6.15 PRINT), not 0.1785 (3% of the 5.95 mean),
+    pinning the vote's print-anchor."""
+    cfg = json.loads(json.dumps(CONFIG))
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_floor_pct"] = 3.0  # floor split, both 3%
+    cfg["calc"]["methodology_id"] = "annex_a_v0_2_calc_v_test_pct"
+    snapshot = {
+        "run_id": "pct-e2e",
+        "late_fill": False,
+        "sources": [
+            _entry("verda", [_obs("B300", usd=7.50)]),
+            _entry("nebius", [_obs("B300", usd=7.85)]),
+            _entry("hyperstack", [_obs("B300", usd=7.40)]),
+            _entry("runpod", [_obs("B300", usd=7.39)]),
+            _entry(
+                "scaleway",
+                [_obs("B300", native=7.50, usd=None, currency="EUR")],
+            ),
+            _entry("massedcompute", [_obs("B300", usd=6.15)]),
+        ],
+    }
+
+    def _run(config):
+        return compute_day(
+            config=config,
+            day="2026-08-10",
+            snapshot=json.loads(json.dumps(snapshot)),
+            substituted_from=None,
+            window_history={"massedcompute": [5.95] * 11},
+            window_currencies={"massedcompute": "USD"},
+            fx_records=FX_2026_08_10,
+            weight_state=_ws(),
+            prior_slot_prints={},
+        )
+
+    payload = _run(cfg)
+    assert payload["calc_params"]["filter_sigma_floor_pct"] == 3.0
+    assert payload["calc_params"]["vote_sigma_floor_pct"] == 3.0
+    assert "filter_sigma_floor" not in payload["calc_params"]
+    by_id = {s["source_id"]: s for s in payload["sources"]}
+    # Fence: 3% of the window MEAN, symmetric around mu.
+    massed = by_id["massedcompute"]["filter"]
+    assert massed["accepted"] is True
+    assert massed["band"] == pytest.approx(3.0 * 0.1785)
+    assert (massed["lo"], massed["hi"]) == (
+        pytest.approx(5.95 - 0.5355),
+        pytest.approx(5.95 + 0.5355),
+    )
+    # Vote: 3% of the PRINT (6.15 -> 0.1845), not of the mean (0.1785).
+    assert by_id["massedcompute"]["vote"] == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": pytest.approx(0.1845),
+    }
+    # USD day-one seat: conf = 3% of its own quote.
+    assert by_id["verda"]["vote"]["conf_usd_gpu_hr"] == pytest.approx(0.225)
+    # EUR seat: 3% of the NATIVE print, converted at the print's own rate.
+    # Pinned to the engine's exact double walk: 7.5 * (3.0/100.0) is
+    # 0.22499999999999998, x 1.1555 = 0.2599874999... -> 0.259987 at the
+    # 6dp wire round (NOT the decimal 0.2599875 -> 0.259988) — published
+    # bytes follow IEEE doubles, and this pin keeps that deliberate.
+    assert by_id["scaleway"]["vote"] == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.259987,
+    }
+    # The SAME inputs under the absolute-floor config hold the massed
+    # print out — the swap is a genuinely different rule, end to end.
+    absolute = _run(CONFIG)
+    massed_abs = {s["source_id"]: s for s in absolute["sources"]}[
+        "massedcompute"
+    ]
+    assert massed_abs["filter"]["accepted"] is False
+    assert massed_abs["filter"]["band"] == pytest.approx(0.15)
+
+
 def test_weighted_composite_renormalizes_and_dark_day():
     result = weighted_composite([("a", 0.15, 8.0), ("b", 0.10, 6.0)])
     assert result["value_usd_gpu_hr"] == pytest.approx((0.15 * 8 + 0.10 * 6) / 0.25)
@@ -725,6 +812,421 @@ def test_vote_confidence_floors_and_converts():
     assert vote_stddev([9.9], sigma_floor=0.05, fx_factor=1.0)[
         "sigma"
     ] == 0.0
+
+
+def test_percent_floor_fence_anchors_on_the_window_mean():
+    """Percent-form floor (ruling 2026-08-26): band = sigma * max(sd,
+    mu * pct/100) — the floor rides the window's own price level. A
+    frozen 7.50 window at 3% floors the band at 0.225 native (vs the
+    absolute rule's 0.05), and the fence bounds stay symmetric around mu
+    because the floor anchors on mu, never on the print under judgment."""
+    frozen = evaluate_filter(
+        [7.5] * 11, 7.9, warmup=10, sigma_floor_pct=3.0, currency="EUR"
+    )
+    # dev 0.40 > 2.5 * (7.5 * 0.03) = 0.5625? No: 0.40 <= 0.5625 accepts.
+    assert frozen["accepted"] is True
+    assert frozen["band"] == pytest.approx(2.5 * 7.5 * 0.03)
+    assert (frozen["lo"], frozen["hi"]) == (
+        pytest.approx(7.5 - 0.5625),
+        pytest.approx(7.5 + 0.5625),
+    )
+    assert frozen["sigma"] == 0.0  # raw sigma, floor shows in band
+    assert frozen["sigma_zero"] is True
+    # The same window under the ABSOLUTE floor held that print out —
+    # the two semantics are genuinely different rules, not a rescale.
+    absolute = evaluate_filter(
+        [7.5] * 11, 7.9, warmup=10, sigma_floor=0.05, currency="EUR"
+    )
+    assert absolute["accepted"] is False
+    # pct 0 = no floor in the band (max(sd, 0)): ACCEPTANCE matches the
+    # legacy defaults, but the byte shape is CONFIG-keyed (hardening
+    # 2026-08-27): any pct-mode verdict records the fence bounds, so an
+    # artifact's key set can never depend on the window data. Legacy
+    # (no pct key, no currency, floor 0) keeps its published shape.
+    legacy_shape = evaluate_filter([7.5] * 11, 7.55, warmup=10)
+    assert not {"band", "lo", "hi"} & set(legacy_shape)
+    pct_zero = evaluate_filter(
+        [7.5] * 11, 7.55, warmup=10, sigma_floor_pct=0.0
+    )
+    assert pct_zero["accepted"] is legacy_shape["accepted"]
+    assert (pct_zero["band"], pct_zero["lo"], pct_zero["hi"]) == (
+        0.0, 7.5, 7.5,
+    )
+    assert {
+        k: v for k, v in pct_zero.items() if k not in ("band", "lo", "hi")
+    } == legacy_shape
+    # USD terms record the fence bounds too whenever the floor binds a
+    # positive value (the non-legacy-fence rule, unchanged).
+    usd = evaluate_filter(
+        [2.0] * 11, 2.03, warmup=10, sigma_floor_pct=3.0
+    )
+    assert usd["accepted"] is True  # dev 0.03 <= 2.5 * 0.06
+    assert usd["band"] == pytest.approx(2.5 * 0.06)
+
+
+def test_percent_floor_fence_refuses_non_positive_window_mean():
+    """Hardening 2026-08-27 (fail-closed): floor = mu * pct/100 disarms
+    exactly when the window is degenerate — a non-positive window mean is
+    garbage upstream, so percent mode refuses it loudly instead of
+    running an unfloored fence. Warm-up returns before mu exists, and
+    legacy absolute mode never anchors on mu — both untouched."""
+    for window in ([0.0] * 11, [-1.0] * 11, [-1.0, 1.0] * 6):
+        with pytest.raises(
+            ValueError, match="positive\\s+trailing-window mean"
+        ):
+            evaluate_filter(window, 2.0, warmup=10, sigma_floor_pct=3.0)
+    # Warm-up: shorter than warmup returns before mu is ever computed.
+    warm = evaluate_filter([0.0] * 3, 2.0, warmup=10, sigma_floor_pct=3.0)
+    assert warm == {"accepted": True, "unfiltered": True, "n_history": 3}
+    # Legacy absolute mode on the same degenerate window: untouched.
+    legacy = evaluate_filter([0.0] * 11, 2.0, warmup=10, sigma_floor=0.05)
+    assert legacy["accepted"] is False
+    assert legacy["band"] == pytest.approx(2.5 * 0.05)
+
+
+def test_percent_floor_vote_anchors_on_the_prints_own_price():
+    """Percent-form vote floor: a source cannot claim conviction tighter
+    than pct of its OWN quote — the anchor is the print the vote is cast
+    at (filter terms), so day-one votes (empty tail, no mean) are still
+    well-defined. Converts at the print's fx rate like the absolute
+    floor."""
+    frozen = vote_stddev(
+        [7.5, 7.5, 7.5],
+        sigma_floor=0.0,
+        sigma_floor_pct=3.0,
+        filter_price=7.5,
+        fx_factor=1.0,
+    )
+    assert frozen == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": pytest.approx(0.225),
+    }
+    # A genuinely volatile window keeps its real sigma once it exceeds
+    # the percent floor (pstdev([6,7]) = 0.5 > 0.03 * 6.8).
+    volatile = vote_stddev(
+        [6.0, 7.0],
+        sigma_floor=0.0,
+        sigma_floor_pct=3.0,
+        filter_price=6.8,
+        fx_factor=1.0,
+    )
+    assert volatile["sigma_floored"] is False
+    assert volatile["conf_usd_gpu_hr"] == 0.5
+    # Day-one: empty tail, sigma 0 — the floor IS the interval, priced
+    # off the print itself, converted at the print's own rate.
+    day_one = vote_stddev(
+        [],
+        sigma_floor=0.0,
+        sigma_floor_pct=3.0,
+        filter_price=7.5,
+        fx_factor=1.1555,
+    )
+    assert day_one["conf_usd_gpu_hr"] == pytest.approx(
+        round(7.5 * 0.03 * 1.1555, 6)
+    )
+    # Percent mode without the anchor is a coding error, refused loudly.
+    with pytest.raises(ValueError, match="requires filter_price"):
+        vote_stddev(
+            [7.5], sigma_floor=0.0, sigma_floor_pct=3.0, fx_factor=1.0
+        )
+
+
+def test_percent_floor_vote_refuses_non_positive_filter_price():
+    """Hardening 2026-08-27: filter_price <= 0 in percent mode would
+    resolve floor 0 and — over a frozen tail — mint a conf-0 vote,
+    infinite conviction off a garbage print (the floor>0 invariant the
+    median_ci_votes gate is built on). Refused loudly; legacy absolute
+    mode has no price anchor and is untouched."""
+    for bad in (0.0, -1.0):
+        with pytest.raises(ValueError, match="filter_price > 0"):
+            vote_stddev(
+                [0.0, 0.0],
+                sigma_floor=0.0,
+                sigma_floor_pct=3.0,
+                filter_price=bad,
+                fx_factor=1.0,
+            )
+    # Legacy absolute mode: same inputs, no anchor, no new refusal.
+    legacy = vote_stddev([0.0, 0.0], sigma_floor=0.05, fx_factor=1.0)
+    assert legacy == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.05,
+    }
+
+
+def test_config_percent_floor_validation_and_conditional_embed():
+    """Load rules for the pct keys (floor split, founder ruling
+    2026-08-27): the fence pct is a number >= 0, mutually exclusive with
+    the absolute key, and FENCE-ONLY — the median_ci_votes gate in the
+    percent regime is satisfied by vote_sigma_floor_pct > 0 alone (no
+    silent fallback to the fence floor), while the legacy absolute regime
+    keeps satisfying it via filter_sigma_floor > 0 untouched. The vote key
+    refuses without votes and alongside the absolute floor. Both pct keys
+    ride calc_params presence-gated (absent stays absent — the D2
+    discipline)."""
+    base = json.loads(
+        (REPO_ROOT / "config" / "index_basket.json").read_text()
+    )
+    calc_no_floor = {
+        k: v for k, v in base["calc"].items() if k != "filter_sigma_floor"
+    }
+    pct_pair = {
+        "filter_sigma_floor_pct": 3.0,
+        "vote_sigma_floor_pct": 3.0,
+    }
+
+    def _load(calc, tmp_path, name):
+        p = tmp_path / name
+        p.write_text(json.dumps({**base, "calc": calc}))
+        return load_basket_config(p)
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp_path = Path(td)
+        # The pct pair satisfies the median_ci_votes gate and embeds
+        # conditionally — both keys, floats, absolute absent.
+        cfg = _load({**calc_no_floor, **pct_pair}, tmp_path, "pct.json")
+        params = calc_params(cfg)
+        assert params["filter_sigma_floor_pct"] == 3.0
+        assert params["vote_sigma_floor_pct"] == 3.0
+        assert "filter_sigma_floor" not in params
+        # The legacy config's params are byte-untouched by this change.
+        legacy_params = calc_params(
+            _load(dict(base["calc"]), tmp_path, "legacy.json")
+        )
+        assert legacy_params["filter_sigma_floor"] == 0.05
+        assert "filter_sigma_floor_pct" not in legacy_params
+        assert "vote_sigma_floor_pct" not in legacy_params
+        # Both fence keys at once: refused, one floor semantics per mint.
+        with pytest.raises(BasketConfigError, match="mutually exclusive"):
+            _load(
+                {**base["calc"], "filter_sigma_floor_pct": 3.0},
+                tmp_path,
+                "both.json",
+            )
+        # Malformed pct values: refused at load (either knob).
+        for bad in (-1, "3", True):
+            with pytest.raises(
+                BasketConfigError, match="filter_sigma_floor_pct"
+            ):
+                _load(
+                    {**calc_no_floor, **pct_pair,
+                     "filter_sigma_floor_pct": bad},
+                    tmp_path,
+                    "bad.json",
+                )
+            with pytest.raises(
+                BasketConfigError, match="vote_sigma_floor_pct"
+            ):
+                _load(
+                    {**calc_no_floor, **pct_pair,
+                     "vote_sigma_floor_pct": bad},
+                    tmp_path,
+                    "bad_vote.json",
+                )
+        # Percent-regime votes lane MISSING the vote floor (or at 0): the
+        # reworked gate refuses — the fence floor never backs the vote.
+        for calc in (
+            {**calc_no_floor, "filter_sigma_floor_pct": 3.0},
+            {**calc_no_floor, **pct_pair, "vote_sigma_floor_pct": 0},
+        ):
+            with pytest.raises(
+                BasketConfigError, match="vote_sigma_floor_pct > 0"
+            ):
+                _load(calc, tmp_path, "gate.json")
+        # Fence pct 0 with a positive vote floor is a REAL percent ruling
+        # now (the fence floor is fence-only) and validates.
+        _load(
+            {**calc_no_floor, **pct_pair, "filter_sigma_floor_pct": 0},
+            tmp_path,
+            "fence_zero.json",
+        )
+        # A vote floor without votes is inert config and refuses.
+        no_votes = {
+            k: v
+            for k, v in calc_no_floor.items()
+            if k != "composite_statistic"
+        }
+        with pytest.raises(
+            BasketConfigError,
+            match="vote_sigma_floor_pct requires calc.composite_statistic",
+        ):
+            _load({**no_votes, **pct_pair}, tmp_path, "no_votes.json")
+        # A vote floor alongside the ABSOLUTE floor refuses — the absolute
+        # key's frozen semantics already govern both sigmas.
+        with pytest.raises(
+            BasketConfigError,
+            match="absolute\\s+calc.filter_sigma_floor are mutually",
+        ):
+            _load(
+                {**base["calc"], "vote_sigma_floor_pct": 3.0},
+                tmp_path,
+                "vote_plus_absolute.json",
+            )
+
+
+def test_config_refuses_panel_only_vote_sigma_source():
+    """calc.vote_sigma_source is a PANEL-ONLY key (ruling 2026-08-27,
+    gpu_index.index.panel_config owns it): the daily engine never reads it, so
+    silently accepting it here would let a daily config document a vote
+    rule its own series never runs — refused loudly at load instead."""
+    base = json.loads(
+        (REPO_ROOT / "config" / "index_basket.json").read_text()
+    )
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "panel_key.json"
+        cfg = json.loads(json.dumps(base))
+        cfg["calc"]["vote_sigma_source"] = "dw_history"
+        path.write_text(json.dumps(cfg))
+        with pytest.raises(BasketConfigError, match="vote_sigma_source"):
+            load_basket_config(path)
+
+
+def test_compute_day_refuses_ambiguous_floor_pair_in_params():
+    """Hardening 2026-08-27: config load refuses the floor pair, but
+    params can also arrive from an artifact-embedded/unvalidated dict —
+    with both keys present the binding floor is ambiguous, so the
+    resolution site refuses loudly naming both keys. No published
+    artifact carries both (each carries filter_sigma_floor alone or no
+    floor key), so replays never hit this."""
+    cfg = json.loads(json.dumps(CONFIG))
+    assert "filter_sigma_floor" in cfg["calc"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0  # the unvalidated bypass
+    with pytest.raises(
+        ValueError, match="filter_sigma_floor and\\s+filter_sigma_floor_pct"
+    ):
+        compute_day(
+            config=cfg,
+            day="2026-08-10",
+            snapshot={"run_id": "x", "late_fill": False, "sources": []},
+            substituted_from=None,
+            window_history={},
+            window_currencies={},
+            fx_records={},
+            weight_state=_ws(),
+            prior_slot_prints={},
+        )
+
+
+def test_compute_day_fence_and_vote_floors_bite_independently():
+    """Floor split through the DAILY engine (founder ruling 2026-08-27,
+    parity with the panel): fence pct 3.0 / vote pct 5.0 —
+
+      - massedcompute, frozen 11-print 5.95 window, 6.15 print: the FENCE
+        band floors at 3% of the window MEAN (band 3.0 * 0.1785 ->
+        0.5355, dev 0.2 accepted) while its VOTE floors at 5% of the 6.15
+        PRINT: 6.15 * (5.0/100.0) = 0.30750000000000005 -> 0.3075 at the
+        6dp wire round — NOT 3% of the print (0.1845) and NOT any pct of
+        the mean;
+      - hyperstack, [2.4, 2.6] x 6 window (pstdev 0.10000000000000009),
+        2.5 print: the real sd EXCEEDS its 3% fence floor (0.075), so the
+        fence band is 3.0 * sd -> 0.3 (fence floor no bite), yet the vote
+        is STILL floored — 0.1 < 0.125 (5% of 2.5) — pinning that
+        sigma_floored reflects the VOTE floor."""
+    cfg = json.loads(json.dumps(CONFIG))
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0
+    cfg["calc"]["vote_sigma_floor_pct"] = 5.0
+    cfg["calc"]["methodology_id"] = "annex_a_v0_2_calc_v_test_split"
+    payload = compute_day(
+        config=cfg,
+        day="2026-08-10",
+        snapshot={
+            "run_id": "split-e2e",
+            "late_fill": False,
+            "sources": [
+                _entry("massedcompute", [_obs("B300", usd=6.15)]),
+                _entry("hyperstack", [_obs("B300", usd=2.5)]),
+            ],
+        },
+        substituted_from=None,
+        window_history={
+            "massedcompute": [5.95] * 11,
+            "hyperstack": [2.4, 2.6] * 6,
+        },
+        window_currencies={"massedcompute": "USD", "hyperstack": "USD"},
+        fx_records=FX_2026_08_10,
+        weight_state=_ws(),
+        prior_slot_prints={},
+    )
+    assert payload["calc_params"]["filter_sigma_floor_pct"] == 3.0
+    assert payload["calc_params"]["vote_sigma_floor_pct"] == 5.0
+    assert "filter_sigma_floor" not in payload["calc_params"]
+    by_id = {s["source_id"]: s for s in payload["sources"]}
+    massed = by_id["massedcompute"]["filter"]
+    assert massed["accepted"] is True
+    assert massed["band"] == pytest.approx(3.0 * 0.1785)
+    assert by_id["massedcompute"]["vote"] == {
+        "sigma": 0.0,
+        "sigma_floored": True,
+        "conf_usd_gpu_hr": 0.3075,
+    }
+    hyper = by_id["hyperstack"]["filter"]
+    assert hyper["accepted"] is True
+    assert hyper["band"] == 0.3  # 3.0 * the REAL sd — fence floor no bite
+    assert by_id["hyperstack"]["vote"] == {
+        "sigma": 0.1,
+        "sigma_floored": True,  # the VOTE floor bites where the fence's didn't
+        "conf_usd_gpu_hr": 0.125,
+    }
+
+
+def test_compute_day_refuses_percent_regime_params_missing_vote_floor():
+    """Era rule (floor split, 2026-08-27), daily mirror of the panel: a
+    percent-regime median-votes params dict WITHOUT vote_sigma_floor_pct
+    fails LOUDLY — no published daily series is percent-regime, so no
+    artifact-embedded params legitimately lack the key, and silently
+    falling back to the fence floor would price votes under a rule the
+    params never recorded. Legacy absolute params (every published vote
+    day) are untouched."""
+    cfg = json.loads(json.dumps(CONFIG))
+    del cfg["calc"]["filter_sigma_floor"]
+    cfg["calc"]["filter_sigma_floor_pct"] = 3.0  # the unvalidated bypass
+    with pytest.raises(
+        ValueError, match="missing\\s+vote_sigma_floor_pct"
+    ):
+        compute_day(
+            config=cfg,
+            day="2026-08-10",
+            snapshot={"run_id": "x", "late_fill": False, "sources": []},
+            substituted_from=None,
+            window_history={},
+            window_currencies={},
+            fx_records={},
+            weight_state=_ws(),
+            prior_slot_prints={},
+        )
+
+
+def test_compute_day_refuses_vote_floor_alongside_absolute_params():
+    """Floor-split twin of the ambiguous-pair guard, daily mirror: params
+    carrying vote_sigma_floor_pct together with the ABSOLUTE
+    filter_sigma_floor raise loudly — the absolute key's frozen semantics
+    govern both sigmas, so the binding vote floor would be ambiguous. No
+    published artifact carries that pair."""
+    cfg = json.loads(json.dumps(CONFIG))
+    assert "filter_sigma_floor" in cfg["calc"]
+    cfg["calc"]["vote_sigma_floor_pct"] = 3.0  # the unvalidated bypass
+    with pytest.raises(
+        ValueError,
+        match="vote_sigma_floor_pct without\\s+filter_sigma_floor_pct",
+    ):
+        compute_day(
+            config=cfg,
+            day="2026-08-10",
+            snapshot={"run_id": "x", "late_fill": False, "sources": []},
+            substituted_from=None,
+            window_history={},
+            window_currencies={},
+            fx_records={},
+            weight_state=_ws(),
+            prior_slot_prints={},
+        )
 
 
 def test_median_ci_composite_pyth_properties():
@@ -970,6 +1472,246 @@ def test_config_rejects_median_votes_without_a_positive_floor(tmp_path):
         p.write_text(json.dumps({**base, "calc": calc_override}))
         with pytest.raises(BasketConfigError, match="filter_sigma_floor"):
             load_basket_config(p)
+
+
+def _hand_walk_votes():
+    """The calc_v4 21-vote hand-walk ballot (7 sources, W = 2.70; every
+    conf at the 0.05 floor except scaleway's converted 0.057775)."""
+    book = [
+        ("runpod", 0.15, 7.85),
+        ("nebius", 0.15, 7.40),
+        ("scaleway", 0.15, 8.66625),
+        ("verda", 0.15, 7.50),
+        ("hyperstack", 0.10, 7.39),
+        ("massed", 0.10, 8.00),
+        ("crusoe", 0.10, 5.95),
+    ]
+    confs = {sid: 0.05 for sid, _, _ in book}
+    confs["scaleway"] = 0.057775
+    votes = []
+    for sid, w, p in book:
+        votes.extend([(p - confs[sid], w), (p, w), (p + confs[sid], w)])
+    return book, confs, votes
+
+
+def test_interquantile_mean_matches_its_integral_definition():
+    """The interquantile mean is (1/2a) * integral of Q(u) du
+    over [1/2 - a, 1/2 + a] — checked against a midpoint Riemann sum with
+    the FROZEN _weighted_quantile as the oracle, plus exact closed forms."""
+    # Hand-walk: unit weights on 1/2/10, alpha 1/4 -> the band [0.75, 2.25]
+    # of W = 3 overlaps the votes 0.25 / 1.0 / 0.25, so the mean is
+    # (1*0.25 + 2*1 + 10*0.25) / 1.5 = 19/6 — fractional band edges bite.
+    tiny = [(1.0, 1.0), (2.0, 1.0), (10.0, 1.0)]
+    assert _interquantile_mean(tiny, Fraction(1, 4)) == Fraction(19, 6)
+    _, _, votes = _hand_walk_votes()
+    # alpha -> 0 continuity THROUGH the exact-boundary midpoint convention:
+    # a 0.001 band straddles the 1.35 boundary half inside verda's point
+    # vote and half inside its high vote — exactly the median's midpoint.
+    assert _interquantile_mean(votes, Fraction("0.001")) == Fraction("7.525")
+    # alpha = 1/2 IS the weighted mean of the votes, exactly.
+    total = sum((Fraction(str(w)) for _, w in votes), start=Fraction(0))
+    vote_mean = (
+        sum(
+            (Fraction(str(v)) * Fraction(str(w)) for v, w in votes),
+            start=Fraction(0),
+        )
+        / total
+    )
+    assert _interquantile_mean(votes, Fraction(1, 2)) == vote_mean
+    # The integral definition, discretized: midpoint samples of the frozen
+    # quantile function (step-function error bound ~ vote-range / n).
+    n = 2001
+    for alpha in (Fraction("0.1"), Fraction("0.2")):
+        lo = Fraction(1, 2) - alpha
+        sampled = (
+            sum(
+                _weighted_quantile(
+                    votes, lo + 2 * alpha * Fraction(2 * i + 1, 2 * n)
+                )
+                for i in range(n)
+            )
+            / n
+        )
+        assert float(_interquantile_mean(votes, alpha)) == pytest.approx(
+            sampled, abs=1e-3
+        )
+    # Refusals: the band must be a band, over a priceable book.
+    for bad in (Fraction(0), Fraction(-1, 10), Fraction(51, 100)):
+        with pytest.raises(ValueError, match="alpha"):
+            _interquantile_mean(votes, bad)
+    with pytest.raises(ValueError, match="positive weights"):
+        _interquantile_mean([(5.0, 1.0), (9.0, -0.1)], Fraction(1, 4))
+    with pytest.raises(ValueError, match="empty"):
+        _interquantile_mean([], Fraction(1, 4))
+
+
+def test_median_composite_iqm_alpha_prices_the_band_mean():
+    """nonzero iqm_alpha prices the SAME ballot at the band mean,
+    echoes the alpha + point median for artifact self-description, and
+    anchors the dispersion at the published (rounded) value; alpha 0 is the
+    frozen median path verbatim, key set included."""
+    book, confs, _ = _hand_walk_votes()
+    base = median_stddev_composite(book, confs)
+    assert median_stddev_composite(book, confs, iqm_alpha=0.0) == base
+    assert "iqm_alpha" not in base
+    assert "vote_median_usd_gpu_hr" not in base
+    tuned = median_stddev_composite(book, confs, iqm_alpha=0.1)
+    # Exact 545/72, rounded half-even at the 6dp artifact grain.
+    assert tuned["value_usd_gpu_hr"] == 7.569444
+    assert tuned["iqm_alpha"] == 0.1
+    assert tuned["vote_median_usd_gpu_hr"] == base["value_usd_gpu_hr"] == 7.525
+    # The ballot's quantiles are unchanged; the dispersion anchors at the
+    # published value: max(7.569444 - 7.40, 7.95 - 7.569444).
+    assert tuned["vote_p25_usd_gpu_hr"] == base["vote_p25_usd_gpu_hr"]
+    assert tuned["vote_p75_usd_gpu_hr"] == base["vote_p75_usd_gpu_hr"]
+    assert tuned["confidence_usd_gpu_hr"] == 0.380556
+    assert tuned["statistic"] == "median_ci_votes"
+    # The Pyth robustness the median was adopted FOR survives a 40-60%
+    # band: the liar's tight far vote still cannot drag the index outside
+    # the central vote mass.
+    liar_book = [
+        ("a", 0.2, 7.0),
+        ("b", 0.2, 7.1),
+        ("c", 0.2, 6.9),
+        ("d", 0.2, 7.0),
+        ("liar", 0.2, 20.0),
+    ]
+    liar_confs = {"a": 0.1, "b": 0.1, "c": 0.1, "d": 0.1, "liar": 0.05}
+    robust = median_stddev_composite(liar_book, liar_confs, iqm_alpha=0.1)
+    assert (
+        robust["vote_p25_usd_gpu_hr"]
+        <= robust["value_usd_gpu_hr"]
+        <= robust["vote_p75_usd_gpu_hr"]
+    )
+    assert abs(robust["value_usd_gpu_hr"] - 7.0) < 0.2
+
+
+def test_iqm_quantization_regimes_pinned_at_an_exact_tie():
+    """Review finding: the two rounding regimes are DISTINGUISHABLE only
+    at a 7dp-halfway quantity, and no ordinary vector reaches one — so this
+    pins them where they genuinely differ, or a mirror (or refactor) using
+    the wrong tie rule passes every other test while drifting from prod on
+    tie days. The band mean quantizes half-EVEN on the exact rational; the
+    vote_median diagnostic keeps the frozen float round() so it prints
+    exactly what the alpha-0 branch would have published."""
+    # Helper-level: mean of 1.0 and 1.000001 = 2000001/2000000, a true
+    # 7dp-halfway tie with an EVEN floor — half-even stays 1.0, half-up
+    # would print 1.000001.
+    assert (
+        float(round(_interquantile_mean([(1.000001, 1.0), (1.0, 1.0)], Fraction(1, 2)), 6))
+        == 1.0
+    )
+    # Even/odd floors through the engine (alpha 1/2 = the vote mean):
+    # 1.0000025 has an even floor (stays), 1.0000015 an odd one (goes up)
+    # — both land on the even 6dp neighbor 1.000002.
+    even = median_stddev_composite(
+        [("a", 1.0, 1.000002), ("b", 1.0, 1.000003)],
+        {"a": 0.0, "b": 0.0},
+        iqm_alpha=0.5,
+    )
+    assert even["value_usd_gpu_hr"] == 1.000002
+    odd = median_stddev_composite(
+        [("a", 1.0, 1.000001), ("b", 1.0, 1.000002)],
+        {"a": 0.0, "b": 0.0},
+        iqm_alpha=0.5,
+    )
+    assert odd["value_usd_gpu_hr"] == 1.000002
+    # The dual-regime ballot: equal weights make the exact cum == target
+    # boundary fire, so BOTH the band mean and the point median are the
+    # same midpoint 1.0000005 — and the artifact prints it two ways on
+    # purpose: 1.0 as the half-even band mean, 1.000001 as the frozen
+    # float-round median (byte-identical to what alpha 0 publishes).
+    book = [("a", 0.5, 1.0), ("b", 0.5, 1.000001)]
+    confs = {"a": 0.05, "b": 0.05}
+    dual = median_stddev_composite(book, confs, iqm_alpha=0.05)
+    assert dual["value_usd_gpu_hr"] == 1.0
+    assert dual["vote_median_usd_gpu_hr"] == 1.000001
+    frozen = median_stddev_composite(book, confs)
+    assert dual["vote_median_usd_gpu_hr"] == frozen["value_usd_gpu_hr"]
+    # Fail-closed on a derived-vote overflow: finite price and stddev whose
+    # sum is an infinity must raise, never seat an inf at the ladder edge.
+    with pytest.raises(ValueError, match="non-finite vote"):
+        median_stddev_composite(
+            [("a", 1.0, 1e308), ("b", 1.0, 5.0)],
+            {"a": 1e308, "b": 0.05},
+            iqm_alpha=0.1,
+        )
+    with pytest.raises(ValueError, match="non-finite vote"):
+        median_stddev_composite(
+            [("a", 1.0, 1e308), ("b", 1.0, 5.0)], {"a": 1e308, "b": 0.05}
+        )
+
+
+def test_config_rejects_bad_iqm_alpha(tmp_path):
+    """iqm_alpha is load-validated — a band outside [0, 1/2], a
+    non-number, or a band without the vote statistic refuses at LOAD, never
+    pinning silently-inert or unpriceable params as series law."""
+    base = json.loads((REPO_ROOT / "config" / "index_basket.json").read_text())
+    p = tmp_path / "c.json"
+    for bad in (-0.1, 0.51, True, "0.1", None):
+        p.write_text(
+            json.dumps({**base, "calc": {**base["calc"], "iqm_alpha": bad}})
+        )
+        with pytest.raises(BasketConfigError, match="iqm_alpha"):
+            load_basket_config(p)
+    # The knob is a band of the VOTE ladder — refused without the statistic.
+    stripped = {
+        k: v for k, v in base["calc"].items() if k != "composite_statistic"
+    }
+    p.write_text(json.dumps({**base, "calc": {**stripped, "iqm_alpha": 0.1}}))
+    with pytest.raises(BasketConfigError, match="iqm_alpha"):
+        load_basket_config(p)
+    # Well-formed bands load; 0 is legal (the median, explicitly); the
+    # param embeds via calc_params — and stays ABSENT when unset (frozen
+    # series keep their exact artifact bytes).
+    for good in (0, 0.1, 0.5):
+        p.write_text(
+            json.dumps({**base, "calc": {**base["calc"], "iqm_alpha": good}})
+        )
+        assert calc_params(load_basket_config(p))["iqm_alpha"] == float(good)
+    assert "iqm_alpha" not in calc_params(CONFIG)
+
+
+def test_compute_day_iqm_alpha_recomputable_from_the_artifact():
+    """End to end: a tuned day embeds the alpha in calc_params,
+    echoes it in the index block, and the published value reproduces from
+    the artifact's own vote blocks + the day's weight vector alone — the
+    same recompute the ops mirror runs."""
+    config = json.loads(json.dumps(CONFIG))
+    config["calc"]["iqm_alpha"] = 0.1
+    payload = compute_day(
+        config=config,
+        day="2026-08-16",
+        snapshot=_live_first_capture_snapshot(),
+        substituted_from=None,
+        window_history={},
+        window_currencies={},
+        fx_records=FX_2026_08_10,
+        weight_state=_ws(),
+        prior_slot_prints={},
+    )
+    index = payload["index"]
+    assert payload["calc_params"]["iqm_alpha"] == 0.1
+    assert index["iqm_alpha"] == 0.1
+    weights = payload["weight_calc"]["weights"]
+    votes = []
+    for block in payload["sources"]:
+        if "vote" not in block:
+            continue
+        price = block["chosen"]["usd_per_gpu_hr"]
+        conf = block["vote"]["conf_usd_gpu_hr"]
+        weight = weights[block["source_id"]]
+        votes.extend(
+            [(price - conf, weight), (price, weight), (price + conf, weight)]
+        )
+    assert index["value_usd_gpu_hr"] == float(
+        round(_interquantile_mean(votes, Fraction("0.1")), 6)
+    )
+    assert index["vote_median_usd_gpu_hr"] == round(
+        _weighted_quantile(votes, Fraction(1, 2)), 6
+    )
+    # The knob genuinely bit: the band mean moved this day off its median.
+    assert index["value_usd_gpu_hr"] != index["vote_median_usd_gpu_hr"]
 
 
 def test_compute_day_held_out_source_casts_no_vote():
@@ -2119,7 +2861,7 @@ def test_manual_exclusion_excludes_print_and_window():
     # lands exactly on verda's mid vote 7.50 (cum 1.20→1.35) so the index
     # averages with verda's high vote (7.50 + 7.55)/2 = 7.525. The retired
     # weighted mean was (0.15*(7.50+7.85+7.40+8.66625)
-    #  + 0.10*(7.39+5.95+8.0)) / 0.90 = 7.607153.
+    # + 0.10*(7.39+5.95+8.0)) / 0.90 = 7.607153.
     assert index["value_usd_gpu_hr"] == pytest.approx(7.525, abs=1e-6)
     assert index["weighted_mean_usd_gpu_hr"] == pytest.approx(
         7.607153, abs=1e-6

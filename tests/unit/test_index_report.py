@@ -560,6 +560,29 @@ def test_params_footer_shows_com1310_knobs_only_when_present():
         "terms recorded_currency &#183; sigma-floor 0.05</div>" in html
     )
 
+    # Percent-form floor: the segment carries the % suffix — a pct-mode
+    # day must never read as an absolute floor.
+    pct = {
+        "2026-08-10": {
+            **_composite_payload(),
+            "calc_params": {
+                **legacy_params,
+                "filter_terms": "recorded_currency",
+                "filter_sigma_floor_pct": 3.0,
+            },
+        }
+    }
+    html = render_report(
+        pointer=None,
+        latest_snapshot=None,
+        composites_by_date=pct,
+        now=NOW,
+    )
+    assert (
+        f'<div class="sub params">{legacy_line} &#183; '
+        "terms recorded_currency &#183; sigma-floor 3.0%</div>" in html
+    )
+
 
 def test_v4_vote_fields_render_and_legacy_days_stay_untouched():
     """calc_v4 era-correctness both ways: a v4 artifact renders
@@ -647,6 +670,21 @@ def test_v4_vote_fields_render_and_legacy_days_stay_untouched():
     assert "weighted mean, renormalized" in legacy_html
     # The stable ±CI column renders a dash for legacy days.
     assert "&#177;CI" in legacy_html
+
+    # a tuned day self-describes on the dashboard — the sources
+    # tile names the band and the point-median diagnostic, so an operator
+    # never opens the raw artifact to see which statistic priced the day.
+    tuned_day = json.loads(json.dumps(v4_day))
+    tuned_day["index"]["iqm_alpha"] = 0.1
+    tuned_day["index"]["vote_median_usd_gpu_hr"] = 7.525
+    tuned_html = render_report(
+        pointer=None,
+        latest_snapshot=None,
+        composites_by_date={"2026-08-10": tuned_day},
+        now=NOW,
+    )
+    assert "band mean &#177;0.1 of stddev votes, median $7.5250" in tuned_html
+    assert "median of stddev votes, weighted" not in tuned_html
 
 
 def test_line_chart_held_last_point_keeps_amber_marker():

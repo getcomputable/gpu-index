@@ -123,6 +123,7 @@ def build_capture_snapshot(
     capturer: Dict[str, Any],
     previous_day_empty: Optional[bool] = None,
     late_fill: bool = False,
+    slot_minute_utc: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Assemble the immutable capture document.
 
@@ -186,6 +187,15 @@ def build_capture_snapshot(
         "captured_at": rfc3339(captured_at),
         "capture_date": slot_date.isoformat(),
         "slot_hour_utc": int(slot_hour_utc),
+        # CONDITIONAL (minute-vocabulary writers only -- 15-min cadence
+        # design 2026-08-27): its presence pins the snapshot's key token
+        # format (slot<HHMM>-) and carries the mark's minute-of-hour;
+        # hour-vocabulary lanes' snapshot bytes are unchanged.
+        **(
+            {"slot_minute_utc": int(slot_minute_utc)}
+            if slot_minute_utc is not None
+            else {}
+        ),
         "canonical_slot": bool(canonical),
         # canonical_slot marks WHICH slot this is; late_fill marks whether
         # it was recorded after the mark hour (up to one window late).
