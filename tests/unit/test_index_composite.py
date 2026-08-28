@@ -549,7 +549,6 @@ def _live_first_capture_snapshot():
             _entry("latitude", [_obs("B300", usd=16.0, basis=8), _obs("B300", usd=8.0, tier="monthly-commit", basis=8)]),
             _entry("e2e", [_obs("B200", usd=6.99)]),
             _entry("shadeform", [_obs("B200", usd=3.74, basis=8), _obs("B200", usd=6.99, basis=1)]),
-            _entry("computedesk", [], status="unimplemented"),
         ],
     }
 
@@ -601,9 +600,9 @@ def test_golden_first_live_capture():
     assert index["sources_used_count"] == 8
     pool = payload["fallback_pool"]
     pool_by_id = {p["source_id"]: p for p in pool["sources"]}
+    assert set(pool_by_id) == {"nebius", "e2e", "shadeform"}
     assert pool_by_id["nebius"]["chosen"]["usd_per_gpu_hr"] == 7.15
     assert pool_by_id["shadeform"]["chosen"]["usd_per_gpu_hr"] == 3.74
-    assert pool_by_id["computedesk"]["status"] == "unimplemented"
     assert pool["mean_usd_gpu_hr"] == pytest.approx((7.15 + 6.99 + 3.74) / 3)
     assert payload["snapshot_late_fill"] is True
     # calc_v5 fallback mode: config 2.1 weights over the day's eligible set.
@@ -2529,11 +2528,19 @@ def test_calc_params_pin_for_methodology_v6():
     assert params["fx_max_staleness_days"] == 7
     assert params["drift_scan_days"] == 14
     assert params["fallback_pool_sku"] == "B200"
+    # The pool vector carries three seats. A fourth seat was configured
+    # here and never implemented: it held no collector, printed nothing on
+    # any day of the series, and rode the vector as a permanent
+    # no-print stub. It was dropped from the vector before the public
+    # flip. The drop is inert to every published number (a seat with no
+    # print never entered the pool mean) and the series is frozen and no
+    # longer extended, so no methodology was minted for it; the frozen
+    # artifacts keep their own bytes and --verify-published names the
+    # difference as calc_params drift, which is what that mode is for.
     assert params["fallback_pool_sources"] == [
         "nebius",
         "e2e",
         "shadeform",
-        "computedesk",
     ]
     # calc_v5: EVERYTHING that shapes a weight rides calc_params — knobs,
     # per-source risk caps, and the opening-weights fallback vector itself — so
@@ -2923,6 +2930,48 @@ def test_manual_exclusion_applies_to_fallback_pool():
     assert payload["fallback_pool"]["mean_usd_gpu_hr"] == pytest.approx(
         (7.15 + 3.74) / 2
     )
+
+
+def test_fallback_pool_rolls_every_configured_seat_including_no_print_ones():
+    """The pool block is a COMPLETE roll of the configured pool vector: a
+    seat that printed nothing is listed with the status that explains why
+    (its recorded snapshot status, or 'missing' when the capture holds no
+    entry for it at all), never silently dropped — a shrinking pool block
+    would otherwise be indistinguishable from a shrinking pool vector. A
+    no-print seat contributes nothing to the mean."""
+    cfg = json.loads(json.dumps(CONFIG))
+    cfg["calc"]["fallback_pool_sources"] = [
+        "nebius",
+        "e2e",
+        "shadeform",
+        "charlie",
+        "zulu",
+    ]
+    snapshot = _live_first_capture_snapshot()
+    # charlie: an entry with a recorded status and zero observations.
+    # zulu: configured into the vector, absent from the capture entirely.
+    snapshot["sources"].append(_entry("charlie", [], status="unimplemented"))
+    payload = compute_day(
+        config=cfg,
+        day="2026-08-10",
+        snapshot=snapshot,
+        substituted_from=None,
+        window_history={},
+        window_currencies={},
+        fx_records=FX_2026_08_10,
+        weight_state=_ws(),
+        prior_slot_prints={},
+    )
+    pool = payload["fallback_pool"]
+    pool_by_id = {p["source_id"]: p for p in pool["sources"]}
+    assert set(pool_by_id) == {"nebius", "e2e", "shadeform", "charlie", "zulu"}
+    assert pool_by_id["charlie"]["status"] == "unimplemented"
+    assert pool_by_id["zulu"]["status"] == "missing"
+    assert "chosen" not in pool_by_id["charlie"]
+    assert "chosen" not in pool_by_id["zulu"]
+    # The mean is the three printing seats only — unchanged by the two
+    # no-print seats riding the vector.
+    assert pool["mean_usd_gpu_hr"] == pytest.approx((7.15 + 6.99 + 3.74) / 3)
 
 
 def test_manual_exclusions_are_deterministically_ordered():

@@ -18,9 +18,7 @@ Contract per collector:
     feed the basket snapshot only.
 
 Every recipe below was fetched live and independently re-run before
-landing. Compute Desk stays unimplemented: its index API
-(data-api.compute-index.com) 401s every data endpoint — keys are issued
-manually, so there is no public print to record.
+landing.
 """
 
 from __future__ import annotations

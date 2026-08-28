@@ -769,7 +769,7 @@ def _cfg_for_snapshot():
         "sources": [
             {"source_id": "verda", "display_name": "Verda", "role": "b300_basket", "weight": 0.5, "source_type": "direct_principal"},
             {"source_id": "vast", "display_name": "Vast.ai", "role": "b300_basket", "weight": 0.5, "source_type": "marketplace"},
-            {"source_id": "computedesk", "display_name": "Compute Desk", "role": "b200_pool", "weight": None, "source_type": "index_provider"},
+            {"source_id": "charlie", "display_name": "Charlie", "role": "b200_pool", "weight": None, "source_type": "reseller_pool"},
         ],
     }
 
@@ -795,7 +795,7 @@ def _snapshot():
             "observations": [],
         },
         {
-            "source_id": "computedesk",
+            "source_id": "charlie",
             "status": "unimplemented",
             "error": "collector not implemented yet",
             "observations": [],
@@ -817,10 +817,10 @@ def _snapshot():
 def test_snapshot_stores_per_source_prints_and_no_composite():
     payload = _snapshot()
     # Every configured source appears, failures as visible holes.
-    assert [s["source_id"] for s in payload["sources"]] == ["verda", "vast", "computedesk"]
+    assert [s["source_id"] for s in payload["sources"]] == ["verda", "vast", "charlie"]
     assert payload["sources_ok"] == ["verda"]
     assert payload["sources_failed"] == ["vast"]
-    assert payload["sources_unimplemented"] == ["computedesk"]
+    assert payload["sources_unimplemented"] == ["charlie"]
     verda = payload["sources"][0]
     assert verda["weight"] == 0.5 and verda["source_type"] == "direct_principal"
     assert verda["observations"][0]["raw_value"] == "7.50"
@@ -1070,7 +1070,7 @@ def test_collect_all_partitions_ok_error_unimplemented(monkeypatch):
     assert by_id["verda"]["status"] == "ok"
     assert by_id["vast"]["status"] == "error"
     assert "feed down" in by_id["vast"]["error"]
-    assert by_id["computedesk"]["status"] == "unimplemented"
+    assert by_id["charlie"]["status"] == "unimplemented"
     assert all("elapsed_seconds" in r for r in results if r["status"] != "unimplemented")
 
 
