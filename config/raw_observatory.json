@@ -281,6 +281,13 @@
       "source_type": "direct_principal",
       "first_party": true,
       "notes": "Unauthenticated dashboard API GET https://cloud-api.voltagepark.com/api/v1/bare-metal/locations (the SPA's logged-out variant) — rows keyed by specs_per_node.gpu_model with gpu_price_ethernet + gpu_price_infiniband as decimal strings, USD per GPU/hr; recorded as two on-demand observations distinguished by extra.network (networking variants, NOT an on-demand/reserved split). Availability counts can be 0 while prices stay published (metadata, never a gate); no currency field (USD pinned from provider dollar prints); fails closed on missing/renamed fields or pagination appearing."
+    },
+    {
+      "source_id": "hyperbolic",
+      "display_name": "Hyperbolic",
+      "source_type": "direct_partnered",
+      "first_party": true,
+      "notes": "Public no-auth /v2/alpha/on-demand/rental-options JSON — every on-demand option; costPerHourCents is the whole-option total, divided by required gpuCount (never defaulted) for per-GPU USD; missing totalAvailable stays unknown and availability never gates price; providerCostPerHourCents is deliberately never republished; unknown *PerHourCents keys fail closed."
     }
   ]
 }
