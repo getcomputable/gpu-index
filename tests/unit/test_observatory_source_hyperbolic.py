@@ -318,9 +318,7 @@ def test_rejected_supplier_cost_never_leaks_through_collect_all_error(
     }
     out = collect_all(config, {"hyperbolic": collect})
     assert out[0]["status"] == "error"
-    # No failure_kind pin here: this repo's capture engine records status
-    # and error text only. Restore the pin when the classification
-    # vocabulary lands.
+    assert out[0]["failure_kind"] == "parse"
     assert "providerCostPerHourCents" not in json.dumps(out, sort_keys=True)
 
 

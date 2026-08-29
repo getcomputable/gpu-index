@@ -37,6 +37,13 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _CHUNK = 1 << 16
 
 
+class TransportError(RuntimeError):
+    """A transport-integrity refusal (body cap, slow-drip guard): the bytes
+    never arrived whole, so downstream failure classification must file it
+    with the fetch failures, never the parse failures. RuntimeError subclass
+    so every existing except/raise contract is unchanged."""
+
+
 class _HttpsOnlyRedirect(urllib.request.HTTPRedirectHandler):
     """Follow 308s like 302s (urllib skips 308 by default), and refuse any
     redirect target that is not https."""
@@ -84,9 +91,11 @@ def read_body_capped(
             return b"".join(chunks)
         total += len(chunk)
         if total > limit:
-            raise RuntimeError(f"response body exceeds {limit} bytes — refusing")
+            raise TransportError(
+                f"response body exceeds {limit} bytes — refusing"
+            )
         if time.monotonic() > deadline:
-            raise RuntimeError(
+            raise TransportError(
                 f"response body still streaming after {wall_clock_limit}s — refusing"
             )
         chunks.append(chunk)

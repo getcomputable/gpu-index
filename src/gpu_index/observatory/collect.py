@@ -17,9 +17,69 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Set
 
+from gpu_index.common.http import TransportError
+
 DEFAULT_CAPTURE_BUDGET_SECONDS = 1500.0
 DEFAULT_PER_SOURCE_DEADLINE_SECONDS = 120.0
 DEFAULT_PER_SOURCE_TIMEOUT_SECONDS = 30.0
+
+# Failure classification (carry-forward design 2026-08-28): every error
+# entry says WHICH WAY the source died, because the panel engine's
+# carry-forward knob is scoped by failure class
+# (calc.carry_forward_failure_kinds) and an error string is not a
+# contract. The vocabulary is the capture lane's — basket.panel_config
+# imports it, the QUARANTINE_REASON pattern.
+FAILURE_KIND_FETCH = "fetch"  # the bytes never arrived whole (HTTP/socket/
+#                               TLS error, non-https redirect, body cap,
+#                               slow-drip guard)
+FAILURE_KIND_PARSE = "parse"  # a 200 body arrived and the collector's
+#                               fail-closed pins refused it
+FAILURE_KIND_TIMEOUT = "timeout"  # deadline-abandoned; a fetch may still
+#                                   be in flight (never retry these blind)
+FAILURE_KIND_BUDGET = "budget"  # the capture budget was spent before the
+#                                 source ran; nothing was attempted
+VALID_FAILURE_KINDS = (
+    FAILURE_KIND_BUDGET,
+    FAILURE_KIND_FETCH,
+    FAILURE_KIND_PARSE,
+    FAILURE_KIND_TIMEOUT,
+)
+
+
+class DeadlineExceeded(RuntimeError):
+    """A collector abandoned at its wall-clock deadline. RuntimeError
+    subclass so every existing except/raise contract is unchanged; a
+    dedicated type so failure classification never string-matches."""
+
+
+def classify_failure(exc: BaseException) -> str:
+    """Which way a collector died, from the exception TYPE — walking the
+    explicit ``raise ... from`` cause chain.
+
+    OSError covers the whole urllib fetch family (HTTPError and URLError
+    subclass it) plus socket/TLS errors and socket-level timeouts (which
+    therefore file as FETCH — the narrow 'timeout' kind is deadline
+    abandonment only); TransportError is basket.http's transport-integrity
+    refusal, also raised by collectors that wrap a multi-host fetch outage
+    (shadeform). The __cause__ walk catches a future collector that wraps
+    a transport failure in a domain exception via ``raise X from exc`` —
+    without it the wrap files as 'parse' and a parse-only carry mint
+    would re-cast a seat whose page merely stopped answering (Greptile
+    P1, PR #75). Implicit __context__ is deliberately NOT walked: an
+    error raised while HANDLING another says nothing about which layer
+    refused. Everything else is the parse layer refusing a body that DID
+    arrive — the fail-closed pins' RuntimeErrors, json/ValueError,
+    KeyError on a reshaped payload."""
+    seen = 0
+    node: Optional[BaseException] = exc
+    while node is not None and seen < 8:
+        if isinstance(node, DeadlineExceeded):
+            return FAILURE_KIND_TIMEOUT
+        if isinstance(node, (OSError, TransportError)):
+            return FAILURE_KIND_FETCH
+        node = node.__cause__
+        seen += 1
+    return FAILURE_KIND_PARSE
 
 
 def call_with_deadline(
@@ -47,7 +107,7 @@ def call_with_deadline(
     worker.start()
     worker.join(deadline)
     if worker.is_alive():
-        raise RuntimeError(
+        raise DeadlineExceeded(
             f"source exceeded its {deadline:.0f}s budget share — abandoned mid-fetch"
         )
     if "error" in outcome:
@@ -114,6 +174,7 @@ def collect_all(
                         f"capture budget ({budget:.0f}s) exhausted before "
                         "this source ran"
                     ),
+                    "failure_kind": FAILURE_KIND_BUDGET,
                     "observations": [],
                 }
             )
@@ -136,6 +197,7 @@ def collect_all(
                 "source_id": sid,
                 "status": "error",
                 "error": f"{type(exc).__name__}: {exc}",
+                "failure_kind": classify_failure(exc),
                 "observations": [],
             }
         result["elapsed_seconds"] = round(time.monotonic() - started, 2)

@@ -29,7 +29,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from gpu_index.common.http import fetch
+from gpu_index.common.http import TransportError, fetch
 from gpu_index.observatory.observation import DEFAULT_TIMEOUT, observation, result
 
 SOURCE_ID = "shadeform"
@@ -175,9 +175,14 @@ def collect(
         except Exception as exc:  # noqa: BLE001 -- try the www fallback
             last_err = exc
     if html is None:
-        raise RuntimeError(
+        # TransportError, not RuntimeError: the bytes never arrived, and
+        # failure classification (observatory.collect.classify_failure)
+        # reads the TYPE -- a plain RuntimeError here would file a pure
+        # fetch outage as 'parse' and a parse-only carry mint would
+        # re-cast this seat's stale vote (Greptile P1, PR #75).
+        raise TransportError(
             f"{SOURCE_ID} unreachable on both hosts: {last_err}"
-        )
+        ) from last_err
     observations, partial_errors = parse_shadeform(html)
     return result(
         SOURCE_ID,

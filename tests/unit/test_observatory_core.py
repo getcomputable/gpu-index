@@ -15,11 +15,14 @@ import importlib.util
 import io
 import json
 import time
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
+from gpu_index.common.http import TransportError, read_body_capped
+from gpu_index.common.store import BucketPublishError
 from gpu_index.observatory.catalog import (
     SkuCatalogError,
     load_sku_catalog,
@@ -27,7 +30,11 @@ from gpu_index.observatory.catalog import (
     normalize_label,
     plausible_band,
 )
-from gpu_index.observatory.collect import collect_all
+from gpu_index.observatory.collect import (
+    DeadlineExceeded,
+    classify_failure,
+    collect_all,
+)
 from gpu_index.observatory.config import (
     ObservatoryConfigError,
     load_observatory_config,
@@ -40,7 +47,6 @@ from gpu_index.observatory.snapshot import (
 )
 from gpu_index.observatory.sources import COLLECTORS
 from gpu_index.observatory.store import upload_capture_snapshot
-from gpu_index.common.store import BucketPublishError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -659,6 +665,38 @@ def test_snapshot_shape_and_rollups(catalog):
     assert gamma["source_type"] == "aggregator"
 
 
+def test_snapshot_passes_failure_kind_through_conditionally(catalog):
+    snap = build_capture_snapshot(
+        config={
+            "lane_id": "raw_observatory",
+            "sources": [
+                {"source_id": "dead", "display_name": "Dead"},
+                {"source_id": "ok", "display_name": "Ok"},
+            ],
+        },
+        catalog=catalog,
+        source_results=[
+            {
+                "source_id": "dead",
+                "status": "error",
+                "error": "RuntimeError: heading pin appears 0x",
+                "failure_kind": "parse",
+                "observations": [],
+            },
+            {"source_id": "ok", "status": "ok", "observations": []},
+        ],
+        captured_at=_utc(2026, 8, 28, 7, 4),
+        slot_date=_utc(2026, 8, 28, 7).date(),
+        slot_hour_utc=7,
+        canonical=True,
+        capturer={},
+        run_id="20260828T070400Z-test",
+    )
+    by_id = {source["source_id"]: source for source in snap["sources"]}
+    assert by_id["dead"]["failure_kind"] == "parse"
+    assert "failure_kind" not in by_id["ok"]
+
+
 def test_snapshot_derives_nothing_cross_source(catalog):
     """The record-raw ruling: no composite, no index, no basis pairs — no
     key in the document may carry cross-source arithmetic."""
@@ -679,6 +717,85 @@ def _collect_cfg(sources, **over):
     }
     cfg.update(over)
     return cfg
+
+
+def test_classify_failure_kinds():
+    assert classify_failure(RuntimeError("heading pin appears 0x")) == "parse"
+    assert classify_failure(ValueError("bad json")) == "parse"
+    assert classify_failure(KeyError("gpu")) == "parse"
+    assert classify_failure(urllib.error.URLError("dns")) == "fetch"
+    assert (
+        classify_failure(
+            urllib.error.HTTPError("https://x", 429, "too many", {}, None)
+        )
+        == "fetch"
+    )
+    assert classify_failure(OSError("conn reset")) == "fetch"
+    assert classify_failure(TransportError("body exceeds cap")) == "fetch"
+    assert classify_failure(DeadlineExceeded("abandoned")) == "timeout"
+
+
+def test_classify_failure_walks_the_explicit_cause_chain():
+    """A collector wrapping a transport outage in a domain exception via
+    ``raise X from exc`` must still classify as fetch; an implicit
+    ``__context__`` must NOT flip a genuine parse refusal to fetch."""
+    wrapped = RuntimeError("unreachable on both hosts")
+    wrapped.__cause__ = urllib.error.URLError("refused")
+    assert classify_failure(wrapped) == "fetch"
+    parse_wrap = RuntimeError("bad blob")
+    parse_wrap.__cause__ = ValueError("not json")
+    assert classify_failure(parse_wrap) == "parse"
+    context_only = RuntimeError("raised while handling")
+    context_only.__context__ = OSError("earlier fetch issue")
+    assert classify_failure(context_only) == "parse"
+
+
+def test_shadeform_both_hosts_down_classifies_as_fetch(monkeypatch):
+    """The one collector that wraps a multi-host fetch outage must raise
+    TransportError so the outage files as fetch, never parse."""
+    from gpu_index.observatory.sources import shadeform
+
+    def _down(url, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(shadeform, "fetch", _down)
+    with pytest.raises(TransportError) as excinfo:
+        shadeform.collect(timeout=1.0)
+    assert classify_failure(excinfo.value) == "fetch"
+
+
+def test_collect_all_records_failure_kind():
+    config = _collect_cfg(
+        [
+            {"source_id": "parses"},
+            {"source_id": "fetches"},
+            {"source_id": "healthy"},
+        ],
+        per_source_timeout_seconds=5,
+        per_source_deadline_seconds=5,
+        capture_budget_seconds=60,
+    )
+
+    def _parse_dead(timeout, options=None):
+        raise RuntimeError("heading pin appears 0x (need exactly 1)")
+
+    def _fetch_dead(timeout, options=None):
+        raise urllib.error.URLError("boom")
+
+    def _ok(timeout, options=None):
+        return {"observations": [], "method": "GET"}
+
+    results = {
+        row["source_id"]: row
+        for row in collect_all(
+            config,
+            {"parses": _parse_dead, "fetches": _fetch_dead, "healthy": _ok},
+        )
+    }
+    assert results["parses"]["status"] == "error"
+    assert results["parses"]["failure_kind"] == "parse"
+    assert results["fetches"]["failure_kind"] == "fetch"
+    assert "failure_kind" not in results["healthy"]
 
 
 def test_collect_all_records_visible_holes():
@@ -740,8 +857,10 @@ def test_collect_all_budget_exhaustion_is_visible():
     results = collect_all(cfg, {"s1": slow, "s2": slow})
     assert results[0]["status"] == "error"
     assert "budget share" in results[0]["error"]
+    assert results[0]["failure_kind"] == "timeout"
     assert results[1]["status"] == "error"
     assert "exhausted before this source ran" in results[1]["error"]
+    assert results[1]["failure_kind"] == "budget"
 
 
 def test_collect_all_deadline_abandons_hung_source():
@@ -754,6 +873,28 @@ def test_collect_all_deadline_abandons_hung_source():
     results = collect_all(cfg, {"s1": hung})
     assert results[0]["status"] == "error"
     assert "budget share" in results[0]["error"]
+    assert results[0]["failure_kind"] == "timeout"
+
+
+def test_transport_error_wiring_classifies_as_fetch():
+    """The raise type is the classification contract: body-cap and
+    slow-drip failures are fetch failures, never parse failures."""
+
+    class _Fat:
+        def read(self, n):
+            return b"x" * n
+
+    with pytest.raises(TransportError) as capped:
+        read_body_capped(_Fat(), limit=1)
+    assert classify_failure(capped.value) == "fetch"
+
+    class _Drip:
+        def read(self, n):
+            return b"x"
+
+    with pytest.raises(TransportError) as dripped:
+        read_body_capped(_Drip(), wall_clock_limit=0.0)
+    assert classify_failure(dripped.value) == "fetch"
 
 
 # -------------------------------------------------------------------- store
