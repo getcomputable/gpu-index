@@ -77,11 +77,16 @@ def _versioned_record(tmp_path: Path) -> Path:
     shutil.copytree(FIXTURES, root)
     latest_path = root / "latest.json"
     latest = json.loads(latest_path.read_text())
+    current_methodology = next(
+        row["methodology_id"]
+        for row in latest["data"]["observations"]
+        if row["sku"] == "H100"
+    )
     latest["data"]["versions"] = [
         {
             "sku": "H100",
             "current_version": 2,
-            "methodology_id": "annex_h100_v2",
+            "methodology_id": current_methodology,
             "effective_from": "2026-08-29T00:00:00Z",
             "succession": [
                 {
@@ -91,7 +96,7 @@ def _versioned_record(tmp_path: Path) -> Path:
                 },
                 {
                     "version": 2,
-                    "methodology_id": "annex_h100_v2",
+                    "methodology_id": current_methodology,
                     "effective_from": "2026-08-29T00:00:00Z",
                 },
             ],
@@ -108,7 +113,19 @@ def _versioned_record(tmp_path: Path) -> Path:
         for version in (1, 2):
             target = root / "H100" / f"v{version}" / suffix
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
+            document = json.loads(source.read_text())
+            if version == 1:
+                for observation in document["data"]["observations"]:
+                    observation["methodology_id"] = "annex_h100_v1"
+                    if "calc_params" in observation:
+                        observation["calc_params"][
+                            "methodology_id"
+                        ] = "annex_h100_v1"
+                payload = {
+                    key: document[key] for key in ("data", "meta", "license")
+                }
+                document["artifact_sha256"] = payload_digest(payload)
+            target.write_text(json.dumps(document, indent=2) + "\n")
         source.unlink()
     return root
 
@@ -156,6 +173,16 @@ def test_reader_explicit_version_can_verify_staged_objects_before_pointer_swap(t
     shutil.copyfile(root / "observations" / "2026" / "08" / "25.json", target)
     reader = _local_reader(root)
     assert reader.read_day("2026-08-25", sku="H100", version=1) is not None
+
+
+def test_reader_rejects_content_cross_wired_between_versions(tmp_path):
+    root = _versioned_record(tmp_path)
+    v1_day = root / "H100" / "v1" / "observations" / "2026" / "08" / "25.json"
+    v2_day = root / "H100" / "v2" / "observations" / "2026" / "08" / "25.json"
+    shutil.copyfile(v2_day, v1_day)
+
+    with pytest.raises(ValueError, match="disagrees with its version identity"):
+        _local_reader(root).read_day("2026-08-25", sku="H100", version=1)
 
 
 def test_public_https_reader_digest_verifies(monkeypatch):

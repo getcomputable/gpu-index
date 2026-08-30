@@ -28,7 +28,7 @@ from gpu_index.common.bucket import (
     make_client,
 )
 from gpu_index.published.artifacts import (
-    PublishedRecordError,
+    PublishedRecordError as _PublishedRecordError,
     day_key,
     decode_and_verify_artifact,
     latest_key,
@@ -65,7 +65,7 @@ class PublishedRecordReader:
         self, date: str, *, sku: str, version: int | None = None
     ) -> str:
         """Resolve a SKU day through the pointer, or retain the flat key."""
-        resolved = self._resolve_version(sku, version)
+        resolved, _methodology = self._resolve_target(sku, version)
         if resolved is None:
             return day_key(date)
         return day_key(date, sku=sku, version=resolved)
@@ -80,17 +80,31 @@ class PublishedRecordReader:
         """Read one UTC day, resolving a SKU through ``latest.json``."""
         if sku is None:
             if version is not None:
-                raise PublishedRecordError(
+                raise _PublishedRecordError(
                     "reading an explicit version requires a SKU"
                 )
             return self._read(day_key(date))
-        return self._read(self.resolve_day_key(date, sku=sku, version=version))
+        resolved, methodology = self._resolve_target(sku, version)
+        key = (
+            day_key(date)
+            if resolved is None
+            else day_key(date, sku=sku, version=resolved)
+        )
+        envelope = self._read(key)
+        if envelope is not None:
+            data = envelope["data"]
+            if data["kind"] != "gpu_index_observation_day" or data["date"] != date:
+                raise _PublishedRecordError(
+                    f"published day {key} does not describe {date}"
+                )
+            self._require_version_identity(data, sku, methodology, key)
+        return envelope
 
     def resolve_series_key(
         self, series_range: str, *, sku: str, version: int | None = None
     ) -> str:
         """Resolve a SKU series through the pointer, or retain the flat key."""
-        resolved = self._resolve_version(sku, version)
+        resolved, _methodology = self._resolve_target(sku, version)
         if resolved is None:
             return series_key(series_range)
         return series_key(series_range, sku=sku, version=resolved)
@@ -105,31 +119,75 @@ class PublishedRecordReader:
         """Read a rolling series, resolving a SKU through ``latest.json``."""
         if sku is None:
             if version is not None:
-                raise PublishedRecordError(
+                raise _PublishedRecordError(
                     "reading an explicit version requires a SKU"
                 )
             return self._read(series_key(series_range))
-        return self._read(
-            self.resolve_series_key(series_range, sku=sku, version=version)
+        resolved, methodology = self._resolve_target(sku, version)
+        key = (
+            series_key(series_range)
+            if resolved is None
+            else series_key(series_range, sku=sku, version=resolved)
         )
+        envelope = self._read(key)
+        if envelope is not None:
+            data = envelope["data"]
+            if (
+                data["kind"] != "gpu_index_series"
+                or data["range"] != series_range
+            ):
+                raise _PublishedRecordError(
+                    f"published series {key} does not describe {series_range}"
+                )
+            self._require_version_identity(data, sku, methodology, key)
+        return envelope
 
-    def _resolve_version(self, sku: str, explicit: int | None) -> int | None:
+    def _resolve_target(
+        self, sku: str, explicit: int | None
+    ) -> tuple[int | None, str | None]:
         # An explicit version is useful during pointer-last migration: the
         # immutable versioned objects can be verified while latest.json still
         # advertises the legacy layout.
         if explicit is not None:
             day_key("2000-01-01", sku=sku, version=explicit)
-            return explicit
         latest = self.read_latest()
         if latest is None:
-            return None
+            return explicit, None
         data = latest["data"]
         versions = data.get("versions")
         if versions is None:
-            return None
+            return explicit, None
         match = next((entry for entry in versions if entry["sku"] == sku), None)
         if match is None:
-            raise PublishedRecordError(
+            raise _PublishedRecordError(
                 f"latest.json has no version pointer for SKU {sku}"
             )
-        return match["current_version"]
+        if explicit is None:
+            return match["current_version"], match["methodology_id"]
+        version_entry = next(
+            (entry for entry in match["succession"] if entry["version"] == explicit),
+            None,
+        )
+        if version_entry is None:
+            raise _PublishedRecordError(
+                f"latest.json does not advertise {sku} version {explicit}"
+            )
+        return explicit, version_entry["methodology_id"]
+
+    @staticmethod
+    def _require_version_identity(
+        data: dict,
+        sku: str,
+        methodology: str | None,
+        key: str,
+    ) -> None:
+        if methodology is None:
+            return
+        for observation in data["observations"]:
+            if (
+                observation.get("sku") != sku
+                or observation.get("methodology_id") != methodology
+            ):
+                raise _PublishedRecordError(
+                    f"published artifact {key} disagrees with its version identity"
+                )

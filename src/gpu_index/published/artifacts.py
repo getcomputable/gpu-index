@@ -392,6 +392,14 @@ def _validate_versions(versions: Any) -> None:
                 version_where,
             )
             version = version_entry["version"]
+            if (
+                isinstance(version, bool)
+                or not isinstance(version, int)
+                or version < 1
+            ):
+                raise PublishedRecordError(
+                    f"{version_where}.version must be a positive integer"
+                )
             if version != offset + 1:
                 raise PublishedRecordError(
                     f"{where}.succession versions must start at 1 and be contiguous"

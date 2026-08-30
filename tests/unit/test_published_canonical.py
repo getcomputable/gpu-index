@@ -291,6 +291,14 @@ def test_latest_accepts_and_validates_version_pointer_metadata():
     ("mutate", "message"),
     [
         (lambda row: row["succession"][1].update(version=3), "contiguous"),
+        (
+            lambda row: row["succession"][0].update(version=True),
+            "positive integer",
+        ),
+        (
+            lambda row: row["succession"][0].update(version=1.0),
+            "positive integer",
+        ),
         (lambda row: row.update(current_version=3), "absent"),
         (
             lambda row: row.update(methodology_id="wrong"),
