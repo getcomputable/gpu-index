@@ -7,6 +7,14 @@ that produced it; any parameter change touching a published day mints a
 new methodology_id, and prior versions stay frozen and readable under
 their own keyspaces. Newest first.
 
+## 2026-08-29
+
+- Disclosure-only adoption: selected panel rows now retain
+  `sku_identifier` and `region` beside the existing `gpu_count_basis` and
+  `currency` evidence for downstream receipt projection. No calculation
+  input or aggregation changed, no methodology ID was minted, and no
+  published index value changed.
+
 ## 2026-08-26
 
 - Additive adoption: availability_verified_sources joined calc_params and
