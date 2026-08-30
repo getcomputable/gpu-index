@@ -129,7 +129,8 @@ PUBLIC_NAMES = {
         "field_diffs",
     },
     "gpu_index.observatory.collect": {
-        "call_with_deadline", "collect_all",
+        "DeadlineExceeded", "TransportError", "call_with_deadline",
+        "classify_failure", "collect_all",
     },
     "gpu_index.index.panel": {
         "FxUnavailableError", "advance_panel_weight_state",

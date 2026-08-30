@@ -165,6 +165,11 @@ def build_capture_snapshot(
             "partial_errors": res.get("partial_errors"),
             "error": res.get("error"),
         }
+        if res.get("failure_kind") is not None:
+            # CONDITIONAL: only error entries carry a failure class
+            # (collect.classify_failure), so ok-entry bytes are unchanged.
+            # The panel engine's carry-forward knob is scoped by this key.
+            entry["failure_kind"] = res["failure_kind"]
         if res.get("book_stats") is not None:
             entry["book_stats"] = res["book_stats"]
         sources.append(entry)
