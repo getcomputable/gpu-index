@@ -294,7 +294,9 @@
         "notes": "NVIDIA HGX B200 8-GPU instance $68.8/hr on-demand (labeled span; inference/spot tiers excluded)",
         "raw_unit": "usd_per_instance_hr",
         "raw_value": "68.80",
+        "region": "US (REGION: NORTH AMERICA table)",
         "sku": "B200",
+        "sku_identifier": "NVIDIA HGX B200 (data-product=nvidia-b200)",
         "tier": "on-demand",
         "usd_per_gpu_hr": 8.6
       },
@@ -323,7 +325,9 @@
         "notes": "B200",
         "raw_unit": "usd_per_gpu_hr",
         "raw_value": "6.00",
+        "region": "EU-heavy",
         "sku": "B200",
+        "sku_identifier": "B200",
         "tier": "on-demand",
         "usd_per_gpu_hr": 6.0
       },
@@ -351,7 +355,9 @@
         "notes": "Instances pricing 8x tab, per-GPU list rate pre-tax (footnote: plus applicable sales tax/VAT/GST)",
         "raw_unit": "usd_per_gpu_hr",
         "raw_value": "$6.69",
+        "region": "unspecified (region-uniform list price)",
         "sku": "B200",
+        "sku_identifier": "NVIDIA B200 SXM6",
         "tier": "on-demand",
         "usd_per_gpu_hr": 6.69
       },
@@ -379,7 +385,9 @@
         "notes": "B200 SXM6 x8 node $37.7/hr (on-demand VM tier)",
         "raw_unit": "usd_per_node_hr",
         "raw_value": "37.70",
+        "region": "unspecified",
         "sku": "B200",
+        "sku_identifier": "B200 SXM6",
         "tier": "on-demand",
         "usd_per_gpu_hr": 4.7125
       },
@@ -408,7 +416,9 @@
         "notes": "NVIDIA HGX B200 (20 vCPU / 224 GB per-GPU share)",
         "raw_unit": "usd_per_gpu_hr",
         "raw_value": "7.15",
+        "region": "global",
         "sku": "B200",
+        "sku_identifier": "NVIDIA HGX B200",
         "tier": "on-demand",
         "usd_per_gpu_hr": 7.15
       },
@@ -436,7 +446,9 @@
         "notes": "B200 secure 180GB",
         "raw_unit": "usd_per_gpu_hr",
         "raw_value": "6.79",
+        "region": "global",
         "sku": "B200",
+        "sku_identifier": "B200",
         "tier": "on-demand",
         "usd_per_gpu_hr": 6.79
       },
@@ -464,7 +476,9 @@
         "notes": "GPU Clusters on-demand rate, per GPU (256-GPU minimum \u2014 a large-quantity rate, disclosed); Dedicated Inference SKU excluded by section slice",
         "raw_unit": "usd_per_gpu_hr",
         "raw_value": "$8.19",
+        "region": "unspecified",
         "sku": "B200",
+        "sku_identifier": "NVIDIA HGX B200",
         "tier": "on-demand",
         "usd_per_gpu_hr": 8.19
       },
@@ -499,7 +513,9 @@
         "notes": "1x B200 SXM6 180GB on-demand",
         "raw_unit": "usd_per_gpu_hr",
         "raw_value": "6.11",
+        "region": "EU (Nordic DCs)",
         "sku": "B200",
+        "sku_identifier": "1x B200 SXM6 180GB on-demand",
         "tier": "on-demand",
         "usd_per_gpu_hr": 6.11
       },

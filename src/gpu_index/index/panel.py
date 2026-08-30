@@ -990,9 +990,11 @@ def lowest_eligible_print(
     candidates -- only the EUR conversion is defined; FX outages collect loudly), applied
     over a sku SET instead of one sku. The chosen block additionally pins
     the winning row's stored ``sku`` (a broad member's print must say
-    which instrument won) and ``machine_id`` when present (the calc-lane
-    jump screen's same-machine delta reads the REFERENCE ARTIFACT, not a
-    raw snapshot, so identity continuity must ride the chosen block)."""
+    which instrument won), retains the winning row's ``sku_identifier`` and
+    ``region`` for receipt projection, and pins ``machine_id`` when present
+    (the calc-lane jump screen's same-machine delta reads the REFERENCE
+    ARTIFACT, not a raw snapshot, so identity continuity must ride the chosen
+    block)."""
     candidates: List[Dict[str, Any]] = []
     fx_errors: List[str] = []
     for obs in rows:
@@ -1018,6 +1020,13 @@ def lowest_eligible_print(
         candidate = {
             "usd_per_gpu_hr": round(float(usd), 6),
             "sku": obs.get("sku"),
+            # Descriptive receipt evidence from the exact row that won the
+            # minimum. These fields never enter the min key or any downstream
+            # filter/vote math. Keeping the provider label is what lets the
+            # public projector derive only configuration the historical row
+            # actually proves; a missing label/region remains an honest null.
+            "sku_identifier": obs.get("sku_identifier"),
+            "region": obs.get("region"),
             "tier": obs.get("tier"),
             "gpu_count_basis": obs.get("gpu_count_basis"),
             "raw_value": obs.get("raw_value"),

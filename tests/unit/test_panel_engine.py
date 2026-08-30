@@ -219,6 +219,51 @@ def _entry(sid, observations, status="ok", book_stats=None):
     return entry
 
 
+def test_lowest_print_carries_exact_winning_row_receipt_evidence():
+    """Configuration is projected from the winner, never another row."""
+    chosen = lowest_eligible_print(
+        [
+            _obs(
+                "H100",
+                "NVIDIA H100 PCIe 80GB",
+                usd=4.0,
+                basis=1,
+                region="nyc3",
+            ),
+            _obs(
+                "H100",
+                "H100-SXM 80GB",
+                usd=3.5,
+                basis=8,
+                region="fr-par-2",
+            ),
+        ],
+        obs_date=GENESIS,
+        fx_records={},
+    )
+
+    assert chosen is not None
+    assert chosen["usd_per_gpu_hr"] == 3.5
+    assert chosen["gpu_count_basis"] == 8
+    assert chosen["currency"] == "USD"
+    assert chosen["region"] == "fr-par-2"
+    assert chosen["sku_identifier"] == "H100-SXM 80GB"
+
+
+def test_lowest_print_keeps_missing_receipt_evidence_null():
+    row = _obs("H100", "NVIDIA H100", usd=3.5)
+    row["region"] = None
+    row["sku_identifier"] = None
+
+    chosen = lowest_eligible_print(
+        [row], obs_date=GENESIS, fx_records={}
+    )
+
+    assert chosen is not None
+    assert chosen["region"] is None
+    assert chosen["sku_identifier"] is None
+
+
 def _snapshot(entries, run_id="run-1", late_fill=False):
     return {"sources": entries, "run_id": run_id, "late_fill": late_fill}
 
@@ -2264,7 +2309,18 @@ def test_jump_screen_statistic_print_and_nonpositive_reference_are_guarded():
 def _golden_snapshot():
     return _snapshot(
         [
-            _entry("alpha", [_obs("H100", "H100 SXM", 2.4, machine_id="a1")]),
+            _entry(
+                "alpha",
+                [
+                    _obs(
+                        "H100",
+                        "H100 SXM",
+                        2.4,
+                        machine_id="a1",
+                        region="us-east-1",
+                    )
+                ],
+            ),
             _entry("bravo", [_obs("H100", "H100", 2.5)]),
             _entry("charlie", [_obs("H100", "H100 SXM5 80GB", 2.6)]),
         ]
@@ -2319,6 +2375,8 @@ def test_compute_observation_golden():
     assert alpha["weight"] == 0.3
     assert alpha["chosen"]["usd_per_gpu_hr"] == 2.4
     assert alpha["chosen"]["sku"] == "H100"
+    assert alpha["chosen"]["sku_identifier"] == "H100 SXM"
+    assert alpha["chosen"]["region"] == "us-east-1"
     assert alpha["chosen"]["machine_id"] == "a1"
     assert alpha["filter"] == {
         "accepted": True,
