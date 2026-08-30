@@ -76,20 +76,59 @@ class PublishedRecordReader:
         *,
         sku: str | None = None,
         version: int | None = None,
+        resolved_key: str | None = None,
     ) -> Optional[dict]:
-        """Read one UTC day, resolving a SKU through ``latest.json``."""
+        """Read one UTC day, resolving a SKU through ``latest.json``.
+
+        ``resolved_key`` pins a key returned by :meth:`resolve_day_key` so a
+        caller can display and read the same object even if the mutable pointer
+        moves between those operations.
+        """
         if sku is None:
-            if version is not None:
+            if version is not None or resolved_key is not None:
                 raise _PublishedRecordError(
-                    "reading an explicit version requires a SKU"
+                    "reading an explicit version or resolved key requires a SKU"
                 )
             return self._read(day_key(date))
-        resolved, methodology = self._resolve_target(sku, version)
-        key = (
-            day_key(date)
-            if resolved is None
-            else day_key(date, sku=sku, version=resolved)
-        )
+        if version is not None and resolved_key is not None:
+            raise _PublishedRecordError(
+                "read_day accepts either a version or a resolved key, not both"
+            )
+        if resolved_key is None:
+            resolved, methodology = self._resolve_target(sku, version)
+            key = (
+                day_key(date)
+                if resolved is None
+                else day_key(date, sku=sku, version=resolved)
+            )
+        else:
+            key = resolved_key
+            flat_key = day_key(date)
+            if key == flat_key:
+                methodology = None
+            else:
+                parts = key.split("/")
+                suffix_parts = flat_key.split("/")
+                if (
+                    len(parts) != len(suffix_parts) + 2
+                    or parts[0] != sku
+                    or not parts[1].startswith("v")
+                ):
+                    raise _PublishedRecordError(
+                        f"resolved day key {key!r} does not address {sku} {date}"
+                    )
+                try:
+                    resolved = int(parts[1].removeprefix("v"))
+                    expected = day_key(date, sku=sku, version=resolved)
+                except (IndexError, ValueError, _PublishedRecordError):
+                    raise _PublishedRecordError(
+                        f"resolved day key {key!r} does not address {sku} {date}"
+                    ) from None
+                if key != expected or parts[1] != f"v{resolved}":
+                    raise _PublishedRecordError(
+                        f"resolved day key {key!r} does not address {sku} {date}"
+                    )
+                _resolved, methodology = self._resolve_target(sku, resolved)
         envelope = self._read(key)
         if envelope is not None:
             data = envelope["data"]

@@ -240,6 +240,63 @@ def test_cli_full_match_through_versioned_pointer_exits_zero(
     assert "2 MATCH, 0 MISMATCH, 0 degraded" in out
 
 
+def test_cli_announces_the_versioned_day_key_it_reads(
+    tmp_path, monkeypatch, cli, capsys
+):
+    root = _versioned_record(tmp_path)
+    base = "https://record.example.com/cgi"
+    requested_keys = []
+    latest_reads = 0
+    moved_latest = json.loads((root / "latest.json").read_text())
+    pointer = moved_latest["data"]["versions"][0]
+    pointer["current_version"] = 1
+    pointer["methodology_id"] = "annex_h100_v1"
+    pointer["effective_from"] = pointer["succession"][0]["effective_from"]
+    payload = {
+        key: moved_latest[key] for key in ("data", "meta", "license")
+    }
+    moved_latest["artifact_sha256"] = payload_digest(payload)
+    moved_latest_bytes = (json.dumps(moved_latest, indent=2) + "\n").encode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal latest_reads
+        key = request.url.path.removeprefix("/cgi/")
+        requested_keys.append(key)
+        if key == "latest.json":
+            latest_reads += 1
+            if latest_reads > 1:
+                return httpx.Response(200, content=moved_latest_bytes)
+        path = root / key
+        if not path.is_file():
+            return httpx.Response(404)
+        return httpx.Response(200, content=path.read_bytes())
+
+    reader = PublishedRecordReader(
+        BucketConfig(
+            backend="public",
+            bucket="public",
+            public_base_url=base,
+        )
+    )
+    reader._client._client = httpx.Client(
+        transport=httpx.MockTransport(handler)
+    )
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: reader)
+
+    assert _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25") == 0
+    output = capsys.readouterr().out
+    banner = next(
+        line for line in output.splitlines() if line.startswith("published record: ")
+    )
+    announced_key = banner.removeprefix("published record: ").split(" via ", 1)[0]
+    (read_key,) = {
+        key
+        for key in requested_keys
+        if key.endswith("observations/2026/08/25.json")
+    }
+    assert announced_key == read_key
+
+
 def test_cli_single_stamp_targets_one_observation(
     record_env, monkeypatch, cli, capsys
 ):
@@ -315,7 +372,10 @@ def test_cli_unreachable_front_exits_two_with_one_actionable_line(
         def describe(self):
             return "public HTTPS front https://data.getcomputable.com"
 
-        def read_day(self, date, *, sku=None):
+        def resolve_day_key(self, date, *, sku):
+            return f"observations/{date.replace('-', '/')}.json"
+
+        def read_day(self, date, *, sku=None, resolved_key=None):
             raise httpx.ConnectError("connection refused")
 
     monkeypatch.setattr(
@@ -339,7 +399,10 @@ def test_cli_broken_front_non_200_exits_two_not_a_traceback(
         def describe(self):
             return "public HTTPS front https://data.getcomputable.com"
 
-        def read_day(self, date, *, sku=None):
+        def resolve_day_key(self, date, *, sku):
+            return f"observations/{date.replace('-', '/')}.json"
+
+        def read_day(self, date, *, sku=None, resolved_key=None):
             raise BucketPublishError(
                 "public read backend: GET .../25.json returned HTTP 503"
             )
