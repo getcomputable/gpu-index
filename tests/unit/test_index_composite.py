@@ -2393,7 +2393,7 @@ def test_cli_log_helpers_scrub_workflow_command_injection(monkeypatch, capsys):
 
 
 def test_cli_pins_replay_to_published_days_and_warns_on_drift(monkeypatch, capsys):
-    """Daily-lane review F1 (docs/adversarial-reviews.md): the raw store
+    """Daily-lane review F1: the raw store
     can grow AFTER publication (late upload with an
     earlier run_id). The published composite must stay the replay authority
     — history unchanged, loud DRIFT warning, artifact bytes untouched."""

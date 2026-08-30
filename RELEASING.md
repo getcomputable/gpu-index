@@ -24,11 +24,9 @@ tagging.
    parameter set, and the calculation mechanically refuses to extend a
    series under drifted parameters. A minted change ships with the
    regenerated golden artifact(s) in the same diff.
-4. **Upstream duty (maintainers)**: before any breaking release, run the
-   private downstream consumer's test suite against the release candidate.
-   A breaking release does not ship until that suite is green or the
-   breakage is coordinated with its owners. The engine and collector
-   sources are periodically re-synced from a private upstream.
+4. **Downstream duty (maintainers)**: a breaking release does not ship
+   until known downstream consumers are green or the breakage is
+   coordinated with their owners.
 5. **Golden regeneration is explicit and local only**: regenerate with
    `GPU_INDEX_UPDATE_GOLDEN=1 pytest tests/unit/test_golden_artifact.py
    tests/unit/test_panel_golden_artifact.py` (with `CI` unset), then

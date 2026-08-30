@@ -459,7 +459,7 @@ def test_fill_lookback_is_72_wall_clock_hours_on_every_grid():
     assert fill_lookback_stamps(four_slot) == 12
 
 
-# --------------------------------- adversarial-review fixes (2026-08-27)
+# ------------------------------------------- minute-lattice slot selection
 
 
 class _ListOnlyS3:
@@ -475,7 +475,7 @@ class _ListOnlyS3:
 
 
 def test_earliest_capture_wins_by_run_id_not_key_bytes():
-    """The rollback inversion (adversarial review): a LATER hour-token
+    """The rollback inversion: a LATER hour-token
     capture must not beat an EARLIER minute-token capture just because
     'slot16-' sorts before 'slot1600-'."""
     from datetime import date as date_cls

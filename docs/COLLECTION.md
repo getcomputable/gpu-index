@@ -15,17 +15,20 @@ is in `config/raw_observatory.json` and `src/gpu_index/observatory/sources/`.
 Only prices and the metadata printed alongside them are recorded. Nothing is
 purchased, provisioned or benchmarked.
 
-## One source is an aggregator
+## Three sources are not first-party
 
-Most sources are a provider publishing its own prices. Two collectors are not:
-`computepulse` and `computepulse_supply` read a third-party aggregator, so a row
-there is that aggregator's observation of some other provider's price, never a
-first-party print. Those rows are recorded for breadth, and each one keeps the
-provenance the aggregator states alongside it -- which provider the figure
-belongs to, how it was obtained, and how far it has been verified. They are
-marked `first_party: false` and `source_type: aggregator` in
-`config/raw_observatory.json`, and they are never seated on a panel and never
-priced into a published index value.
+Most sources are a provider publishing its own prices. Three collectors are
+not. `computepulse` and `computepulse_supply` read a third-party aggregator
+(`source_type: aggregator`), so a row there is that aggregator's observation of
+some other provider's price. `shadeform` reads a reseller republishing other
+clouds' capacity (`source_type: reseller`), and each row records which upstream
+cloud it re-publishes.
+
+None of them is a first-party print. Those rows are recorded for breadth, and
+each one keeps the provenance its source states alongside it -- which provider
+the figure belongs to, how it was obtained, and how far it has been verified.
+All three are marked `first_party: false` in `config/raw_observatory.json`, and
+they are never seated on a panel and never priced into a published index value.
 
 ## How the collectors identify themselves
 
@@ -47,7 +50,7 @@ Collection is configured to run once an hour, on the hour, in UTC
 sources are fetched **serially**, one at a time -- never in parallel. Most
 sources are a single request per run; a few paginated or per-chip APIs (vast,
 computepulse) send several, and those are spaced rather than sent back to back.
-The current configuration of 30 sources works out to roughly 110 requests in an
+The current configuration of 31 sources works out to roughly 110 requests in an
 hour across all providers combined.
 
 ## Transport limits
@@ -62,11 +65,15 @@ bound every request:
 
 ## No retries
 
-There is no retry, no backoff, no queue and no second attempt. A request that
-is refused, times out or returns anything unexpected is recorded as an error
-for that source and that hour, and the source simply goes dark for that hour.
-Nothing re-requests it, and nothing tries a different address, header or client
-to get a different answer.
+There is no retry, no backoff and no queue. A request that is refused, times
+out or returns anything unexpected is recorded as an error for that source and
+that hour, and the source simply goes dark for that hour.
+
+One source is the single exception: `shadeform` is read from two addresses of
+the same site (`shadeform.com`, then `www.shadeform.com`), which serve the same
+document; if the first does not answer, the second is tried once. That is the
+only second attempt any collector makes. Nothing else re-requests a source, and
+no collector varies its header or client to get a different answer.
 
 ## robots.txt
 

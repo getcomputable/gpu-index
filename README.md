@@ -4,7 +4,6 @@
   <a href="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml"><img src="https://github.com/getcomputable/gpu-index/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-0E6B4F" alt="license: Apache-2.0"></a>
   <a href="LICENSE-DATA.md"><img src="https://img.shields.io/badge/data%20license-CC%20BY--NC%204.0-0E6B4F" alt="data license: CC BY-NC 4.0"></a>
-  <img src="https://img.shields.io/badge/tests-1347-0E6B4F" alt="tests: 1347">
 </p>
 
 <p align="center">
@@ -25,7 +24,7 @@ specified accelerators, computed from published on-demand rental rates of a
 fixed, disclosed panel of providers. The methodology, the collection code, the
 panel inputs, and every published value live in the open.
 
-**Status: pre-launch.** Live panels: B300 (since 2026-08-10), B200 (since
+Live panels: B300 (since 2026-08-10), B200 (since
 2026-08-16), H100-SXM and H200-SXM (since 2026-08-23). Additional accelerators
 are collected ahead of panel seating.
 
@@ -35,7 +34,7 @@ are collected ahead of panel seating.
 git clone https://github.com/getcomputable/gpu-index
 cd gpu-index
 pip install -e .
-./reproduce h100 2026-08-24
+./reproduce h100 2026-08-25
 ```
 
 (httpx is the only runtime dependency.)
@@ -46,7 +45,7 @@ https://data.getcomputable.com):
 ```
 $ ./reproduce h100 2026-08-25
 published record: observations/2026/08/25.json via public HTTPS front https://data.getcomputable.com
-digest OK: 5f573fbb2dfaa01479172177d10bf8c77f82582f0d71457dc1de8442b6c4cbe9
+digest OK: 5e92cc88c42c0b6c8c58ad497add5ef3aadcfe6792706faeb1a9f8404b203590
 H100 2026-08-25T00 recomputed 3.645759 (band 0.505759) published 3.645759 (band 0.505759) MATCH digest OK
 H100 2026-08-25T01 recomputed 3.645759 (band 0.505759) published 3.645759 (band 0.505759) MATCH digest OK
 H100 2026-08-25T02 recomputed 3.645759 (band 0.505759) published 3.645759 (band 0.505759) MATCH digest OK
@@ -68,12 +67,11 @@ from a local downloaded copy (GPU_INDEX_DATA_DIR, default ./data) when it holds
 the requested day, otherwise straight from the public front: the official
 record host https://data.getcomputable.com by default; set
 GPU_INDEX_PUBLIC_BASE_URL to point at another copy. `latest.json` is the
-version-free pointer: for each SKU it names the current integer version, the
-methodology and effective timestamp behind it, and the complete succession
-list. Versioned keyspaces live at
-`<sku>/v<n>/observations/YYYY/MM/DD.json` and
-`<sku>/v<n>/series/{24h,7d,30d,90d}.json`. The reader also accepts the former
-flat layout during the migration window. For every
+version-free pointer: it names the newest published observation per lane. Day
+files live at `observations/YYYY/MM/DD.json` and rolling windows at
+`series/{24h,7d,30d,90d}.json`. The reader also accepts a per-SKU versioned
+layout (`<sku>/v<n>/...`) so a future methodology succession can publish
+alongside the current series without breaking existing readers. For every
 observation the verifier prints the recomputed value next to the published value with a
 MATCH or MISMATCH verdict: each published observation carries the per-provider
 receipts (price, standard deviation, liveness weight, status) its value and
@@ -86,10 +84,11 @@ requested date). It never exits 0 without verifying. Where the published
 disclosure policy withholds a provider's recent prices, the affected
 observation says so and is verified by digest only.
 
-The internal producer-record replay (deriving unpublished observations from
-the raw collection record) remains available via `./reproduce --producer <sku>
-<date>`; the retired daily series via `./reproduce --frozen b300|b200 <date>`;
-and configured non-SKU panel lanes via `./reproduce --lane <panel_id>`.
+Three further modes replay a LOCAL collection record rather than the
+published one, so they need a populated `./data` directory and do nothing from
+a fresh clone: `./reproduce --producer <sku> <date>`, the retired daily series
+via `./reproduce --frozen b300|b200 <date>`, and configured non-SKU panel lanes
+via `./reproduce --lane <panel_id>`.
 
 One bound on what the public record alone can re-derive: liveness weights are
 fitted over a 90-day history of samples whose forward outcomes extend up to 2
@@ -116,7 +115,7 @@ verifier prints a non-fatal warning when that is the case.
 | `config/` | Panels, parameters, and the chip catalog. Parameters are configuration, not code; every published record embeds the parameter set that produced it |
 | `METHODOLOGY.md` | The full methodology specification |
 | `docs/COLLECTION.md` | What the collectors do on the network: what is fetched, how they identify themselves, how often, and the limits they run under |
-| `docs/` | Supporting design documents, per-lane mint records (`docs/mints/`), and [docs/architecture.md](docs/architecture.md) |
+| `docs/` | Collection conduct ([docs/COLLECTION.md](docs/COLLECTION.md)), the package map ([docs/architecture.md](docs/architecture.md)), the weighting design note, and the per-lane mint records in `docs/mints/` |
 
 Note: `src/gpu_index/index/sources.py` and `composite.py` are the FROZEN
 daily lane, retained so the retired daily series stays replayable — not a

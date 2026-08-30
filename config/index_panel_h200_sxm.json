@@ -53,7 +53,10 @@
   "calc": {
     "methodology_id": "h200_sxm_v1_calc_v1",
     "description": "calc_v1 panel genesis mint (h200_sxm_v1_calc_v1); METHODOLOGY.md is the binding methodology document; full mint record: docs/mints/h200_sxm.md",
-    "availability_verified_sources": ["lium", "vast"],
+    "availability_verified_sources": [
+      "lium",
+      "vast"
+    ],
     "min_sources_to_claim": 5,
     "eligible_tiers": [
       "on-demand"
@@ -284,7 +287,7 @@
         "mode": "declared",
         "evidence": "Book-taxonomy argument (probe 2026-08-23): vast's own gpu_name taxonomy queries 'H200' and 'H200 NVL' as SEPARATE books (distinct 16-machine and 8-machine books live), and the H200 product line has exactly two forms with the NVL form self-labeling -- so the bare-'H200' book is the SXM module by device-string convention, the SAME grant given lium's bare 'H200' (its explicitly-granted 'declared' seat rests on the identical two-forms/NVL-self-labels argument). No vast surface utters 'SXM' for the bare book, which is exactly why the prior label rule was a DEAD SEAT: every vast row's sku_identifier equals its query name ('H200'), so require_tokens ['SXM'] provably matched nothing, forever, while the seat wore status ok."
       },
-      "notes": "OPEN QUESTION on this seat (recorded before any observation published; adversarial review F1): whether vast's bare-'H200' book should be read as the SXM module. It is treated as 'declared' here on the same device-string argument that lium's bare 'H200' seat rests on; the question stays open and the seat is reversible in config. The superseded label rule (require_tokens ['SXM']) could never match a vast row (sku_identifier == query name 'H200'), making the seat permanently silent while showing status ok -- the engine now also pins eligible_rows/screen_counts on silent ok seats so this class of dead seat can never hide again. The seat still holds out thin_book today regardless (probe: 1 verified-US/CA machine)"
+      "notes": "vast's bare-'H200' book is treated as the SXM module on the same device-string argument that lium's bare 'H200' seat rests on; the seat is reversible in config. A require_tokens ['SXM'] label rule could never match a vast row (sku_identifier == query name 'H200'), so the seat would be permanently silent while showing status ok; the engine pins eligible_rows/screen_counts on silent ok seats so that class of dead seat cannot hide. The seat holds out thin_book today regardless."
     },
     {
       "source_id": "lium",

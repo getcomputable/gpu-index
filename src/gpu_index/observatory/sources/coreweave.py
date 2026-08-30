@@ -31,7 +31,7 @@ generalized:
     sales') is skipped and counted in partial_errors. 'Inference Single
     CPU Price' spans are a different product (footnote 2: inference
     platform customers only) and are never recorded;
-  - silent-hole tripwires (2026-08-22 adversarial pass): every
+  - silent-hole tripwires: every
     'table-model-name' occurrence in the GPU section must be a strict h3
     match (a reshaped h3 would otherwise drop its row without a trace);
     a price-bearing listitem with no parseable model h3 raises; and every

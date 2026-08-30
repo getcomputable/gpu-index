@@ -1203,7 +1203,7 @@ def test_cli_exclusion_pinning_hour_and_day_scoped(monkeypatch, capsys, tmp_path
 def test_cli_record_quarantine_unwedges_a_poisoned_snapshot(
     monkeypatch, capsys, tmp_path
 ):
-    """Adversarial F6 (docs/adversarial-reviews.md) end to end: a malformed record object at an
+    """Record quarantine end to end: a malformed record object at an
     unpublished stamp crashes every firing forever (publish-in-order
     blocks the lane; earliest-key-wins means a later good snapshot can
     never shadow it) -- and the record_exclusions escape hatch publishes
@@ -1294,8 +1294,7 @@ class BlippyS3(FakeS3):
 def test_cli_false_missed_guard_re_lists_before_publishing_missed(
     monkeypatch, capsys, tmp_path
 ):
-    """Adversarial F7 (docs/adversarial-reviews.md): a transient
-    empty-Contents LIST must not pin an
+    """False-missed guard: a transient empty-Contents LIST must not pin an
     immutable false observation_missed artifact -- the missed verdict is
     confirmed against ONE fresh re-LIST, and when the key appears the
     observation computes normally."""
@@ -2282,9 +2281,7 @@ def test_listed_but_missing_artifact_refuses_the_firing(
     monkeypatch, capsys, tmp_path
 ):
     """LIST says published, GET (twice) says gone -> the firing refuses
-    instead of recomputing a published stamp (adversarial review: a
-    recompute under any evolved byte-shaping input collides with the
-    immutable original and wedges the lane)."""
+    instead of recomputing a published stamp."""
     cfg_path = _write_config(tmp_path)
     client = FakeS3()
     _seed_world(client)

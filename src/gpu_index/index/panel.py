@@ -551,9 +551,7 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
             e.get("minute", -1),
         )
     )
-    # Record-quarantine entries (top-level config key; adversarial review
-    # F6, docs/adversarial-reviews.md, amended into the mints before any
-    # observation published): an
+    # Record-quarantine entries: an
     # excluded (date, hour) never reads the record and publishes an
     # explicit record_quarantined artifact -- the escape hatch for a
     # poisoned/unparseable snapshot object that would otherwise crash
@@ -684,9 +682,7 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
         # (the share below), so it is a calc param under the D2 fence --
         # a retune is a versioned methodology change, and the
         # published-stamp recompute path stays byte-deterministic
-        # (adversarial review: an unpinned live key here turned the
-        # store's idempotent re-PUT into BucketPublishError after any
-        # retune). Sorted for canonical bytes.
+        #. Sorted for canonical bytes.
         "availability_verified_sources": sorted(
             str(sid) for sid in calc.get("availability_verified_sources") or []
         ),
@@ -899,8 +895,7 @@ def member_eligible_rows(
     retroactively unseat every basket-era print. Screens read the
     structured sku_identifier / extra only, never prose notes.
 
-    FINITENESS FAIL-CLOSED (adversarial review F9,
-    docs/adversarial-reviews.md, amended pre-publish):
+    FINITENESS FAIL-CLOSED:
     a candidate row must carry a FINITE native price (and a finite USD
     price when one is present) or it is excluded and counted
     (``non_finite_price``). json.loads admits NaN/Infinity, and non-USD
@@ -913,7 +908,7 @@ def member_eligible_rows(
     sku-matched row by screen: ``tier_ineligible``, ``implausible``,
     ``non_finite_price``, ``identity_rejected``, ``variant_unmatched``,
     ``extra_require_mismatch`` -- the dead-seat visibility record
-    (adversarial review F1, docs/adversarial-reviews.md): a seat whose
+: a seat whose
     rows ALL screen out must be
     distinguishable in the artifact from a seat with no rows at all."""
     if (source_entry or {}).get("status") != "ok":
@@ -1352,8 +1347,7 @@ def compute_observation(
     calc_params for exactly that reason). Derived here from the same
     config otherwise, so the two paths cannot diverge.
 
-    ``record_quarantined`` (adversarial review F6,
-    docs/adversarial-reviews.md): the config's
+    ``record_quarantined``: the config's
     record-exclusion reason for this stamp, when one applies. The CALLER
     checks record_exclusions BEFORE reading the record and passes
     snapshot=None with the reason -- the whole point is that the stored
@@ -1662,8 +1656,7 @@ def compute_observation(
             if chosen and chosen.get("fx_errors"):
                 detail["fx_errors"] = chosen["fx_errors"]
             if (entry or {}).get("status") == "ok":
-                # Dead-seat visibility (adversarial review F1,
-                # docs/adversarial-reviews.md): an
+                # Dead-seat visibility: an
                 # ok-status seat with NO print must say WHY on the
                 # artifact. eligible_rows pins how many rows survived the
                 # screens; a non-empty screen_counts block proves rows
@@ -1885,9 +1878,7 @@ def compute_observation(
     # members -- a disclosure aggregate, never a screen. Added HERE and
     # not in median_stddev_composite because that helper also prices the
     # FROZEN daily series, whose artifacts must never grow the field.
-    # Computed from the UNROUNDED passing weights (adversarial review:
-    # summing the published 6dp renormalized weights can print 1.000002
-    # with enough verified passers), so the share is bounded by 1.0 and
+    # Computed from the UNROUNDED passing weights, so the share is bounded by 1.0 and
     # matches the sum of published rounded weights to within rounding.
     # Always a float on the wire (0.0, never integer 0). The list rides
     # calc_params (params, not live config), so published-stamp

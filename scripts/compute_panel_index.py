@@ -69,15 +69,13 @@ per OBSERVATION:
     observation_missed artifact once the grace passes -- never skipped,
     never interpolated, never substituted from a neighboring hour (the
     daily lane's R4 promotion has no meaning on a dense grid).
-  - **False-missed guard (harden stage, adversarial F7,
-    docs/adversarial-reviews.md)**: an
+  - **False-missed guard **: an
     observation_missed artifact is immutable, so before one publishes
     the slot keys are re-LISTed ONCE with a fresh call (never the run
     cache) -- a transient empty-Contents gateway blip must not pin a
     permanent false missed record; if the key appears on the confirming
     LIST the observation computes normally.
-  - **Record quarantine (harden stage, adversarial F6,
-    docs/adversarial-reviews.md)**: a top-level
+  - **Record quarantine **: a top-level
     config key ``record_exclusions`` ([{date, hour, minute?, reason}]) names
     stamps whose stored record object must NEVER be read -- the escape
     hatch for a poisoned/unparseable snapshot that would otherwise
@@ -254,8 +252,8 @@ def _in_actions() -> bool:
 # Drift-scan arming window in minute-of-day terms: the daily sweep arms
 # on firings whose wall clock lands in [16:00Z, 16:30Z) -- the 16:00Z
 # mark's neighborhood at every cadence, so a denser cron cannot multiply
-# the once-a-day record re-read the gating exists to bound (perf review
-# amendment, re-cut for the 15-min lattice 2026-08-27).
+# the once-a-day record re-read the gating exists to bound (re-cut for
+# the 15-min lattice 2026-08-27).
 DRIFT_SCAN_WINDOW_MINUTES = (16 * 60, 16 * 60 + 30)
 
 # Missed/quarantined-publish drain grace, in minutes past the closing
@@ -1141,8 +1139,7 @@ def main() -> int:
 
     def _refresh_day_keys(record_prefix: str, day_str: str):
         """One FRESH slot-key LIST, bypassing the run cache -- the
-        false-missed guard's read (adversarial review F7,
-        # docs/adversarial-reviews.md): a transient
+        false-missed guard's read: a transient
         empty-Contents gateway blip on the cached LIST must not pin an
         immutable false observation_missed artifact, so the missed
         verdict is confirmed against a second, fresh LIST before it
@@ -1216,7 +1213,7 @@ def main() -> int:
             if stored is None:
                 # LIST said published, GET says gone -- a transient race
                 # or a deleted object. One fresh retry, then REFUSE the
-                # firing (adversarial review): the old fall-through
+                # firing: the old fall-through
                 # recomputed the stamp, which is safe only while every
                 # byte-shaping input is eternally identical -- an
                 # additive artifact field or a minted param change
