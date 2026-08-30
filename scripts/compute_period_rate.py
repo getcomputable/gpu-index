@@ -102,7 +102,7 @@ def parse_period_stamp(value: str, *, minute_keyed: bool) -> int:
     only -- 'YYYY-MM-DDTHHMM'. Loud on anything else AT THE PARSE SITE:
     a minute-form boundary against an hour-keyed lane must get the
     typed refusal here, never a PanelScheduleError traceback later from
-    a report formatter (adversarial review 2026-08-27)."""
+    a report formatter."""
     text = str(value)
     if len(text) == 10:
         try:

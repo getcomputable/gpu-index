@@ -2,9 +2,8 @@
 # Copyright 2026 Computable
 """Reader + verifier for the PUBLISHED record (the public projection).
 
-The publisher (a separate pipeline, maintained outside this
-repository) projects the private producer record into a small public
-layout — the version-free ``latest.json`` pointer plus
+The publisher (a separate pipeline) projects the collection record
+into a small public layout — the version-free ``latest.json`` pointer plus
 ``<sku>/v<n>/observations/YYYY/MM/DD.json`` day files and
 ``<sku>/v<n>/series/{24h,7d,30d,90d}.json`` — each file a self-digesting envelope of
 ``gpu_price_index_observation`` documents. This package mirrors that

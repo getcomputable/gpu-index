@@ -2,8 +2,7 @@
 # Copyright 2026 Computable
 """Dynamic predictive source weighting for the index baskets.
 
-Implements the dynamic weighting methodology (docs/dynamic_source_weighting.md;
-METHODOLOGY.md section 8) for
+Implements the dynamic weighting methodology (METHODOLOGY.md section 8) for
 annex_a_v0_2_calc_v5 / annex_a2_v0_3_calc_v4: each
 constituent's index weight derives from how well its recent EXCESS price
 movements predict subsequent movement in the rest of the basket —
@@ -970,9 +969,7 @@ def advance_weight_state(
 #     definition in observation mode, cached and uncached paths
 #     bit-identical by construction (test-pinned against a naive
 #     recompute-everything reimplementation).
-#   - A2 transition rule (supersedes R-quorum-v2 for panel lanes;
-#     amended pre-publish per adversarial review F2,
-#     docs/adversarial-reviews.md):
+#   - A2 transition rule:
 #     dynamic iff prior mode dynamic OR (a NON-EMPTY attendance-passer
 #     set exists AND every ATTENDANCE-PASSER has a defined Q AND >=
 #     switch_min_eligible sources eligible at this observation).
@@ -1276,10 +1273,7 @@ def compute_panel_weights(
     softmax(gamma * Q) -> floor -> cap over the eligible set with
     undefined Q scoring 0.
 
-    TRANSITION RULE (A2, superseding
-    R-quorum-v2 for panel lanes; amended into the mints before any
-    observation published -- adversarial review F2,
-    docs/adversarial-reviews.md): mode = dynamic iff
+    TRANSITION RULE: mode = dynamic iff
     prior mode dynamic OR (the attendance-passer set is NON-EMPTY AND
     every ATTENDANCE-PASSER -- attendance ratio >=
     dw_params["attendance_floor"] over the trailing history window --

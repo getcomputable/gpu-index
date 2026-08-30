@@ -1455,8 +1455,7 @@ def test_config_methodology_id_key_segment_and_frozen_fence():
 
 
 def test_config_unknown_keys_refused_at_every_level():
-    """Adversarial review F12 (docs/adversarial-reviews.md): an unread
-    key is silently inert config --
+    """Unknown-key rejection: an unread key is silently inert config --
     a typo'd 'rejected_tokens' would ship a panel with NO identity screen
     while its author reads a live one. One rejection per documented
     level."""
@@ -1747,8 +1746,7 @@ def test_extra_require_screens_on_the_structured_extra_dict():
 
 
 def test_non_finite_prices_are_held_out_at_eligibility():
-    """Finiteness fail-closed (adversarial review F9,
-    docs/adversarial-reviews.md): json admits
+    """Finiteness fail-closed: json admits
     NaN/Infinity and non-USD rows skip the capture plausibility band --
     a non-finite native (or a non-finite USD, when present) is excluded
     and counted, never a candidate. The statistics inherit the screen
@@ -1772,8 +1770,7 @@ def test_non_finite_prices_are_held_out_at_eligibility():
 
 
 def test_silent_ok_seat_pins_eligible_rows_and_screen_counts():
-    """Dead-seat visibility (adversarial review F1,
-    docs/adversarial-reviews.md): a member whose rows
+    """Dead-seat visibility: a member whose rows
     ALL screen out keeps status ok but pins eligible_rows 0 + the
     per-screen screen_counts block; a member with NO rows for its skus
     pins eligible_rows 0 WITHOUT screen_counts -- the two silences stay
@@ -2962,7 +2959,7 @@ def test_availability_verified_share_is_a_disclosure_aggregate():
     # no print this hour -> contributes nothing. The list is a CALC key
     # and MUST ride calc_params (sorted, canonical bytes) so a retune is
     # a versioned change and published-stamp recompute stays
-    # byte-deterministic (adversarial review).
+    # byte-deterministic.
     cfg = _config()
     cfg["calc"]["availability_verified_sources"] = ["vast", "bravo"]
     payload = _compute(cfg, _golden_snapshot(), _state())
@@ -2977,7 +2974,7 @@ def test_availability_verified_share_sums_multiple_passers():
     # Two verified passing members: the share is the SUM of their
     # unrounded renormalized weights ((0.3 + 0.2) / 0.7) -- the shipped
     # prod shape on every H panel (vast + lium both passing). A
-    # sum->max/single-pick mutant fails here (adversarial review).
+    # sum->max/single-pick mutant fails here.
     cfg = _config()
     cfg["calc"]["availability_verified_sources"] = ["alpha", "bravo"]
     payload = _compute(cfg, _golden_snapshot(), _state())
@@ -2988,8 +2985,7 @@ def test_availability_verified_share_excludes_held_out_members():
     # bravo PRINTS but is HELD OUT (EUR print, no FX rate supplied): a
     # held-out verified member priced nothing and must contribute
     # nothing -- counting printed-but-not-passing members would overstate
-    # the disclosure in exactly the hours the fences fired (adversarial
-    # review mutant).
+    # the disclosure in exactly the hours the fences fired.
     cfg = _config()
     cfg["calc"]["availability_verified_sources"] = ["bravo"]
     snapshot = _snapshot(
@@ -3011,8 +3007,7 @@ def test_availability_verified_share_excludes_held_out_members():
 def test_availability_verified_share_all_passers_is_exactly_one():
     # Every passer verified -> exactly 1.0, never 1.000002: the share
     # derives from the UNROUNDED weights, not the published rounded
-    # renormalized_weights (adversarial review: six 0.166667s sum past
-    # 1.0).
+    # renormalized_weights.
     cfg = _config()
     cfg["calc"]["availability_verified_sources"] = [
         "alpha",

@@ -234,7 +234,7 @@ def _observed_names(module_name):
 
 
 def test_declared_waiver_names_are_public():
-    """The two cross-package waiver imports (docs/architecture.md) ride
+    """The two cross-package waiver imports (ARCHITECTURE.md) ride
     PUBLIC names — the panel engine must never reach for underscore
     internals, and the names must stay importable as spelled."""
     from gpu_index.index.screens import PRICEABLE_CURRENCIES

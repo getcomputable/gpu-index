@@ -2,6 +2,13 @@
 # Copyright 2026 Computable
 """Per-source basket collectors — raw prints from each provider's own surface.
 
+This module is the FROZEN daily lane's capture code. It deliberately
+duplicates collectors that also exist under
+``gpu_index/observatory/sources/``: the daily series is retired but must
+stay byte-for-byte replayable, so this copy is retained untouched and the
+two lanes are never refactored together. Edit the observatory copy for
+live collection; edit this one only to fix a replay of the frozen series.
+
 Contract per collector:
   - returns {source_id, method, url, first_party_observation, observations};
     each observation carries the RAW value as published plus our per-GPU

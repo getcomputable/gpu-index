@@ -47,7 +47,7 @@
   ],
   "calc": {
     "methodology_id": "h200_broad_v1_calc_v1",
-    "description": "calc_v1 panel genesis mint (h200_broad_v1_calc_v1); METHODOLOGY.md is the binding methodology document; full mint record: docs/mints/h200_broad.md",
+    "description": "calc_v1 panel genesis mint (h200_broad_v1_calc_v1); METHODOLOGY.md is the binding methodology document",
     "availability_verified_sources": ["lium", "vast"],
     "min_sources_to_claim": 7,
     "eligible_tiers": [

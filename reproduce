@@ -23,8 +23,8 @@
 # without verifying something; withheld sources degrade an observation
 # to digest-only with a distinct message.
 #
-# Under --producer, the run replays the PRIVATE producer record instead
-# (internal ops: the panel engine, scripts/compute_panel_index.py;
+# Under --producer, the run replays a local collection record instead
+# (the panel engine, scripts/compute_panel_index.py;
 # h100 -> h100_sxm, h200 -> h200_sxm, b300, b200). There, an observation
 # already present in the local producer record auto-routes to
 # --verify-published (a byte-for-byte recompute against the stored

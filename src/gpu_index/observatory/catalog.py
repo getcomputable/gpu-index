@@ -60,7 +60,7 @@ class SkuCatalogError(RuntimeError):
 
 def boundary_pattern(token: str) -> re.Pattern:
     """Token-boundary matcher shared by the catalog and the panel screens
-    (docs/architecture.md, waiver edge 2): a token never matches inside a
+    (ARCHITECTURE.md, waiver edge 2): a token never matches inside a
     longer alphanumeric run -- 'B200' must not match 'GB200', 'NVL' never
     inside 'NVLINK'. Spaces inside the token are literal."""
     return re.compile(r"(?<![A-Z0-9])" + re.escape(token) + r"(?![A-Z0-9])")

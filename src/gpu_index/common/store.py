@@ -146,8 +146,7 @@ def slot_already_captured(
     checked for an hour-aligned mark, in BOTH writer directions: a
     minute-vocabulary writer on the format-cutover day may find the mark
     already held under the legacy hour token, and an hour-vocabulary
-    writer running AFTER minute keys exist (config rollback -- the
-    adversarial-review one-way-door finding, 2026-08-27) must find the
+    writer running AFTER minute keys exist must find the
     minute-token capture rather than record a duplicate. One extra LIST
     beats a write-side dup either way; sub-hour marks have exactly one
     representable token, so they probe once."""
@@ -322,7 +321,7 @@ def day_slot_keys(
     capture beat an EARLIER minute-token one for the same mark
     ('slot16-' < 'slot1600-' because '-' < '0'), the inversion an
     out-of-order writer (config rollback, old-SHA image, --force) could
-    smuggle in (adversarial review 2026-08-27). Within one token format
+    smuggle in. Within one token format
     the two orders agree, so single-format days -- every day outside a
     rollback incident -- choose exactly what raw-key order chose
     (test-pinned). read_day_snapshots itself stays hour-grain: the daily

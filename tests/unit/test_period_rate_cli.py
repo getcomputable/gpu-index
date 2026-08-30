@@ -387,8 +387,7 @@ def test_era_stitched_period_spans_grids(monkeypatch, capsys, tmp_path):
 
 def test_backward_walk_collects_enough_filled_context(monkeypatch, capsys, tmp_path):
     """A two-stamp gap at the period START needs TWO filled context
-    stamps (adversarial review: a walk stopping at one filled stamp
-    would shrink every multi-stamp boundary gap's window)."""
+    stamps."""
     client = FakeS3()
     _seed_world(client)
     # Period starts at the missed/dark pair: [T03, T06).
@@ -420,8 +419,7 @@ def test_sparse_era_slot_stays_open_until_its_next_mark(
 ):
     """On the 4-slot era a slot's window spans six hours: at 14:30Z the
     10Z slot is still OPEN (its next mark is 16Z) and must not be
-    counted as missing (adversarial review: prev-stamp 'closed' would
-    fabricate a gap on every mid-window run)."""
+    counted as missing."""
     client = FakeS3()
     _seed_world(client)
     now = datetime(2026, 8, 11, 14, 30, tzinfo=timezone.utc)
@@ -450,8 +448,7 @@ def test_sparse_era_slot_stays_open_until_its_next_mark(
 
 def test_malformed_artifact_refuses_exit_two(monkeypatch, capsys, tmp_path):
     """A published artifact violating its own invariants refuses with
-    an ERROR line and exit 2 -- never a traceback (adversarial review:
-    build_statuses used to sit outside the refusal handler)."""
+    an ERROR line and exit 2 -- never a traceback."""
     client = FakeS3()
     _seed_world(client)
     client.objects[_key("2026-08-12T09")] = json.dumps(

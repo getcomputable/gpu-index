@@ -380,9 +380,8 @@ def test_shipped_observatory_config_is_still_the_hour_vocabulary():
 
     The lattice port lands the CAPABILITY, not a cadence change: densifying
     the capture grid multiplies the request volume this project sends to
-    thirty third-party providers, and docs/COLLECTION.md states that rate
-    as a conduct commitment. So the flip is a deliberate, separately
-    reviewed edit -- this pin fails loudly if one arrives without it.
+    third-party providers. So the flip is a deliberate, separate edit --
+    this pin fails loudly if one arrives without it.
     """
     from gpu_index.observatory.config import capture_grid, load_observatory_config
 
@@ -459,7 +458,7 @@ def test_fill_lookback_is_72_wall_clock_hours_on_every_grid():
     assert fill_lookback_stamps(four_slot) == 12
 
 
-# --------------------------------- adversarial-review fixes (2026-08-27)
+# ------------------------------------------- minute-lattice slot selection
 
 
 class _ListOnlyS3:
@@ -475,7 +474,7 @@ class _ListOnlyS3:
 
 
 def test_earliest_capture_wins_by_run_id_not_key_bytes():
-    """The rollback inversion (adversarial review): a LATER hour-token
+    """The rollback inversion: a LATER hour-token
     capture must not beat an EARLIER minute-token capture just because
     'slot16-' sorts before 'slot1600-'."""
     from datetime import date as date_cls

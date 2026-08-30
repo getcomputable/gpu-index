@@ -62,7 +62,7 @@
   ],
   "calc": {
     "methodology_id": "annex_a2_v0_3_calc_v6",
-    "description": "calc_v6 hourly panel mint (annex_a2_v0_3_calc_v6); METHODOLOGY.md is the binding methodology document; full mint record: docs/mints/b200.md",
+    "description": "calc_v6 hourly panel mint (annex_a2_v0_3_calc_v6); METHODOLOGY.md is the binding methodology document",
     "availability_verified_sources": ["vast"],
     "min_sources_to_claim": 5,
     "eligible_tiers": [

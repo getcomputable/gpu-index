@@ -158,9 +158,10 @@ def main(argv=None) -> int:
     if envelope is None:
         print(
             f"no published day file for {date} ({key}): outside the "
-            "publisher's trailing window, or not yet published. The "
-            "private producer record can still replay it: "
-            "./reproduce --producer <sku> <date>",
+            "publisher's trailing window, or not yet published. Pick a "
+            "date inside the published window, or run "
+            "./reproduce --producer <sku> <date> against a local "
+            "producer record.",
             file=sys.stderr,
         )
         return 2

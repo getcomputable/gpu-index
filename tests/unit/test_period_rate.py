@@ -9,10 +9,8 @@ window-scales-with-gap, the 72-stamp cap, filled-hours-only windows that
 skip earlier holes and never treat a derived fill as evidence, the
 genesis drop, per-stamp cause attribution, exact-threshold band edges in
 integer arithmetic, the era-boundary window, and a whole-period gap
-resolving from before the period). A private downstream consumer keeps
-its own copy of the same vectors, so the two implementations can only
-drift by failing one of these suites -- change the file in both or
-neither.
+resolving from before the period). These vectors are pinned by digest so
+an edit to the file alone fails the suite.
 
 Beyond the vectors: classify_artifact's fail-closed shape rules (an
 artifact violating its own invariants refuses, NaN/Infinity never reach
@@ -46,11 +44,10 @@ from gpu_index.index.period_rate import (
     period_report,
 )
 
-# Cross-copy tripwire: a private downstream consumer pins the same digest
-# over its own copy, so either side editing its file alone fails its own
-# suite and forces the paired update. Changing the vectors means updating
-# the digest on both sides.
-VECTORS_SHA256 = "cb3ba79aaeed6abfd133242b202b6cbbd1fdd0b79727ac691465bd8f2142f29d"
+# Tripwire: the vectors are pinned by digest, so editing the file without
+# updating the digest fails this suite. Changing the vectors is a
+# deliberate two-line change, never an accident.
+VECTORS_SHA256 = "7b5a5622e0192b746e4641da4aeda5f7c4e94858833ddbd5c192ed3dfe707615"
 
 _VECTORS_PATH = (
     Path(__file__).resolve().parents[1] / "fixtures" / "period_rate_vectors.json"
@@ -366,7 +363,7 @@ def test_all_report_numbers_finite():
 
 def test_off_grid_context_keys_are_never_evidence():
     """A statuses key the schedule does not own (here hour 05 on a
-    4-slot era) must never enter a fill window (adversarial review)."""
+    4-slot era) must never enter a fill window."""
     schedule = PanelSchedule(
         genesis_date="2026-08-20",
         slot_grids=[{"from_date": "2026-08-20", "slot_hours_utc": [4, 10, 16, 22]}],

@@ -1058,7 +1058,7 @@ def test_b200_config_rejects_bad_exclusions_and_lane_knobs(tmp_path):
             "unknown statistic",
         ),
         ({"source_statistics": ["vast"]}, "must be an object"),
-        # Daily-lane review F3 (docs/adversarial-reviews.md): the capture
+        # Daily-lane review F3: the capture
         # coverage line reads the top-level knob, the
         # composite floors on the calc knob — they must agree.
         ({"min_sources_to_claim": 4}, "one claim floor"),

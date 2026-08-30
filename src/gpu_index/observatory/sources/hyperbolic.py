@@ -3,11 +3,9 @@
 """Hyperbolic -- public on-demand rental-options API.
 
 Price surface: GET
-https://api.hyperbolic.ai/v2/alpha/on-demand/rental-options. The OpenAPI
-document marks the route as bearer-authenticated, but the endpoint and
-Hyperbolic's logged-out GPU page both return the live payload anonymously.
-Hyperbolic confirmed that rental options do not require a key; anonymous
-access was re-verified live 2026-08-29.
+https://api.hyperbolic.ai/v2/alpha/on-demand/rental-options. The route
+answers anonymously, and Hyperbolic's logged-out GPU page serves the same
+payload. Anonymous access re-verified live 2026-08-29.
 
 The response is a bare list whose membership churns with inventory. Each
 ``costPerHourCents`` value is the WHOLE-option hourly total, so the per-GPU
@@ -178,11 +176,11 @@ def parse_hyperbolic(body: str) -> List[Dict[str, Any]]:
                     "connection_type": connection_type,
                     "ethernet_variant": ethernet_variant,
                     "machine_type": machine_type,
-                    # Hyperbolic was promised that its supplier cost would
-                    # never be republished. Deliberately omit
-                    # providerCostPerHourCents and avoid copying nested raw
-                    # objects into observations or book_stats; only the
-                    # customer-facing total belongs in this public record.
+                    # Supplier-cost fields are excluded from the published
+                    # record by policy: omit providerCostPerHourCents and
+                    # never copy nested raw objects into observations or
+                    # book_stats. Only the customer-facing total belongs
+                    # in this public record.
                     # Missing or malformed availability degrades to unknown
                     # here because availability must never gate a price.
                     "available_gpu_count": available_gpu_count,

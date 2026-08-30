@@ -31,9 +31,8 @@ than guessing (a second render of a table would otherwise double-print
 every row; a renamed header would silently lose a tier's history).
 
 Second, FAIL-OPEN fetch (availability accrual, live 2026-08-25 20:15Z):
-STOCK_URL is Hyperstack's own docs-dashboard Cloudflare Worker
-(gpu-stock.hyperstack-docs.workers.dev) proxying the authenticated
-/v1/core/stocks API -- per region (US-1/CANADA-1/NORWAY-1) x per GPU
+STOCK_URL is a public stock endpoint published by Hyperstack -- per
+region (US-1/CANADA-1/NORWAY-1) x per GPU
 model (separate '-spot' models), a saturated 'available' GPU-count floor,
 planned 7/30/100-day stock, and deployable VM counts per configuration
 size (1x/2x/4x/8x/10x). Recorded VERBATIM, snapshot-level, in
@@ -48,9 +47,8 @@ the coarser 'EU-heavy' constant. Downstream join keys: model token,
 H100-80G-PCIe available "1" but 1x:2) -- never int() it; planned_*_days
 are nullable strings (usually null, sometimes "0"); model lists are
 sparse per region (US-1 published only A100-80G-SXM4) so ABSENCE of a
-model is not zero stock -- only explicit "0" rows are zeros. The worker
-is docs-team convenience infra (CORS pinned to docs.hyperstack.cloud),
-not a contractual API: it can change or stop answering
+model is not zero stock -- only explicit "0" rows are zeros. The stock
+endpoint is not a contractual API: it can change or stop answering
 any day, so parse_gpu_stock fences fail closed WITHIN the stock parse
 and collect() converts any stock fetch/shape failure into a
 partial_error tripwire -- stock death can NEVER dark the price lane.

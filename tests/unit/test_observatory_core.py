@@ -525,8 +525,7 @@ def test_non_usd_prints_are_not_screened_against_usd_bands(catalog):
 
 
 def test_normalize_flags_non_finite_prices_implausible(catalog):
-    """Finiteness fail-closed (harden review 2026-08-23,
-    docs/adversarial-reviews.md): json admits NaN/Infinity,
+    """Finiteness fail-closed: json admits NaN/Infinity,
     and the non-USD branch has no band to catch them -- a non-finite
     native must flag implausible in EVERY currency branch (flag-only,
     the capture convention; consumers screen on the flag)."""

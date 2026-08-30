@@ -233,7 +233,7 @@ def main() -> int:
             # label: on the day a denser grid deploys, yesterday's
             # pre-flip marks were never scheduled and reporting them as
             # "permanently lost" would bury a REAL interior miss in two
-            # days of false alarms (adversarial review 2026-08-27). A
+            # days of false alarms. A
             # genuinely missed leading mark still prints -- just labeled
             # honestly as possibly-never-scheduled.
             first_present = min(prev_present)

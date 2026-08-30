@@ -23,7 +23,7 @@
   "fallback_parity_methodology_id": "annex_a2_v0_3_calc_v4",
   "calc": {
     "methodology_id": "annex_a2_v0_3_calc_v5",
-    "description": "Daily composite calculation parameters for methodology annex_a2_v0_3_calc_v5. Identical calculation semantics to the B300 lane's annex_a_v0_2_calc_v6 — recorded-currency outlier fence, median-of-votes aggregate, dynamic predictive weighting — as specified in METHODOLOGY.md and docs/dynamic_source_weighting.md, plus this lane's knobs: no FX lane (USD only), claim minimum 5 of 9, and the vast order-book statistic (calc.source_statistics). Every parameter here is embedded verbatim in each published artifact and pinned per methodology_id: any change touching a published day requires minting a new methodology_id (frozen predecessors keep their own keyspaces).",
+    "description": "Daily composite calculation parameters for methodology annex_a2_v0_3_calc_v5. Identical calculation semantics to the B300 lane's annex_a_v0_2_calc_v6 — recorded-currency outlier fence, median-of-votes aggregate, dynamic predictive weighting — as specified in METHODOLOGY.md and METHODOLOGY.md section 8, plus this lane's knobs: no FX lane (USD only), claim minimum 5 of 9, and the vast order-book statistic (calc.source_statistics). Every parameter here is embedded verbatim in each published artifact and pinned per methodology_id: any change touching a published day requires minting a new methodology_id (frozen predecessors keep their own keyspaces).",
     "dynamic_weights": {
       "scheme": "predictive_v1",
       "lookback_horizons_hours": [6, 24, 48],
