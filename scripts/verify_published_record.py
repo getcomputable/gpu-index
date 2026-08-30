@@ -84,7 +84,7 @@ def _window_warning(reader, sku: str, date: str):
         - datetime.timedelta(days=MIN_DISCLOSURE_WINDOW_DAYS - 1)
     ).isoformat()
     try:
-        if reader.read_day(probe_date) is not None:
+        if reader.read_day(probe_date, sku=sku) is not None:
             return None
     except Exception:
         return None  # probe unreadable: claim nothing either way
@@ -132,7 +132,7 @@ def main(argv=None) -> int:
     key = day_key(date)
     print(f"published record: {key} via {reader.describe()}")
     try:
-        envelope = reader.read_day(date)
+        envelope = reader.read_day(date, sku=sku)
     except (httpx.HTTPError, BucketPublishError, OSError) as exc:
         # Fail LOUDLY, never silently: an unreachable record source is
         # "could not verify" (exit 2), one actionable line -- never a

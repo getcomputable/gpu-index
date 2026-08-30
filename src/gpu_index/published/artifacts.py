@@ -38,6 +38,7 @@ import hashlib
 import json
 import math
 import re
+from datetime import datetime
 from typing import Any, List
 
 # Public keys, exactly as the publisher lays the record out.
@@ -47,6 +48,7 @@ SERIES_RANGES = ("24h", "7d", "30d", "90d")
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SKU_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 # Envelope shape: every published file carries exactly these keys.
 _ENVELOPE_KEYS = frozenset({"artifact_sha256", "data", "meta", "license"})
@@ -100,24 +102,54 @@ def latest_key() -> str:
     return _LATEST_KEY
 
 
-def day_key(date: str) -> str:
-    """``observations/YYYY/MM/DD.json`` for a UTC date."""
+def _version_prefix(sku: str, version: int) -> str:
+    if not isinstance(sku, str) or not _SKU_RE.fullmatch(sku):
+        raise PublishedRecordError(
+            f"published SKU must be one clean path segment, got {sku!r}"
+        )
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise PublishedRecordError(
+            f"published version must be a positive integer, got {version!r}"
+        )
+    return f"{sku}/v{version}"
+
+
+def day_key(
+    date: str, *, sku: str | None = None, version: int | None = None
+) -> str:
+    """Day key for either the legacy flat or versioned public layout."""
     if not _DATE_RE.match(date):
         raise PublishedRecordError(
             f"day key needs a YYYY-MM-DD date, got {date!r}"
         )
     year, month, day = date.split("-")
-    return f"observations/{year}/{month}/{day}.json"
+    suffix = f"observations/{year}/{month}/{day}.json"
+    if sku is None and version is None:
+        return suffix
+    if sku is None or version is None:
+        raise PublishedRecordError(
+            "versioned day key requires both SKU and version"
+        )
+    return f"{_version_prefix(sku, version)}/{suffix}"
 
 
-def series_key(series_range: str) -> str:
-    """``series/{24h,7d,30d,90d}.json``: aggregate history rows."""
+def series_key(
+    series_range: str, *, sku: str | None = None, version: int | None = None
+) -> str:
+    """Series key for either the legacy flat or versioned public layout."""
     if series_range not in SERIES_RANGES:
         raise PublishedRecordError(
             f"unknown series range {series_range!r}; "
             f"published ranges are {list(SERIES_RANGES)}"
         )
-    return f"series/{series_range}.json"
+    suffix = f"series/{series_range}.json"
+    if sku is None and version is None:
+        return suffix
+    if sku is None or version is None:
+        raise PublishedRecordError(
+            "versioned series key requires both SKU and version"
+        )
+    return f"{_version_prefix(sku, version)}/{suffix}"
 
 
 # ------------------------------------------- compact canonical JSON + digest
@@ -300,12 +332,114 @@ def _validate_meta(meta: Any, observations: List[Any]) -> None:
         )
 
 
+def _validate_effective_from(value: Any, where: str) -> None:
+    if not isinstance(value, str):
+        raise PublishedRecordError(f"{where} must be an ISO-8601 timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise PublishedRecordError(
+            f"{where} must be an ISO-8601 timestamp"
+        ) from exc
+    if parsed.utcoffset() is None:
+        raise PublishedRecordError(f"{where} must carry a UTC offset")
+
+
+def _validate_versions(versions: Any) -> None:
+    if not isinstance(versions, list) or not versions:
+        raise PublishedRecordError("latest data.versions must be a non-empty array")
+    seen_skus = set()
+    for index, entry in enumerate(versions):
+        where = f"latest data.versions[{index}]"
+        if not isinstance(entry, dict):
+            raise PublishedRecordError(f"{where} must be an object")
+        _require_keys(
+            entry,
+            frozenset(
+                {
+                    "sku",
+                    "current_version",
+                    "methodology_id",
+                    "effective_from",
+                    "succession",
+                }
+            ),
+            where,
+        )
+        sku = entry["sku"]
+        if not isinstance(sku, str) or not _SKU_RE.fullmatch(sku):
+            raise PublishedRecordError(f"{where}.sku must be one clean segment")
+        if sku in seen_skus:
+            raise PublishedRecordError(f"latest data.versions repeats SKU {sku}")
+        seen_skus.add(sku)
+        current = entry["current_version"]
+        if isinstance(current, bool) or not isinstance(current, int) or current < 1:
+            raise PublishedRecordError(
+                f"{where}.current_version must be a positive integer"
+            )
+        succession = entry["succession"]
+        if not isinstance(succession, list) or not succession:
+            raise PublishedRecordError(f"{where}.succession must be non-empty")
+        seen_methods = set()
+        current_entry = None
+        for offset, version_entry in enumerate(succession):
+            version_where = f"{where}.succession[{offset}]"
+            if not isinstance(version_entry, dict):
+                raise PublishedRecordError(f"{version_where} must be an object")
+            _require_keys(
+                version_entry,
+                frozenset({"version", "methodology_id", "effective_from"}),
+                version_where,
+            )
+            version = version_entry["version"]
+            if version != offset + 1:
+                raise PublishedRecordError(
+                    f"{where}.succession versions must start at 1 and be contiguous"
+                )
+            methodology_id = version_entry["methodology_id"]
+            if (
+                not isinstance(methodology_id, str)
+                or not _SKU_RE.fullmatch(methodology_id)
+            ):
+                raise PublishedRecordError(
+                    f"{version_where}.methodology_id must be one clean identifier"
+                )
+            if methodology_id in seen_methods:
+                raise PublishedRecordError(
+                    f"{where}.succession repeats methodology {methodology_id}"
+                )
+            seen_methods.add(methodology_id)
+            _validate_effective_from(
+                version_entry["effective_from"], f"{version_where}.effective_from"
+            )
+            if version == current:
+                current_entry = version_entry
+        if current_entry is None:
+            raise PublishedRecordError(
+                f"{where}.current_version is absent from its succession"
+            )
+        if (
+            entry["methodology_id"] != current_entry["methodology_id"]
+            or entry["effective_from"] != current_entry["effective_from"]
+        ):
+            raise PublishedRecordError(
+                f"{where} current metadata disagrees with its succession entry"
+            )
+
+
 def _validate_data(data: Any) -> List[Any]:
     if not isinstance(data, dict):
         raise PublishedRecordError("envelope data must be an object")
     kind = data.get("kind")
     if kind == "gpu_index_latest":
-        _require_keys(data, frozenset({"kind", "observations"}), "latest data")
+        _require_keys(
+            data,
+            frozenset({"kind", "observations"}),
+            "latest data",
+            frozenset({"versions"}),
+        )
+        if "versions" in data:
+            _validate_versions(data["versions"])
     elif kind == "gpu_index_observation_day":
         _require_keys(
             data, frozenset({"kind", "date", "observations"}), "day data"

@@ -59,12 +59,23 @@ def test_key_layout_matches_publisher_paths():
     # observations/YYYY/MM/DD.json / series/{24h,7d,30d,90d}.json.
     assert latest_key() == "latest.json"
     assert day_key("2026-08-05") == "observations/2026/08/05.json"
+    assert (
+        day_key("2026-08-05", sku="H100", version=2)
+        == "H100/v2/observations/2026/08/05.json"
+    )
     for r in ("24h", "7d", "30d", "90d"):
         assert series_key(r) == f"series/{r}.json"
+        assert series_key(r, sku="H100", version=2) == f"H100/v2/series/{r}.json"
     with pytest.raises(PublishedRecordError, match="YYYY-MM-DD"):
         day_key("2026-8-5")
     with pytest.raises(PublishedRecordError, match="series range"):
         series_key("1h")
+    with pytest.raises(PublishedRecordError, match="both SKU and version"):
+        day_key("2026-08-05", sku="H100")
+    with pytest.raises(PublishedRecordError, match="positive integer"):
+        series_key("24h", sku="H100", version=0)
+    with pytest.raises(PublishedRecordError, match="clean path segment"):
+        day_key("2026-08-05", sku="../H100", version=1)
 
 
 # ------------------------------------------------- ECMAScript number format
@@ -247,6 +258,75 @@ def test_unknown_license_key_refuses():
     document = _valid_document()
     document["license"]["surprise"] = "x"
     with pytest.raises(PublishedRecordError, match="unexpected"):
+        decode_and_verify_artifact(_encode(_redigest(document)))
+
+
+def test_latest_accepts_and_validates_version_pointer_metadata():
+    document = json.loads(_load("latest.json"))
+    document["data"]["versions"] = [
+        {
+            "sku": "H100",
+            "current_version": 2,
+            "methodology_id": "h100_v2",
+            "effective_from": "2026-08-29T00:00:00Z",
+            "succession": [
+                {
+                    "version": 1,
+                    "methodology_id": "h100_v1",
+                    "effective_from": "2026-08-10T00:00:00Z",
+                },
+                {
+                    "version": 2,
+                    "methodology_id": "h100_v2",
+                    "effective_from": "2026-08-29T00:00:00Z",
+                },
+            ],
+        }
+    ]
+    envelope = decode_and_verify_artifact(_encode(_redigest(document)))
+    assert envelope["data"]["versions"][0]["current_version"] == 2
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda row: row["succession"][1].update(version=3), "contiguous"),
+        (lambda row: row.update(current_version=3), "absent"),
+        (
+            lambda row: row.update(methodology_id="wrong"),
+            "disagrees",
+        ),
+        (
+            lambda row: row["succession"][1].update(
+                methodology_id=row["succession"][0]["methodology_id"]
+            ),
+            "repeats methodology",
+        ),
+    ],
+)
+def test_latest_rejects_invalid_version_pointer_metadata(mutate, message):
+    document = json.loads(_load("latest.json"))
+    row = {
+        "sku": "H100",
+        "current_version": 2,
+        "methodology_id": "h100_v2",
+        "effective_from": "2026-08-29T00:00:00Z",
+        "succession": [
+            {
+                "version": 1,
+                "methodology_id": "h100_v1",
+                "effective_from": "2026-08-10T00:00:00Z",
+            },
+            {
+                "version": 2,
+                "methodology_id": "h100_v2",
+                "effective_from": "2026-08-29T00:00:00Z",
+            },
+        ],
+    }
+    mutate(row)
+    document["data"]["versions"] = [row]
+    with pytest.raises(PublishedRecordError, match=message):
         decode_and_verify_artifact(_encode(_redigest(document)))
 
 

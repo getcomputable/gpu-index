@@ -67,10 +67,13 @@ day's observations, and YYYY-MM-DDTHH targets a single one. It reads the record
 from a local downloaded copy (GPU_INDEX_DATA_DIR, default ./data) when it holds
 the requested day, otherwise straight from the public front: the official
 record host https://data.getcomputable.com by default; set
-GPU_INDEX_PUBLIC_BASE_URL to point at another copy. The record's layout at
-that host: latest.json (the newest observation per lane),
-observations/YYYY/MM/DD.json (one UTC day, all lanes), and
-series/{24h,7d,30d,90d}.json (aggregate history rows). For every
+GPU_INDEX_PUBLIC_BASE_URL to point at another copy. `latest.json` is the
+version-free pointer: for each SKU it names the current integer version, the
+methodology and effective timestamp behind it, and the complete succession
+list. Versioned keyspaces live at
+`<sku>/v<n>/observations/YYYY/MM/DD.json` and
+`<sku>/v<n>/series/{24h,7d,30d,90d}.json`. The reader also accepts the former
+flat layout during the migration window. For every
 observation the verifier prints the recomputed value next to the published value with a
 MATCH or MISMATCH verdict: each published observation carries the per-provider
 receipts (price, standard deviation, liveness weight, status) its value and

@@ -135,7 +135,7 @@ else
   if [ "$PRODUCER" -eq 0 ]; then
     DAY=${DATE%%T*}
     DAY_FILE="$DATA_DIR/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
-    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ]; then
+    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ] && [ ! -f "$DATA_DIR/latest.json" ]; then
       export GPU_INDEX_PUBLIC_BASE_URL="https://data.getcomputable.com"
     fi
     PUB_SKU=$(printf '%s' "$ARG" | tr '[:lower:]' '[:upper:]')
