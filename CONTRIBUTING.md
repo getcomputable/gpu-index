@@ -63,10 +63,9 @@ the sanctioned cross-package edges, and the three contributor seams.
   fail loudly rather than guess, record the published figure alongside the
   normalization, state currency explicitly, HTTPS only. Collectors also send
   the project's honest User-Agent (a repo convention, not a methodology rule).
-  [docs/COLLECTION.md](docs/COLLECTION.md) describes what the collectors do on
-  the network -- read it before adding one, and keep a new collector inside it:
-  public pages and public endpoints, read anonymously, one request per source
-  per run, no retries.
+  Keep a new collector inside the same envelope as the existing ones: public
+  pages and public endpoints, read anonymously, one request per source per run,
+  no retries.
 - Run the test suite before opening a PR. Every collector has a fixture-based
   test; new collectors need one.
 - Keep fixtures minimal: the smallest page excerpt that exercises the recipe.

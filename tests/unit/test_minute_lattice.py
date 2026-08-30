@@ -380,9 +380,8 @@ def test_shipped_observatory_config_is_still_the_hour_vocabulary():
 
     The lattice port lands the CAPABILITY, not a cadence change: densifying
     the capture grid multiplies the request volume this project sends to
-    thirty third-party providers, and docs/COLLECTION.md states that rate
-    as a conduct commitment. So the flip is a deliberate, separately
-    reviewed edit -- this pin fails loudly if one arrives without it.
+    third-party providers. So the flip is a deliberate, separate edit --
+    this pin fails loudly if one arrives without it.
     """
     from gpu_index.observatory.config import capture_grid, load_observatory_config
 
