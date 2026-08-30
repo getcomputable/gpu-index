@@ -136,7 +136,7 @@ from gpu_index.index.weights import (
 # matcher is gpu_index.observatory.catalog's (a token must mean the same thing to
 # the catalog and to the panel screens -- 'B200' never inside 'GB200',
 # 'NVL' never inside 'NVLINK'). Both are PUBLIC names: this deliberate
-# reuse-over-fork rides the declared waiver edges in docs/architecture.md,
+# reuse-over-fork rides the declared waiver edges in ARCHITECTURE.md,
 # never underscore internals.
 from gpu_index.index.screens import PRICEABLE_CURRENCIES, QUARANTINE_REASON
 from gpu_index.observatory.catalog import boundary_pattern, normalize_label

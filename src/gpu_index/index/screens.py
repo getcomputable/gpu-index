@@ -67,7 +67,7 @@ def screen_params(config: Dict[str, Any]) -> Dict[str, Any]:
 # record) — a print the composite would never use must not become the
 # screen's reference or today's would-be print (e.g. a deliberately
 # UNKNOWN-labeled currency). Public: the panel engine screens rows
-# against the same fence (docs/architecture.md).
+# against the same fence (ARCHITECTURE.md).
 PRICEABLE_CURRENCIES = ("USD", "EUR")
 
 

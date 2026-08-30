@@ -2,8 +2,7 @@
 # Copyright 2026 Computable
 """Dynamic predictive source weighting for the index baskets.
 
-Implements the dynamic weighting methodology (docs/dynamic_source_weighting.md;
-METHODOLOGY.md section 8) for
+Implements the dynamic weighting methodology (METHODOLOGY.md section 8) for
 annex_a_v0_2_calc_v5 / annex_a2_v0_3_calc_v4: each
 constituent's index weight derives from how well its recent EXCESS price
 movements predict subsequent movement in the rest of the basket —

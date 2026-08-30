@@ -15,7 +15,7 @@ fault-tolerant, outlier-resistant, transparent.
   <a href="METHODOLOGY.md">Methodology</a> ·
   <a href="GOVERNANCE.md">Governance</a> ·
   <a href="LICENSE-DATA.md">Data license</a> ·
-  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="ARCHITECTURE.md">Architecture</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
@@ -114,7 +114,7 @@ verifier prints a non-fatal warning when that is the case.
 | `tests/` | The suite: unit tests, live-captured fixtures, and the golden artifacts that pin published bytes |
 | `config/` | Panels, parameters, and the chip catalog. Parameters are configuration, not code; every published record embeds the parameter set that produced it |
 | `METHODOLOGY.md` | The full methodology specification |
-| `docs/` | The package map ([docs/architecture.md](docs/architecture.md)), the weighting design note, and the per-lane mint records in `docs/mints/` |
+| `ARCHITECTURE.md` | The package map, the dependency arrows, and the contributor seams |
 
 Note: `src/gpu_index/index/sources.py` and `composite.py` are the FROZEN
 daily lane, retained so the retired daily series stays replayable — not a
@@ -126,7 +126,7 @@ Four packages, layered `common <- observatory <- index <- published`, with
 two declared waiver edges (the vast collector shares the calc lane's
 order-book parser; the panel screens share the catalog's label machinery).
 The package map, the dependency arrows, the frozen-lane rationale, and the
-three contributor seams are in [docs/architecture.md](docs/architecture.md);
+three contributor seams are in [ARCHITECTURE.md](ARCHITECTURE.md);
 `tests/unit/test_import_boundaries.py` enforces the arrows in CI.
 
 ## Methodology and governance

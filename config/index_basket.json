@@ -22,7 +22,7 @@
   "fallback_parity_methodology_id": "annex_a_v0_2_calc_v5",
   "calc": {
     "methodology_id": "annex_a_v0_2_calc_v6",
-    "description": "Daily composite calculation parameters for methodology annex_a_v0_2_calc_v6. The calculation semantics — per-source daily print, recorded-currency outlier fence, median-of-votes aggregate, dynamic predictive weighting — are specified in METHODOLOGY.md and docs/dynamic_source_weighting.md. Every parameter here is embedded verbatim in each published artifact and pinned per methodology_id: any change touching a published day requires minting a new methodology_id (frozen predecessors keep their own keyspaces).",
+    "description": "Daily composite calculation parameters for methodology annex_a_v0_2_calc_v6. The calculation semantics — per-source daily print, recorded-currency outlier fence, median-of-votes aggregate, dynamic predictive weighting — are specified in METHODOLOGY.md and METHODOLOGY.md section 8. Every parameter here is embedded verbatim in each published artifact and pinned per methodology_id: any change touching a published day requires minting a new methodology_id (frozen predecessors keep their own keyspaces).",
     "dynamic_weights": {
       "scheme": "predictive_v1",
       "lookback_horizons_hours": [6, 24, 48],

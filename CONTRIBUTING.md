@@ -54,7 +54,7 @@ panel (see rule 2 above).
 ## Where things live
 
 The README's "What is here" table maps the tree, and
-[docs/architecture.md](docs/architecture.md) has the package layering,
+[ARCHITECTURE.md](ARCHITECTURE.md) has the package layering,
 the sanctioned cross-package edges, and the three contributor seams.
 
 ## Practicalities

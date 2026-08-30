@@ -52,7 +52,7 @@
   ],
   "calc": {
     "methodology_id": "h200_sxm_v1_calc_v1",
-    "description": "calc_v1 panel genesis mint (h200_sxm_v1_calc_v1); METHODOLOGY.md is the binding methodology document; full mint record: docs/mints/h200_sxm.md",
+    "description": "calc_v1 panel genesis mint (h200_sxm_v1_calc_v1); METHODOLOGY.md is the binding methodology document",
     "availability_verified_sources": [
       "lium",
       "vast"

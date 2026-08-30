@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
-"""CI fence for the package dependency arrows (docs/architecture.md):
+"""CI fence for the package dependency arrows (ARCHITECTURE.md):
 common <- observatory <- index <- published, plus exactly two declared
 waivers. A new cross-package import fails here until it is either
-removed or documented as a third waiver in docs/architecture.md."""
+removed or documented as a third waiver in ARCHITECTURE.md."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ ALLOWED_EDGES = {
     ("published", "common"),
     ("published", "index"),
 }
-# The two declared waivers (docs/architecture.md): file -> module prefixes.
+# The two declared waivers (ARCHITECTURE.md): file -> module prefixes.
 WAIVERS = {
     "observatory/sources/vast.py": ("gpu_index.index.composite", "gpu_index.index.sources"),
     "index/": ("gpu_index.observatory.catalog",),
@@ -58,6 +58,6 @@ def test_only_declared_cross_package_edges():
     assert not violations, (
         "Undeclared cross-package import(s) — the dependency arrows are\n"
         "common <- observatory <- index <- published with two waivers\n"
-        "(docs/architecture.md). Remove the import or document a waiver:\n"
+        "(ARCHITECTURE.md). Remove the import or document a waiver:\n"
         + "\n".join(violations)
     )

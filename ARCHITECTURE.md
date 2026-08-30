@@ -38,22 +38,6 @@ identity-critical code.
 These are the ONLY sanctioned cross-package edges;
 `tests/unit/test_import_boundaries.py` fails on any new one.
 
-## The frozen daily lane
-
-src/gpu_index/index/sources.py duplicates 13 observatory collectors on
-purpose: it is the frozen daily lane's capture code, retained
-byte-untouched so the retired daily series stays replayable; the two
-lanes must never be refactored together. `index/composite.py` is that
-lane's calculation half, and it also still homes machinery the live
-hourly lane imports (`median_stddev_composite`, the FX and filter
-helpers) — frozen semantics, single home.
-
-The hourly panel re-implements the capture lane's L5 jump screen rather
-than importing it: the capture version mutates a snapshot in flight while
-the calc version emits verdicts into an immutable artifact — same pinned
-semantics in two documented frames, with drift caught by each lane's own
-tests.
-
 ## Contributor seams
 
 1. **Add a collector** — one new file in
@@ -64,9 +48,8 @@ tests.
 2. **Panel membership and parameters** —
    `config/index_panel_<lane>.json`, loaded and validated by
    `src/gpu_index/index/panel_config.py`; parameters are configuration
-   under the refuse-to-extend fence, and each lane's mint prose lives in
-   `docs/mints/<lane_id>.md`. Changes here are governance decisions, not
-   ordinary code review.
+   under the refuse-to-extend fence. Changes here are governance
+   decisions, not ordinary code review.
 3. **Verify the published record** — `./reproduce` drives
    `scripts/verify_published_record.py` over `src/gpu_index/published/`;
    anything that touches the published contract must keep the

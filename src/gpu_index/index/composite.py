@@ -2,6 +2,12 @@
 # Copyright 2026 Computable
 """Pure daily-composite calculation for the index baskets.
 
+This is the FROZEN daily lane's calculation half, and it is also the single
+home for machinery the live hourly panel imports (``median_stddev_composite``,
+the FX and filter helpers). Its semantics are frozen because the retired daily
+series' bytes depend on them, so the hourly lane reuses this code rather than
+forking it.
+
 ONE calculator, parameterized by basket config: the B300 lane
 (config/index_basket.json) and the B200 lane (config/index_basket_b200.json)
 run the same functions. Basket-specific behavior comes ONLY from the config
