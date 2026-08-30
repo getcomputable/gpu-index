@@ -20,8 +20,12 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
+# One identity across every repository that collects for this index. The
+# +URL is getcomputable.com and NOT this repository: a repo URL stops
+# resolving if the repo is renamed or made private, and a 404 is no better
+# than no contact at all.
 UA = (
-    "CGI-Collector/0.1 (+https://github.com/getcomputable/gpu-index; "
+    "CGI-Collector/1.0 (+https://getcomputable.com; "
     "team@getcomputable.com)"
 )
 
