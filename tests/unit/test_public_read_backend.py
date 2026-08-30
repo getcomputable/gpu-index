@@ -87,7 +87,11 @@ def test_get_bytes_returns_body_with_cgi_user_agent():
         f"{BASE_URL}/index/basket/composites/m1/2026-08-16.json"
     )
     assert seen["ua"] == UA
-    assert "CGI-Collector/0.1" in seen["ua"]
+    assert "CGI-Collector/" in seen["ua"]
+    # No browser prefix: the UA is a public identity, and the bot
+    # protection on the collected hosts screens an unidentified client,
+    # not the absence of a browser string.
+    assert not seen["ua"].lower().startswith("mozilla/")
 
 
 def test_get_bytes_missing_key_is_none_on_404():
