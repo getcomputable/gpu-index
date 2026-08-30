@@ -36,6 +36,7 @@ than at some stranger's first clean clone.
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import re
 import subprocess
@@ -77,12 +78,13 @@ _SUMMARY_RE = re.compile(
 )
 
 
-def _raw_day(date: str):
+def _raw_day(date: str, sku: str, version: int | None):
     """Raw bytes of a published day file, or None when absent (404).
 
     Deliberately not PublishedRecordReader: no decoding, no contract.
     """
-    url = f"{PUBLIC_BASE_URL.rstrip('/')}/{day_key(date)}"
+    key = day_key(date) if version is None else day_key(date, sku=sku, version=version)
+    url = f"{PUBLIC_BASE_URL.rstrip('/')}/{key}"
     response = httpx.get(url, timeout=30.0, follow_redirects=True)
     if response.status_code == 404:
         return None
@@ -90,29 +92,52 @@ def _raw_day(date: str):
     return response.content
 
 
-@pytest.fixture(scope="module")
-def live_day():
-    """The newest published UTC day on the front, as (date, raw bytes)."""
-    today = datetime.datetime.now(datetime.timezone.utc).date()
-    tried = []
-    for back in range(1, LOOKBACK_DAYS + 1):
-        date = (today - datetime.timedelta(days=back)).isoformat()
-        tried.append(date)
-        raw = _raw_day(date)
-        if raw is not None:
-            return date, raw
-    pytest.fail(
-        f"the public front {PUBLIC_BASE_URL} served no observation day "
-        f"file for any of {tried}: the record front is down, or hourly "
-        "publication has stopped"
+def _current_versions() -> dict[str, int] | None:
+    """Bare-JSON discovery of current versions; decoding is tested later."""
+    response = httpx.get(
+        f"{PUBLIC_BASE_URL.rstrip('/')}/latest.json",
+        timeout=30.0,
+        follow_redirects=True,
     )
+    response.raise_for_status()
+    document = json.loads(response.content)
+    versions = document["data"].get("versions")
+    if versions is None:
+        return None
+    return {entry["sku"]: entry["current_version"] for entry in versions}
 
 
-def test_live_day_file_satisfies_the_envelope_contract(live_day):
+@pytest.fixture(scope="module")
+def live_days():
+    """Newest published UTC day per SKU, as ``{sku: (date, raw)}``."""
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    versions = _current_versions()
+    discovered = {}
+    for cli_sku in PUBLIC_SKUS:
+        sku = cli_sku.upper()
+        tried = []
+        for back in range(1, LOOKBACK_DAYS + 1):
+            date = (today - datetime.timedelta(days=back)).isoformat()
+            tried.append(date)
+            raw = _raw_day(date, sku, None if versions is None else versions[sku])
+            if raw is not None:
+                discovered[cli_sku] = (date, raw)
+                break
+        else:
+            pytest.fail(
+                f"the public front {PUBLIC_BASE_URL} served no {sku} observation day "
+                f"file for any of {tried}: the record front is down, or hourly "
+                "publication has stopped"
+            )
+    return discovered
+
+
+@pytest.mark.parametrize("sku", PUBLIC_SKUS)
+def test_live_day_file_satisfies_the_envelope_contract(sku, live_days):
     # The contract seam, tightly. Any divergence between what this
     # reader REQUIRES and what the publisher WRITES -- an envelope key,
     # a meta key, a license key -- fails here, naming the field.
-    date, raw = live_day
+    date, raw = live_days[sku]
     envelope = decode_and_verify_artifact(raw)
     assert envelope["data"]["kind"] == "gpu_index_observation_day"
     assert envelope["data"]["date"] == date
@@ -121,11 +146,11 @@ def test_live_day_file_satisfies_the_envelope_contract(live_day):
 
 
 @pytest.mark.parametrize("sku", PUBLIC_SKUS)
-def test_live_reproduce_verifies_the_published_record(sku, live_day, tmp_path):
+def test_live_reproduce_verifies_the_published_record(sku, live_days, tmp_path):
     # The whole clean-clone path: the launch command, no local copy, no
     # front configured, against the live record. Exit 0 only when every
     # observation recomputed and matched.
-    date, _ = live_day
+    date, _ = live_days[sku]
     empty_data_dir = tmp_path / "no-local-record"
     empty_data_dir.mkdir()
 

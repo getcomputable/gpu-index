@@ -134,11 +134,18 @@ else
   # explicit --producer flag, which forces the internal replay below).
   if [ "$PRODUCER" -eq 0 ]; then
     DAY=${DATE%%T*}
+    PUB_SKU=$(printf '%s' "$ARG" | tr '[:lower:]' '[:upper:]')
     DAY_FILE="$DATA_DIR/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
-    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ]; then
+    VERSIONED_DAY_FILE=""
+    if [ -f "$DATA_DIR/latest.json" ]; then
+      CURRENT_VERSION=$("$PY" -c 'import json,sys; data=json.load(open(sys.argv[1])); print(next((entry["current_version"] for entry in data.get("data", {}).get("versions", []) if entry.get("sku") == sys.argv[2]), ""))' "$DATA_DIR/latest.json" "$PUB_SKU" 2>/dev/null || true)
+      if [ -n "$CURRENT_VERSION" ]; then
+        VERSIONED_DAY_FILE="$DATA_DIR/$PUB_SKU/v$CURRENT_VERSION/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
+      fi
+    fi
+    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ] && { [ -z "$VERSIONED_DAY_FILE" ] || [ ! -f "$VERSIONED_DAY_FILE" ]; }; then
       export GPU_INDEX_PUBLIC_BASE_URL="https://data.getcomputable.com"
     fi
-    PUB_SKU=$(printf '%s' "$ARG" | tr '[:lower:]' '[:upper:]')
     exec "$PY" "$ROOT/scripts/verify_published_record.py" \
       --sku "$PUB_SKU" --date "$DATE"
   fi

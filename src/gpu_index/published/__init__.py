@@ -4,8 +4,9 @@
 
 The publisher (a separate pipeline, maintained outside this
 repository) projects the private producer record into a small public
-layout — ``latest.json``, ``observations/YYYY/MM/DD.json`` day files, and
-``series/{24h,7d,30d,90d}.json`` — each file a self-digesting envelope of
+layout — the version-free ``latest.json`` pointer plus
+``<sku>/v<n>/observations/YYYY/MM/DD.json`` day files and
+``<sku>/v<n>/series/{24h,7d,30d,90d}.json`` — each file a self-digesting envelope of
 ``gpu_price_index_observation`` documents. This package mirrors that
 contract in Python without sharing any code with the publisher:
 

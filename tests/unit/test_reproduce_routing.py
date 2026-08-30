@@ -115,6 +115,31 @@ def _publish_public_day(data_dir: Path, date: str) -> None:
     target.write_text("{}\n")
 
 
+def _publish_versioned_public_day(
+    data_dir: Path, sku: str, date: str, version: int = 2
+) -> None:
+    latest = {
+        "data": {
+            "versions": [
+                {"sku": sku, "current_version": version},
+            ]
+        }
+    }
+    (data_dir / "latest.json").write_text(json.dumps(latest) + "\n")
+    year, month, day = date.split("-")
+    target = (
+        data_dir
+        / sku
+        / f"v{version}"
+        / "observations"
+        / year
+        / month
+        / f"{day}.json"
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("{}\n")
+
+
 def test_default_with_no_env_verifies_against_the_official_front(
     shim, data_dir
 ):
@@ -180,6 +205,38 @@ def test_published_day_for_another_date_falls_to_the_official_front(
     # (default host; still the published verifier, never the producer).
     _publish_public_day(data_dir, "2026-08-25")
     result = _run(shim, data_dir, "h100", "2026-08-24T05")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert _shim_env(result) == "https://data.getcomputable.com"
+
+
+def test_local_versioned_public_day_keeps_the_local_backend(shim, data_dir):
+    _publish_versioned_public_day(data_dir, "H100", "2026-08-25")
+    result = _run(shim, data_dir, "h100", "2026-08-25T14")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert "--sku H100 --date 2026-08-25T14" in line
+    assert _shim_env(result) == ""
+
+
+def test_versioned_public_day_for_another_date_falls_to_official_front(
+    shim, data_dir
+):
+    _publish_versioned_public_day(data_dir, "H100", "2026-08-25")
+    result = _run(shim, data_dir, "h100", "2026-08-24T05")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert _shim_env(result) == "https://data.getcomputable.com"
+
+
+def test_version_pointer_for_another_sku_falls_to_official_front(
+    shim, data_dir
+):
+    _publish_versioned_public_day(data_dir, "B200", "2026-08-25")
+    result = _run(shim, data_dir, "h100", "2026-08-25")
     assert result.returncode == 0, result.stderr
     (line,) = _shim_lines(result)
     assert "verify_published_record.py" in line

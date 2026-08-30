@@ -48,7 +48,6 @@ from gpu_index.common.bucket import BucketPublishError  # noqa: E402
 from gpu_index.published.artifacts import (  # noqa: E402
     ArtifactDigestError,
     PublishedRecordError,
-    day_key,
 )
 from gpu_index.published.reader import PublishedRecordReader  # noqa: E402
 from gpu_index.published.verify import (  # noqa: E402
@@ -84,7 +83,7 @@ def _window_warning(reader, sku: str, date: str):
         - datetime.timedelta(days=MIN_DISCLOSURE_WINDOW_DAYS - 1)
     ).isoformat()
     try:
-        if reader.read_day(probe_date) is not None:
+        if reader.read_day(probe_date, sku=sku) is not None:
             return None
     except Exception:
         return None  # probe unreadable: claim nothing either way
@@ -129,10 +128,10 @@ def main(argv=None) -> int:
     except (PublishedRecordError, BucketPublishError) as exc:
         print(f"published record: {exc}", file=sys.stderr)
         return 2
-    key = day_key(date)
-    print(f"published record: {key} via {reader.describe()}")
     try:
-        envelope = reader.read_day(date)
+        key = reader.resolve_day_key(date, sku=sku)
+        print(f"published record: {key} via {reader.describe()}")
+        envelope = reader.read_day(date, sku=sku, resolved_key=key)
     except (httpx.HTTPError, BucketPublishError, OSError) as exc:
         # Fail LOUDLY, never silently: an unreachable record source is
         # "could not verify" (exit 2), one actionable line -- never a
