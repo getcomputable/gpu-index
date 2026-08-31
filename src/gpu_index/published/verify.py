@@ -23,6 +23,17 @@ The vote/IQM math is IMPORTED from the panel engine
 that priced the observation — never duplicated here, so this check can
 only diverge from production if the inputs diverge.
 
+Statistic declarations fail closed at this module boundary. Before
+receipts are inspected or a degraded/no-print verdict can return,
+``recompute_observation`` requires the supported public wire value
+``calc_params.aggregation == "median_stddev_votes"`` and raises
+``UnsupportedStatisticError`` for any other declaration. That named
+error subclasses ``PublishedRecordError`` so existing broad catches
+remain compatible, while callers can distinguish unsupported math from
+a recomputed mismatch. Unsupported math is an input-contract error, not
+a fourth verification verdict, and is never silently mapped to the
+engine's current calculation.
+
 Withheld sources: the publisher's disclosure pass nulls price+sd on a
 receipt and marks it ``price_disclosure: "withheld"`` while the
 published index value is

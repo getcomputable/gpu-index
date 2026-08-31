@@ -54,6 +54,6 @@ These are the ONLY sanctioned cross-package edges;
    `scripts/verify_published_record.py` over `src/gpu_index/published/`;
    anything that touches the published contract must keep the
    recompute-and-match and digest checks green against the fixtures in
-   `tests/fixtures/published/`. The verifier's fail-closed statistic
-   dispatch is recorded in the
-   [unsupported-statistic error contract ADR](docs/adr/2026-08-31-published-verifier-error-contract.md).
+   `tests/fixtures/published/`. The verifier owns fail-closed statistic
+   dispatch: an unsupported declared aggregate raises the public
+   `UnsupportedStatisticError` before any degraded verdict can return.
