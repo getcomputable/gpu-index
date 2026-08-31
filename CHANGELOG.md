@@ -7,6 +7,21 @@ that produced it; any parameter change touching a published day mints a
 new methodology_id, and prior versions stay frozen and readable under
 their own keyspaces. Newest first.
 
+## 2026-08-30
+
+- Public v2 succession became effective at `2026-08-30T08:49:34.000Z`,
+  replaying the four public lanes under a 3% percentage sigma floor and
+  the central-vote IQM (`iqm_alpha = 0.16666`): B300
+  `annex_a_v0_2_calc_v10`, B200 `annex_a2_v0_3_calc_v9`, H100-SXM
+  `h100_sxm_v1_calc_v4`, and H200-SXM `h200_sxm_v1_calc_v4`.
+- Public v3 succession became effective at `2026-08-30T23:07:28.000Z`:
+  B300 `annex_a_v0_2_calc_v11`, B200 `annex_a2_v0_3_calc_v10`,
+  H100-SXM `h100_sxm_v1_calc_v5`, and H200-SXM
+  `h200_sxm_v1_calc_v5`. These mints replay the public series every 15
+  minutes from `2026-08-29T00:00Z`, source vote variability from the
+  90-day dynamic-weight history, and give the vote sigma its own 3% of
+  current-price floor. Versions 1 and 2 remain frozen and readable.
+
 ## 2026-08-29
 
 - Disclosure-only adoption: selected panel rows now retain

@@ -13,14 +13,26 @@ design, so the artifact alone recomputes it):
     "accepted" (the panel's own predicate; the publisher emits weight
     and sd non-null exactly for that contributing set);
   - each passing source votes its weight at price and price +/- sd
-    (three votes), and the index is the weighted median of all votes;
+    (three votes), and the index is the declared interquantile mean of
+    those votes (or the frozen-v1 weighted median when alpha is absent);
     the published stability band is the larger distance from the index
     to the 25th/75th weighted vote percentiles.
 
-The vote math is IMPORTED from the panel engine
+The vote/IQM math is IMPORTED from the panel engine
 (``gpu_index.index.panel.median_stddev_composite``) — the same function
 that priced the observation — never duplicated here, so this check can
 only diverge from production if the inputs diverge.
+
+Statistic declarations fail closed at this module boundary. Before
+receipts are inspected or a degraded/no-print verdict can return,
+``recompute_observation`` requires the supported public wire value
+``calc_params.aggregation == "median_stddev_votes"`` and raises
+``UnsupportedStatisticError`` for any other declaration. That named
+error subclasses ``PublishedRecordError`` so existing broad catches
+remain compatible, while callers can distinguish unsupported math from
+a recomputed mismatch. Unsupported math is an input-contract error, not
+a fourth verification verdict, and is never silently mapped to the
+engine's current calculation.
 
 Withheld sources: the publisher's disclosure pass nulls price+sd on a
 receipt and marks it ``price_disclosure: "withheld"`` while the
@@ -51,6 +63,13 @@ from gpu_index.published.artifacts import PublishedRecordError
 VERDICT_MATCH = "match"
 VERDICT_MISMATCH = "mismatch"
 VERDICT_DEGRADED = "degraded"
+
+_SUPPORTED_AGGREGATION = "median_stddev_votes"
+_ERA3_IQM_ALPHA = 0.16666
+
+
+class UnsupportedStatisticError(PublishedRecordError):
+    """The observation declares aggregate math this verifier cannot run."""
 
 # The published disclosure window must cover the weighting methodology's
 # lookback, or the reproducibility claim for the WEIGHTS degrades.
@@ -155,6 +174,19 @@ def recompute_observation(observation: dict) -> ObservationCheck:
         raise PublishedRecordError(
             f"observation {sku} {observed_at} has no calc_params"
         )
+    aggregation = calc_params.get("aggregation")
+    if aggregation != _SUPPORTED_AGGREGATION:
+        raise UnsupportedStatisticError(
+            f"observation {sku} {observed_at} declares unsupported "
+            f"calc_params.aggregation {aggregation!r}; this verifier "
+            f"implements {_SUPPORTED_AGGREGATION!r}"
+        )
+    iqm_alpha = calc_params.get("iqm_alpha", 0.0)
+    if not _finite_number(iqm_alpha) or not 0 <= iqm_alpha <= 0.5:
+        raise PublishedRecordError(
+            f"observation {sku} {observed_at} calc_params.iqm_alpha "
+            f"must be a finite number in [0, 0.5], got {iqm_alpha!r}"
+        )
     min_to_publish = calc_params.get("min_sources_to_publish")
     if not isinstance(min_to_publish, int) or min_to_publish < 1:
         raise PublishedRecordError(
@@ -235,7 +267,11 @@ def recompute_observation(observation: dict) -> ObservationCheck:
     # The minimum-panel rule, verbatim from the panel engine: a composite
     # exists iff the passing set reaches min_sources_to_publish.
     composite = (
-        median_stddev_composite(passing, vote_stddevs)
+        median_stddev_composite(
+            passing,
+            vote_stddevs,
+            iqm_alpha=iqm_alpha,
+        )
         if len(passing) >= min_to_publish
         else None
     )
@@ -307,6 +343,25 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             "stability_band_usd_gpu_hr": recomputed_band,
         },
     )
+    if diffs and "iqm_alpha" not in calc_params:
+        # The official verdict above always follows the artifact's declared
+        # params: absent alpha means the frozen-v1 default 0.0. This second
+        # aggregate is diagnostic only. It recognizes the COM-1451 failure
+        # shape without silently accepting the undisclosed era3 rule.
+        era3_composite = median_stddev_composite(
+            passing, vote_stddevs, iqm_alpha=_ERA3_IQM_ALPHA
+        )
+        if (
+            era3_composite is not None
+            and era3_composite["value_usd_gpu_hr"] == published_value
+            and era3_composite["confidence_usd_gpu_hr"] == published_band
+        ):
+            diffs.append(
+                "calc_params.iqm_alpha is absent, so the verifier used "
+                "the frozen-v1 default 0.0; the published value and band "
+                f"instead match iqm_alpha {_ERA3_IQM_ALPHA}, which the "
+                "publisher must disclose"
+            )
     return ObservationCheck(
         sku=sku,
         observed_at=observed_at,

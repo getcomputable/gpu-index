@@ -5,8 +5,8 @@ golden per engine, reviewed as code).
 
 Rebuilds the 2026-08-16 B200 record from the SAME committed snapshot
 fixture the daily golden uses, computes the basket-era (stitched) T22
-observation with the SHIPPING panel config (config/index_panel_b200.json,
-methodology annex_a2_v0_3_calc_v6) through the real panel CLI, and asserts
+observation with the frozen v6 parameters reconstructed from the current
+shipping config through the real panel CLI, and asserts
 the published hourly artifact is BYTE-identical to tests/golden/
 b200_panel_annex_a2_v0_3_calc_v6_2026-08-16T22.json (sha256 committed
 alongside). 2026-08-16 is the lane's genesis day inside its 4-slot
@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -111,8 +112,31 @@ def _load_cli():
     return _CLI_CACHE["mod"]
 
 
-def _recompute_observation(monkeypatch, capsys) -> bytes:
-    """One real --sync of the shipping B200 panel config over a record
+def _frozen_v6_config(tmp_path: Path) -> Path:
+    """Reconstruct the immutable v6 config after the shipping file mints on."""
+    config = json.loads(PANEL_CONFIG_PATH.read_text())
+    config["slot_grids"] = config["slot_grids"][:2]
+    calc = config["calc"]
+    calc["methodology_id"] = "annex_a2_v0_3_calc_v6"
+    calc["description"] = (
+        "calc_v6 hourly panel mint (annex_a2_v0_3_calc_v6); "
+        "METHODOLOGY.md is the binding methodology document"
+    )
+    for key in (
+        "filter_sigma_floor_pct",
+        "iqm_alpha",
+        "vote_sigma_source",
+        "vote_sigma_floor_pct",
+    ):
+        calc.pop(key)
+    calc["filter_sigma_floor"] = 0.05
+    path = tmp_path / "index_panel_b200_calc_v6.json"
+    path.write_text(json.dumps(config, indent=2) + "\n")
+    return path
+
+
+def _recompute_observation(monkeypatch, capsys, tmp_path) -> bytes:
+    """One real --sync of the frozen B200 v6 panel config over a record
     holding exactly the committed fixture snapshot: the genesis day's
     T04/T10/T16 publish as explicit observation_missed artifacts and T22
     computes from the fixture (utc_now sits past T22's closing mark, the
@@ -121,6 +145,7 @@ def _recompute_observation(monkeypatch, capsys) -> bytes:
     cli = _load_cli()
     client = FakeS3()
     client.objects[SNAPSHOT_KEY] = FIXTURE_PATH.read_bytes()
+    frozen_config = _frozen_v6_config(tmp_path)
 
     class StubConfig:
         bucket = "record"
@@ -148,7 +173,7 @@ def _recompute_observation(monkeypatch, capsys) -> bytes:
         [
             "compute_panel_index.py",
             "--config",
-            str(PANEL_CONFIG_PATH),
+            str(frozen_config),
             "--sync",
         ],
     )
@@ -167,8 +192,10 @@ def _recompute_observation(monkeypatch, capsys) -> bytes:
     return client.objects[OBSERVATION_KEY]
 
 
-def test_panel_golden_artifact_bytes_and_sha256(monkeypatch, capsys):
-    recomputed = _recompute_observation(monkeypatch, capsys)
+def test_panel_golden_artifact_bytes_and_sha256(
+    monkeypatch, capsys, tmp_path
+):
+    recomputed = _recompute_observation(monkeypatch, capsys, tmp_path)
     recomputed_sha = hashlib.sha256(recomputed).hexdigest()
 
     on_ci = bool(os.environ.get("CI"))

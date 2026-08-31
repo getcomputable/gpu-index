@@ -6,8 +6,8 @@ The re-base's governing claim is that hour-grid lanes are BYTE-UNCHANGED:
 the lattice moved under them (stamps became day*1440 + minute), but every
 schedule quantity, every artifact string, and every embedded calc_params
 byte is identical. These tests pin that claim structurally — the
-minute-lattice schedule of every REAL baked config must equal x60 of an
-independently-computed hour-lattice reference, the key formats must
+minute-lattice schedule of every REAL baked config must equal an
+independently-computed lattice reference, the key formats must
 round-trip and refuse cross-grain traffic, and the era-stitch across an
 hourly -> 15-minute boundary must behave exactly like the 4-slot ->
 hourly precedent one level denser.
@@ -44,25 +44,32 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PANEL_CONFIG_PATHS = sorted(
     (REPO_ROOT / "config").glob("index_panel_*.json")
 )
+MINUTE_KEYED_PANEL_STEMS = {
+    "index_panel_b200",
+    "index_panel_b300",
+    "index_panel_h100_sxm",
+    "index_panel_h200_sxm",
+}
 
 
 # ------------------------------------------------- lattice equivalence
 
 
-def _reference_hour_stamps(config: dict, day_span: int) -> list[int]:
+def _reference_stamps(config: dict, day_span: int) -> list[int]:
     """Scheduled stamps rebuilt from FIRST PRINCIPLES on the minute
     lattice: day ordinals walked by hand, era resolution by linear scan,
-    hour marks x60 — sharing no arithmetic with PanelSchedule."""
+    hour marks x60 or minute marks verbatim — sharing no arithmetic with
+    PanelSchedule."""
     from datetime import date, timedelta
 
     genesis = date.fromisoformat(config["genesis_date"])
-    eras = [
-        (
-            date.fromisoformat(g["from_date"]),
-            [int(h) * 60 for h in g["slot_hours_utc"]],
-        )
-        for g in config["slot_grids"]
-    ]
+    eras = []
+    for grid in config["slot_grids"]:
+        if "slot_hours_utc" in grid:
+            marks = [int(hour) * 60 for hour in grid["slot_hours_utc"]]
+        else:
+            marks = [int(minute) for minute in grid["slot_minutes_utc"]]
+        eras.append((date.fromisoformat(grid["from_date"]), marks))
     out = []
     for offset in range(day_span):
         day = genesis + timedelta(days=offset)
@@ -84,15 +91,18 @@ def test_real_config_schedule_matches_first_principles(config_path):
     config = load_panel_config(config_path)
     schedule = panel_schedule(config)
     span_days = 30
-    expected = _reference_hour_stamps(config, span_days)
+    expected = _reference_stamps(config, span_days)
     genesis = schedule.genesis_stamp
     got = schedule.scheduled_stamps(
         genesis, genesis - (genesis % MINUTES_PER_DAY) + span_days * MINUTES_PER_DAY
     )
     assert got == [s for s in expected if s >= genesis]
-    # Every real (hour-grid) lane's stamps are hour-aligned and hour-keyed.
-    assert all(s % 60 == 0 for s in got)
-    assert not schedule.minute_keyed
+    expected_minute_keyed = config_path.stem in MINUTE_KEYED_PANEL_STEMS
+    assert schedule.minute_keyed is expected_minute_keyed
+    if expected_minute_keyed:
+        assert any(s % 60 != 0 for s in got)
+    else:
+        assert all(s % 60 == 0 for s in got)
     # prev_scheduled_stamp is exactly the predecessor in the flat list.
     for idx in range(1, min(len(got), 200)):
         assert schedule.prev_scheduled_stamp(got[idx]) == got[idx - 1]
@@ -103,21 +113,14 @@ def test_real_config_schedule_matches_first_principles(config_path):
     "config_path", PANEL_CONFIG_PATHS, ids=lambda p: p.stem
 )
 def test_real_config_calc_params_embed_grid_bytes_verbatim(config_path):
-    """The D2 fence compares embedded slot_grids; the re-base must embed
-    the config AS WRITTEN (hour vocabulary, hour values) so no armed
-    lane's bytes move."""
+    """The D2 fence embeds slot_grids exactly as written, including each
+    era's hour/minute vocabulary and values."""
     from gpu_index.index.panel import panel_calc_params
 
     config = load_panel_config(config_path)
     raw = json.loads(config_path.read_text())
     params = panel_calc_params(config)
-    assert params["slot_grids"] == [
-        {
-            "from_date": g["from_date"],
-            "slot_hours_utc": list(g["slot_hours_utc"]),
-        }
-        for g in raw["slot_grids"]
-    ]
+    assert params["slot_grids"] == raw["slot_grids"]
 
 
 # ------------------------------------------------------- era stitching

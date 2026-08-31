@@ -187,7 +187,11 @@ def main(argv=None) -> int:
         except PublishedRecordError as exc:
             print(f"invalid published observation: {exc}", file=sys.stderr)
             return 1
-        stamp_label = check.observed_at[:13]
+        stamp_label = check.observed_at[:16]
+        if stamp_label.endswith(":00"):
+            # Preserve the historical hour-grain transcript while making
+            # quarter-hour observations distinguishable within an hour.
+            stamp_label = stamp_label[:13]
         if check.verdict == VERDICT_DEGRADED:
             degraded += 1
             print(

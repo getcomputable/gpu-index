@@ -10,7 +10,8 @@ exact key, write NOTHING, canonicalize, and byte-compare against the
 stored artifact. MATCH exits 0 with the sha256; MISMATCH exits 1 with
 field-path diffs.
 
-Runs on the shipping B200 panel config (fx_lane none, so the FX
+Runs on the frozen B200 v6 parameters reconstructed from the shipping
+config (fx_lane none, so the FX
 machinery is provably untouched) over a REAL local-directory record in
 tmp_path, built by the CLI's own --sync from the SAME committed snapshot
 fixture the panel golden uses -- so the MATCH case is pinned to the
@@ -97,6 +98,29 @@ def _run(monkeypatch, cli, *argv) -> int:
     return cli.main()
 
 
+def _frozen_v6_config(tmp_path: Path) -> Path:
+    """Reconstruct the immutable v6 config after the shipping file mints on."""
+    config = json.loads(PANEL_CONFIG_PATH.read_text())
+    config["slot_grids"] = config["slot_grids"][:2]
+    calc = config["calc"]
+    calc["methodology_id"] = "annex_a2_v0_3_calc_v6"
+    calc["description"] = (
+        "calc_v6 hourly panel mint (annex_a2_v0_3_calc_v6); "
+        "METHODOLOGY.md is the binding methodology document"
+    )
+    for key in (
+        "filter_sigma_floor_pct",
+        "iqm_alpha",
+        "vote_sigma_source",
+        "vote_sigma_floor_pct",
+    ):
+        calc.pop(key)
+    calc["filter_sigma_floor"] = 0.05
+    path = tmp_path / "index_panel_b200_calc_v6.json"
+    path.write_text(json.dumps(config, indent=2) + "\n")
+    return path
+
+
 @pytest.fixture()
 def record_dir(tmp_path, monkeypatch, capsys):
     """A real local-directory record holding the committed fixture
@@ -108,6 +132,9 @@ def record_dir(tmp_path, monkeypatch, capsys):
     snapshot_path.parent.mkdir(parents=True)
     snapshot_path.write_bytes(FIXTURE_PATH.read_bytes())
     monkeypatch.setenv("GPU_INDEX_DATA_DIR", str(data))
+    monkeypatch.setattr(
+        sys.modules[__name__], "PANEL_CONFIG_PATH", _frozen_v6_config(tmp_path)
+    )
     cli = _wire(monkeypatch)
     monkeypatch.setattr(
         cli, "utc_now", lambda: datetime(2026, 8, 17, 5, 0, tzinfo=timezone.utc)

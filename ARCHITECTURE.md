@@ -6,7 +6,7 @@ Four packages under `src/gpu_index/`, layered bottom-up:
 |---|---|
 | `common/` | Shared primitives: HTTP transport with the project's honest User-Agent (`http.py`), the S3-compatible/local/HTTPS store (`bucket.py`, `store.py`), slot grids (`slots.py`), JSON diffing (`jsondiff.py`) |
 | `observatory/` | Collection: one collector per provider (`sources/<source_id>.py`, auto-discovered), the chip catalog and label normalization (`catalog.py`), the capture loop and snapshot recorder (`collect.py`, `snapshot.py`, `store.py`) |
-| `index/` | Calculation: screens and per-provider statistics (`screens.py`, `panel.py`), the median-of-votes aggregate (`composite.py`), liveness weighting (`weights.py`), panel config loading (`panel_config.py`), period rates and reports |
+| `index/` | Calculation: screens and per-provider statistics (`screens.py`, `panel.py`), the vote-IQM aggregate (`composite.py`), liveness weighting (`weights.py`), panel config loading (`panel_config.py`), period rates and reports |
 | `published/` | The public record: file layout + envelope digest (`artifacts.py`), the digest-verifying reader (`reader.py`), recompute-and-match verification (`verify.py`) |
 
 ## Dependency arrows
@@ -54,4 +54,6 @@ These are the ONLY sanctioned cross-package edges;
    `scripts/verify_published_record.py` over `src/gpu_index/published/`;
    anything that touches the published contract must keep the
    recompute-and-match and digest checks green against the fixtures in
-   `tests/fixtures/published/`.
+   `tests/fixtures/published/`. The verifier owns fail-closed statistic
+   dispatch: an unsupported declared aggregate raises the public
+   `UnsupportedStatisticError` before any degraded verdict can return.

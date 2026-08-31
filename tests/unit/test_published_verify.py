@@ -7,17 +7,15 @@ carries per-provider receipts {price, sd, weight, status,
 filter_verdict} plus the disclosure flag the publisher's disclosure
 pass writes. The verifier rebuilds the passing set (status ok +
 filter_verdict accepted, the exact set the publisher marks
-contributing), re-derives the weighted median
+contributing), re-derives the declared vote IQM (or frozen-v1 median)
 of the three sd-votes per source with the panel engine's own
 median_stddev_composite, and must land exactly on the published value
 and stability band.
 
-Era note: the b300/b200 lanes ran a 4-slot grid before 2026-08-24 and
-hourly after; the PUBLISHED schema does not distinguish the eras
-structurally (the publisher pins calc_params.collection_interval to
-the literal "hourly"), the eras differ only in how many stamps a day
-file carries. Both densities are covered: the H100 fixture day is
-hourly-era, the B200 fixture day is slot-era (observations at T04/T10).
+Era note: the b300/b200 lanes ran a 4-slot grid before 2026-08-24,
+hourly next, and all four public lanes moved to 15 minutes from
+2026-08-29. Historical hourly and slot densities are fixture-covered;
+the projected era3 case carries the declared IQM alpha explicitly.
 """
 
 from __future__ import annotations
@@ -36,6 +34,7 @@ from gpu_index.published.verify import (
     VERDICT_DEGRADED,
     VERDICT_MATCH,
     VERDICT_MISMATCH,
+    UnsupportedStatisticError,
     recompute_observation,
     select_observations,
 )
@@ -61,6 +60,48 @@ def _tampered(key: str, mutate) -> dict:
     return _redigest(document)
 
 
+def _projected_iqm_observation() -> dict:
+    """A minimal COM-1450-style public observation with disclosed alpha.
+
+    The price-scale expected values also pin the engine tuple contract as
+    (source_id, weight, price). Swapping the numeric fields silently produces
+    a weight-scale result and fails this fixture rather than raising.
+    """
+    return {
+        "kind": "gpu_price_index_observation",
+        "sku": "H100",
+        "observed_at": "2026-08-30T12:15:00.000Z",
+        "status": "ok",
+        "calc_params": {
+            "aggregation": "median_stddev_votes",
+            "iqm_alpha": 0.16666,
+            "min_sources_to_publish": 2,
+        },
+        "value_usd_gpu_hr": 12.199898,
+        "stability_band_usd_gpu_hr": 7.800102,
+        "receipts": [
+            {
+                "source_id": "alpha",
+                "price_disclosure": "published",
+                "status": "ok",
+                "filter_verdict": "accepted",
+                "price": 10.0,
+                "sd": 0.5,
+                "weight": 0.6,
+            },
+            {
+                "source_id": "bravo",
+                "price_disclosure": "published",
+                "status": "ok",
+                "filter_verdict": "accepted",
+                "price": 20.0,
+                "sd": 0.5,
+                "weight": 0.4,
+            },
+        ],
+    }
+
+
 # ---------------------------------------------------------------- full MATCH
 
 
@@ -76,6 +117,26 @@ def test_hourly_era_day_matches_exactly():
         assert check.recomputed_value == check.published_value
         assert check.recomputed_band == check.published_band
         assert check.messages == ()
+
+
+def test_v1_artifact_without_iqm_alpha_remains_all_match():
+    observations = select_observations(
+        _envelope("observations/2026/08/25.json"), sku="H100"
+    )
+    assert observations
+    assert all("iqm_alpha" not in obs["calc_params"] for obs in observations)
+    assert all(
+        recompute_observation(obs).verdict == VERDICT_MATCH
+        for obs in observations
+    )
+
+
+def test_projected_era3_iqm_matches_and_pins_receipt_tuple_order():
+    check = recompute_observation(_projected_iqm_observation())
+    assert check.verdict == VERDICT_MATCH
+    assert check.recomputed_value == 12.199898
+    assert check.recomputed_band == 7.800102
+    assert check.messages == ()
 
 
 def test_slot_era_day_matches_including_no_print_consistency():
@@ -149,6 +210,24 @@ def test_tampered_receipt_price_mismatches():
         select_observations(envelope, sku="H100")[0]
     )
     assert check.verdict == VERDICT_MISMATCH
+
+
+def test_missing_iqm_disclosure_mismatches_with_targeted_hint():
+    observation = _projected_iqm_observation()
+    del observation["calc_params"]["iqm_alpha"]
+    check = recompute_observation(observation)
+    assert check.verdict == VERDICT_MISMATCH
+    assert any("calc_params.iqm_alpha is absent" in m for m in check.messages)
+    assert any("frozen-v1 default 0.0" in m for m in check.messages)
+
+
+def test_declared_iqm_mismatch_does_not_claim_missing_disclosure():
+    observation = _projected_iqm_observation()
+    observation["value_usd_gpu_hr"] += 0.01
+    check = recompute_observation(observation)
+    assert check.verdict == VERDICT_MISMATCH
+    assert any("value_usd_gpu_hr" in m for m in check.messages)
+    assert all("iqm_alpha is absent" not in m for m in check.messages)
 
 
 def test_no_print_that_could_print_mismatches():
@@ -262,3 +341,39 @@ def test_missing_receipt_field_refuses_loudly():
     envelope = _tampered("observations/2026/08/25.json", mutate)
     with pytest.raises(PublishedRecordError, match="price_disclosure"):
         recompute_observation(select_observations(envelope, sku="H100")[0])
+
+
+def test_unsupported_declared_statistic_refuses_with_named_error():
+    observation = _projected_iqm_observation()
+    observation["calc_params"]["aggregation"] = "weighted_mean"
+    with pytest.raises(UnsupportedStatisticError, match="weighted_mean"):
+        recompute_observation(observation)
+
+
+def test_unsupported_statistic_refuses_before_withheld_degradation():
+    observation = _projected_iqm_observation()
+    observation["calc_params"]["aggregation"] = "future_statistic"
+    observation["receipts"][0]["price_disclosure"] = "withheld"
+    with pytest.raises(UnsupportedStatisticError, match="future_statistic"):
+        recompute_observation(observation)
+
+
+@pytest.mark.parametrize("invalid_alpha", ["bad", True, -0.1, 0.51, float("nan")])
+def test_invalid_iqm_alpha_refuses_before_withheld_degradation(invalid_alpha):
+    observation = _projected_iqm_observation()
+    observation["calc_params"]["iqm_alpha"] = invalid_alpha
+    observation["receipts"][0]["price_disclosure"] = "withheld"
+    with pytest.raises(PublishedRecordError, match="calc_params.iqm_alpha"):
+        recompute_observation(observation)
+
+
+def test_invalid_iqm_alpha_refuses_on_insufficient_no_print():
+    observation = _projected_iqm_observation()
+    observation["status"] = "no_print"
+    observation["reason"] = "insufficient_coverage"
+    observation["value_usd_gpu_hr"] = None
+    observation["stability_band_usd_gpu_hr"] = None
+    observation["calc_params"]["min_sources_to_publish"] = 3
+    observation["calc_params"]["iqm_alpha"] = 0.75
+    with pytest.raises(PublishedRecordError, match="calc_params.iqm_alpha"):
+        recompute_observation(observation)

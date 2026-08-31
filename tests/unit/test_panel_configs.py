@@ -51,7 +51,7 @@ NEUTRAL_EXCLUSION_REASON = (
 LANES = {
     "config/index_panel_b300.json": {
         "panel_id": "b300",
-        "methodology_id": "annex_a_v0_2_calc_v7",
+        "methodology_id": "annex_a_v0_2_calc_v11",
         "prefix": "index/b300_basket",
         "genesis": "2026-08-10",
         "claim_floor": 5,
@@ -59,10 +59,11 @@ LANES = {
         "fx_lane": "ecb",
         "members": 8,
         "stitched": True,
+        "quarter_hour": True,
     },
     "config/index_panel_b200.json": {
         "panel_id": "b200",
-        "methodology_id": "annex_a2_v0_3_calc_v6",
+        "methodology_id": "annex_a2_v0_3_calc_v10",
         "prefix": "index/b200_basket",
         "genesis": "2026-08-16",
         "claim_floor": 5,
@@ -70,10 +71,11 @@ LANES = {
         "fx_lane": "none",
         "members": 9,
         "stitched": True,
+        "quarter_hour": True,
     },
     "config/index_panel_h100_sxm.json": {
         "panel_id": "h100_sxm",
-        "methodology_id": "h100_sxm_v1_calc_v1",
+        "methodology_id": "h100_sxm_v1_calc_v5",
         "prefix": "index/h100_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
@@ -81,10 +83,11 @@ LANES = {
         "fx_lane": "ecb",  # scaleway bills EUR
         "members": 16,
         "stitched": False,
+        "quarter_hour": True,
     },
     "config/index_panel_h200_sxm.json": {
         "panel_id": "h200_sxm",
-        "methodology_id": "h200_sxm_v1_calc_v1",
+        "methodology_id": "h200_sxm_v1_calc_v5",
         "prefix": "index/h200_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
@@ -92,6 +95,7 @@ LANES = {
         "fx_lane": "none",  # no EUR member seated
         "members": 13,
         "stitched": False,
+        "quarter_hour": True,
     },
     "config/index_panel_h100_broad.json": {
         "panel_id": "h100_broad",
@@ -103,6 +107,7 @@ LANES = {
         "fx_lane": "ecb",  # scaleway + ovh (FR subsidiary) bill EUR
         "members": 22,
         "stitched": False,
+        "quarter_hour": False,
     },
     "config/index_panel_h200_broad.json": {
         "panel_id": "h200_broad",
@@ -114,11 +119,13 @@ LANES = {
         "fx_lane": "ecb",  # ovh (FR subsidiary) bills EUR
         "members": 18,
         "stitched": False,
+        "quarter_hour": False,
     },
 }
 
 OBS_PREFIX = "index/raw_observatory"
 CUTOVER = "2026-08-24"
+QUARTER_HOUR_CUTOVER = "2026-08-29"
 
 
 @pytest.fixture(scope="module")
@@ -230,8 +237,29 @@ def test_record_stitching_matches_the_design_table(configs):
             assert sources[0]["from_date"] == expected["genesis"], rel
             assert "to_date" not in sources[0], rel
             grids = cfg["slot_grids"]
-            assert len(grids) == 1, rel
             assert grids[0]["slot_hours_utc"] == list(range(24)), rel
+        if expected["quarter_hour"]:
+            assert grids[-1]["from_date"] == QUARTER_HOUR_CUTOVER, rel
+            assert grids[-1]["slot_minutes_utc"] == list(
+                range(0, 1440, 15)
+            ), rel
+        else:
+            assert len(grids) == 1, rel
+
+
+def test_public_lane_configs_match_the_live_era3_calculation(configs):
+    for rel in (
+        "config/index_panel_b300.json",
+        "config/index_panel_b200.json",
+        "config/index_panel_h100_sxm.json",
+        "config/index_panel_h200_sxm.json",
+    ):
+        calc = configs[rel]["calc"]
+        assert calc["filter_sigma_floor_pct"] == 3.0, rel
+        assert "filter_sigma_floor" not in calc, rel
+        assert calc["iqm_alpha"] == 0.16666, rel
+        assert calc["vote_sigma_source"] == "dw_history", rel
+        assert calc["vote_sigma_floor_pct"] == 3.0, rel
 
 
 def test_migrated_lanes_carry_daily_manual_exclusion_pairs_neutral_reasons(
