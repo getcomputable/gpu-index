@@ -1,0 +1,545 @@
+{
+  "basket_dark": false,
+  "basket_id": "b200_annex_a2_v0_3",
+  "calc_params": {
+    "composite_statistic": "median_ci_votes",
+    "drift_scan_days": 14,
+    "dynamic_weights": {
+      "fallback_weights": {
+        "coreweave": 0.12,
+        "hyperstack": 0.12,
+        "lambda": 0.12,
+        "massedcompute": 0.1,
+        "nebius": 0.12,
+        "runpod": 0.1,
+        "together": 0.12,
+        "vast": 0.08,
+        "verda": 0.12
+      },
+      "forward_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "gamma": 4.0,
+      "half_life_days": 30.0,
+      "history_days": 90,
+      "lookback_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "max_abs_log_return": 0.5,
+      "min_train_samples": 10,
+      "ridge_lambda": 1.0,
+      "scheme": "predictive_v1",
+      "slot_hours_utc": [
+        4,
+        10,
+        16,
+        22
+      ],
+      "source_weight_caps": {},
+      "switch_min_eligible": 5,
+      "target_variance_floor": 1e-12,
+      "weight_max": 0.3,
+      "weight_min": 0.025
+    },
+    "fallback_pool_sku": "B300",
+    "fallback_pool_sources": [
+      "verda",
+      "nebius",
+      "hyperstack",
+      "massedcompute",
+      "runpod",
+      "vast"
+    ],
+    "filter_sigma": 3.0,
+    "filter_sigma_floor": 0.05,
+    "filter_terms": "recorded_currency",
+    "filter_warmup": 10,
+    "filter_window": 20,
+    "fx_lane": "none",
+    "fx_max_staleness_days": 7,
+    "interruptible_tiers": [
+      "spot",
+      "preemptible"
+    ],
+    "manual_exclusions": [
+      {
+        "date": "2026-08-16",
+        "reason": "capture defect: recorded print known wrong by rule; true print not captured",
+        "source_id": "vast"
+      }
+    ],
+    "manual_verify_pct": 15.0,
+    "methodology_id": "annex_a2_v0_3_calc_v5",
+    "min_sources_to_claim": 5,
+    "promote_tie_break": "later",
+    "source_statistics": {
+      "vast": "vast_vwm_verified_us_ca"
+    },
+    "target_sku": "B200"
+  },
+  "date": "2026-08-16",
+  "day_missed": false,
+  "fallback_pool": {
+    "mean_usd_gpu_hr": 7.318,
+    "sources": [
+      {
+        "chosen": {
+          "currency": "USD",
+          "gpu_count_basis": 1,
+          "n_eligible_prints": 2,
+          "native_per_gpu_hr": 7.5,
+          "notes": "1x B300 SXM6 268GB on-demand",
+          "raw_unit": "usd_per_gpu_hr",
+          "raw_value": "7.5",
+          "tier": "on-demand",
+          "usd_per_gpu_hr": 7.5
+        },
+        "source_id": "verda"
+      },
+      {
+        "chosen": {
+          "currency": "USD",
+          "gpu_count_basis": 1,
+          "n_eligible_prints": 1,
+          "native_per_gpu_hr": 7.85,
+          "notes": "NVIDIA HGX B300 (24 vCPU / 346 GB per-GPU share)",
+          "raw_unit": "usd_per_gpu_hr",
+          "raw_value": "7.85",
+          "tier": "on-demand",
+          "usd_per_gpu_hr": 7.85
+        },
+        "source_id": "nebius"
+      },
+      {
+        "chosen": {
+          "currency": "USD",
+          "gpu_count_basis": 1,
+          "n_eligible_prints": 1,
+          "native_per_gpu_hr": 7.4,
+          "notes": "B300 (banner: B300 on-demand launching Aug 2026 \u2014 possibly forward-listed)",
+          "raw_unit": "usd_per_gpu_hr",
+          "raw_value": "7.40",
+          "tier": "on-demand",
+          "usd_per_gpu_hr": 7.4
+        },
+        "source_id": "hyperstack"
+      },
+      {
+        "chosen": {
+          "currency": "USD",
+          "gpu_count_basis": 8,
+          "n_eligible_prints": 1,
+          "native_per_gpu_hr": 5.95,
+          "notes": "B300 SXM6 x8 node $47.6/hr (on-demand VM tier)",
+          "raw_unit": "usd_per_node_hr",
+          "raw_value": "47.60",
+          "tier": "on-demand",
+          "usd_per_gpu_hr": 5.95
+        },
+        "source_id": "massedcompute"
+      },
+      {
+        "chosen": {
+          "currency": "USD",
+          "gpu_count_basis": 1,
+          "n_eligible_prints": 1,
+          "native_per_gpu_hr": 7.89,
+          "notes": "B300 secure 288GB",
+          "raw_unit": "usd_per_gpu_hr",
+          "raw_value": "7.89",
+          "tier": "on-demand",
+          "usd_per_gpu_hr": 7.89
+        },
+        "source_id": "runpod"
+      },
+      {
+        "excluded_reason": "capture defect: recorded print known wrong by rule; true print not captured",
+        "source_id": "vast",
+        "status": "manually_excluded"
+      }
+    ]
+  },
+  "index": {
+    "confidence_usd_gpu_hr": 1.4,
+    "renormalized_weights": {
+      "coreweave": 0.130435,
+      "hyperstack": 0.130435,
+      "lambda": 0.130435,
+      "massedcompute": 0.108696,
+      "nebius": 0.130435,
+      "runpod": 0.108696,
+      "together": 0.130435,
+      "verda": 0.130435
+    },
+    "sources_used_count": 8,
+    "statistic": "median_ci_votes",
+    "unweighted_mean_usd_gpu_hr": 6.780312,
+    "value_usd_gpu_hr": 6.74,
+    "vote_p25_usd_gpu_hr": 6.06,
+    "vote_p75_usd_gpu_hr": 8.14,
+    "weighted_mean_usd_gpu_hr": 6.825054
+  },
+  "kind": "index_basket_composite",
+  "methodology_id": "annex_a2_v0_3_calc_v5",
+  "schema_version": 1,
+  "snapshot_late_fill": false,
+  "snapshot_run_id": "20260816T221613Z-1fdf",
+  "sources": [
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 1,
+        "n_eligible_prints": 2,
+        "native_per_gpu_hr": 6.11,
+        "notes": "1x B200 SXM6 180GB on-demand",
+        "raw_unit": "usd_per_gpu_hr",
+        "raw_value": "6.11",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 6.11
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "verda",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.12
+    },
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 1,
+        "n_eligible_prints": 1,
+        "native_per_gpu_hr": 7.15,
+        "notes": "NVIDIA HGX B200 (20 vCPU / 224 GB per-GPU share)",
+        "raw_unit": "usd_per_gpu_hr",
+        "raw_value": "7.15",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 7.15
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "nebius",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.12
+    },
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 1,
+        "n_eligible_prints": 1,
+        "native_per_gpu_hr": 6.0,
+        "notes": "B200",
+        "raw_unit": "usd_per_gpu_hr",
+        "raw_value": "6.00",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 6.0
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "hyperstack",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.12
+    },
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 8,
+        "n_eligible_prints": 1,
+        "native_per_gpu_hr": 6.69,
+        "notes": "Instances pricing 8x tab, per-GPU list rate pre-tax (footnote: plus applicable sales tax/VAT/GST)",
+        "raw_unit": "usd_per_gpu_hr",
+        "raw_value": "$6.69",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 6.69
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "lambda",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.12
+    },
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 8,
+        "n_eligible_prints": 1,
+        "native_per_gpu_hr": 8.6,
+        "notes": "NVIDIA HGX B200 8-GPU instance $68.8/hr on-demand (labeled span; inference/spot tiers excluded)",
+        "raw_unit": "usd_per_instance_hr",
+        "raw_value": "68.80",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 8.6
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "manual_verify": true,
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "coreweave",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.12
+    },
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 1,
+        "n_eligible_prints": 1,
+        "native_per_gpu_hr": 8.19,
+        "notes": "GPU Clusters on-demand rate, per GPU (256-GPU minimum \u2014 a large-quantity rate, disclosed); Dedicated Inference SKU excluded by section slice",
+        "raw_unit": "usd_per_gpu_hr",
+        "raw_value": "$8.19",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 8.19
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "manual_verify": true,
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "together",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.12
+    },
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 8,
+        "n_eligible_prints": 1,
+        "native_per_gpu_hr": 4.7125,
+        "notes": "B200 SXM6 x8 node $37.7/hr (on-demand VM tier)",
+        "raw_unit": "usd_per_node_hr",
+        "raw_value": "37.70",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 4.7125
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "manual_verify": true,
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "massedcompute",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.1
+    },
+    {
+      "chosen": {
+        "currency": "USD",
+        "gpu_count_basis": 1,
+        "n_eligible_prints": 1,
+        "native_per_gpu_hr": 6.79,
+        "notes": "B200 secure 180GB",
+        "raw_unit": "usd_per_gpu_hr",
+        "raw_value": "6.79",
+        "tier": "on-demand",
+        "usd_per_gpu_hr": 6.79
+      },
+      "filter": {
+        "accepted": true,
+        "currency": "USD",
+        "n_history": 0,
+        "unfiltered": true
+      },
+      "source_id": "runpod",
+      "status": "ok",
+      "vote": {
+        "conf_usd_gpu_hr": 0.05,
+        "sigma": 0.0,
+        "sigma_floored": true
+      },
+      "weight": 0.1
+    },
+    {
+      "excluded_reason": "capture defect: recorded print known wrong by rule; true print not captured",
+      "source_id": "vast",
+      "status": "manually_excluded",
+      "weight": null
+    }
+  ],
+  "substituted_from_slot": 22,
+  "weight_calc": {
+    "capped": [],
+    "degenerate_allocation": null,
+    "mode": "fallback",
+    "scheme": "predictive_v1",
+    "slot_prints": {
+      "date": "2026-08-15",
+      "slots": {}
+    },
+    "sources": {
+      "coreweave": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      },
+      "hyperstack": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      },
+      "lambda": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      },
+      "massedcompute": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      },
+      "nebius": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      },
+      "runpod": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      },
+      "together": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      },
+      "verda": {
+        "Q": null,
+        "n_samples": {
+          "24": 0,
+          "48": 0,
+          "6": 0
+        },
+        "q": {
+          "24": null,
+          "48": null,
+          "6": null
+        }
+      }
+    },
+    "weights": {
+      "coreweave": 0.12,
+      "hyperstack": 0.12,
+      "lambda": 0.12,
+      "massedcompute": 0.1,
+      "nebius": 0.12,
+      "runpod": 0.1,
+      "together": 0.12,
+      "verda": 0.12
+    }
+  }
+}

@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "panel_id": "b300",
+  "description": "B300 panel lane (METHODOLOGY.md) -- the daily B300 index migrated onto the panel engine (scripts/compute_panel_index.py), hourly from 2026-08-24 and every 15 minutes from 2026-08-29. This is a CALC lane over stored records only: it captures nothing. The daily calc_v6 series froze at the first panel mint (the compute_index_composite.py --sync line left scripts/run_basket_capture.sh; the 4-slot capture keeps running as a redundant record). Same doctrine as the basket configs: every parameter here is config, not code.",
+  "methodology_doc": "METHODOLOGY.md",
+  "design_doc": "METHODOLOGY.md",
+  "bucket_prefix": "index/b300_basket",
+  "genesis_date": "2026-08-10",
+  "drift_scan_observations": 48,
+  "record_sources": [
+    {
+      "kind": "basket",
+      "prefix": "index/b300_basket",
+      "from_date": "2026-08-10",
+      "to_date": "2026-08-23"
+    },
+    {
+      "kind": "observatory",
+      "prefix": "index/raw_observatory",
+      "from_date": "2026-08-24"
+    }
+  ],
+  "slot_grids": [
+    {
+      "from_date": "2026-08-10",
+      "slot_hours_utc": [
+        4,
+        10,
+        16,
+        22
+      ]
+    },
+    {
+      "from_date": "2026-08-24",
+      "slot_hours_utc": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    },
+    {
+      "from_date": "2026-08-29",
+      "slot_minutes_utc": [
+        0, 15, 30, 45, 60, 75, 90, 105,
+        120, 135, 150, 165, 180, 195, 210, 225,
+        240, 255, 270, 285, 300, 315, 330, 345,
+        360, 375, 390, 405, 420, 435, 450, 465,
+        480, 495, 510, 525, 540, 555, 570, 585,
+        600, 615, 630, 645, 660, 675, 690, 705,
+        720, 735, 750, 765, 780, 795, 810, 825,
+        840, 855, 870, 885, 900, 915, 930, 945,
+        960, 975, 990, 1005, 1020, 1035, 1050, 1065,
+        1080, 1095, 1110, 1125, 1140, 1155, 1170, 1185,
+        1200, 1215, 1230, 1245, 1260, 1275, 1290, 1305,
+        1320, 1335, 1350, 1365, 1380, 1395, 1410, 1425
+      ]
+    }
+  ],
+  "calc": {
+    "methodology_id": "annex_a_v0_2_calc_v11",
+    "description": "calc_v11 quarter-hour panel mint (annex_a_v0_2_calc_v11); METHODOLOGY.md is the binding methodology document",
+    "availability_verified_sources": ["vast"],
+    "min_sources_to_claim": 5,
+    "eligible_tiers": [
+      "on-demand"
+    ],
+    "filter_window": 20,
+    "filter_sigma": 3.0,
+    "filter_warmup": 10,
+    "filter_sigma_floor_pct": 3.0,
+    "filter_terms": "recorded_currency",
+    "composite_statistic": "median_ci_votes",
+    "iqm_alpha": 0.16666,
+    "vote_sigma_source": "dw_history",
+    "vote_sigma_floor_pct": 3.0,
+    "manual_verify_pct": 15,
+    "fx_lane": "ecb",
+    "fx_max_staleness_days": 7,
+    "manual_exclusions": [
+      {
+        "date": "2026-08-11",
+        "source_id": "vast",
+        "reason": "capture defect: recorded print known wrong by rule; true print not captured"
+      },
+      {
+        "date": "2026-08-12",
+        "source_id": "vast",
+        "reason": "capture defect: recorded print known wrong by rule; true print not captured"
+      },
+      {
+        "date": "2026-08-14",
+        "source_id": "vast",
+        "reason": "capture defect: recorded print known wrong by rule; true print not captured"
+      },
+      {
+        "date": "2026-08-15",
+        "source_id": "vast",
+        "reason": "capture defect: recorded print known wrong by rule; true print not captured"
+      }
+    ],
+    "jump_screen": {
+      "quarantine_pct": 25,
+      "corroborate_pct": 10,
+      "min_corroborators": 2,
+      "reference_max_lookback": 24
+    },
+    "dynamic_weights": {
+      "scheme": "predictive_v1",
+      "lookback_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "forward_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "history_days": 90,
+      "half_life_days": 30,
+      "ridge_lambda": 1.0,
+      "gamma": 4.0,
+      "weight_min": 0.025,
+      "weight_max": 0.3,
+      "min_train_samples": 10,
+      "target_variance_floor": 1e-12,
+      "switch_min_eligible": 5,
+      "max_abs_log_return": 0.5,
+      "attendance_floor": 0.5
+    }
+  },
+  "members": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "weight": 0.15,
+      "skus": [
+        "B300"
+      ]
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "weight": 0.15,
+      "skus": [
+        "B300"
+      ]
+    },
+    {
+      "source_id": "hyperstack",
+      "display_name": "Hyperstack (NexGen Cloud)",
+      "weight": 0.15,
+      "skus": [
+        "B300"
+      ]
+    },
+    {
+      "source_id": "scaleway",
+      "display_name": "Scaleway",
+      "weight": 0.15,
+      "skus": [
+        "B300"
+      ],
+      "notes": "bills EUR -- recorded natively, converted at calc via the ECB lane (fx_lane ecb); this lane REUSES the basket prefix's existing fx/ records, so replays convert at the original rates"
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod",
+      "weight": 0.1,
+      "skus": [
+        "B300"
+      ],
+      "extra_require": {
+        "cloud": "secure"
+      },
+      "notes": "The membership rule seats Secure Cloud only, and the daily lane's collector recorded nothing else; the observatory collector records Secure AND Community rows under this one sku_identifier, distinguished by the structured extra.cloud field it writes on every row -- extra_require screens the seat to cloud 'secure', closing the formerly recorded open call mechanically. Basket-era rows carry no extra dict and PASS: that era is secure-only by construction (the one documented fail-open, gpu_index.index.panel.member_eligible_rows)"
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "weight": 0.1,
+      "skus": [
+        "B300"
+      ],
+      "notes": "rule A3: stays lowest-eligible (no statistic named); price reflects host+platform spread (recorded disclosure)"
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "weight": 0.1,
+      "skus": [
+        "B300"
+      ]
+    },
+    {
+      "source_id": "latitude",
+      "display_name": "Latitude.sh",
+      "weight": 0.1,
+      "skus": [
+        "B300"
+      ],
+      "notes": "publishes on-demand and monthly-commit tiers; eligible_tiers admits on-demand only (the tier-screen reconciliation (methodology section 5) at this mint), so the on-demand rate prints from genesis in the v7 replay and the monthly-commit row is tier-ineligible (the frozen daily series kept it eligible)"
+    }
+  ]
+}

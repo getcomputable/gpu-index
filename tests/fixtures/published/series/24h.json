@@ -1,0 +1,62 @@
+{
+  "artifact_sha256": "1ebd831dd6d40666b96fde64000a3c4e9f3af0b44a0e8712a9f7d1a9ed296e52",
+  "data": {
+    "kind": "gpu_index_series",
+    "observations": [
+      {
+        "coverage": {
+          "excluded": [],
+          "frozen": [],
+          "n_passing": 5,
+          "n_sources": 6
+        },
+        "freshness": "fresh",
+        "generated_at": "2026-08-25T14:59:30.000Z",
+        "input_snapshot_sha256": "d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3",
+        "methodology_id": "h100_sxm_v1_calc_v1",
+        "observed_at": "2026-08-25T14:00:00.000Z",
+        "reason": null,
+        "sku": "H100",
+        "stability_band_usd_gpu_hr": 0.077186,
+        "status": "ok",
+        "unit": "USD/GPU/hour",
+        "value_usd_gpu_hr": 2.067501
+      },
+      {
+        "coverage": {
+          "excluded": [],
+          "frozen": [],
+          "n_passing": 5,
+          "n_sources": 6
+        },
+        "freshness": "fresh",
+        "generated_at": "2026-08-25T15:59:30.000Z",
+        "input_snapshot_sha256": "d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3d1a5e2c3",
+        "methodology_id": "h100_sxm_v1_calc_v1",
+        "observed_at": "2026-08-25T15:00:00.000Z",
+        "reason": null,
+        "sku": "H100",
+        "stability_band_usd_gpu_hr": 0.077186,
+        "status": "ok",
+        "unit": "USD/GPU/hour",
+        "value_usd_gpu_hr": 2.117501
+      }
+    ],
+    "range": "24h"
+  },
+  "license": {
+    "attribution": "Computable GPU Index by Computable — index.example.com",
+    "commercial_licensing": "https://index.example.com/licensing",
+    "spdx": "CC-BY-NC-4.0",
+    "url": "https://creativecommons.org/licenses/by-nc/4.0/"
+  },
+  "meta": {
+    "disclosure_restatement_count": 0,
+    "from_observed_at": "2026-08-25T14:00:00.000Z",
+    "generated_at": "2026-08-25T15:59:30.000Z",
+    "index_name": "Computable GPU Index",
+    "observation_count": 2,
+    "schema_version": 1,
+    "to_observed_at": "2026-08-25T15:00:00.000Z"
+  }
+}

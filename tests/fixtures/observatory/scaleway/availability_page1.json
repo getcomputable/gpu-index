@@ -1,0 +1,79 @@
+{
+ "servers": {
+  "B300-SXM-2-288G": {
+   "availability": "shortage"
+  },
+  "B300-SXM-4-288G": {
+   "availability": "shortage"
+  },
+  "B300-SXM-8-288G": {
+   "availability": "shortage"
+  },
+  "BASIC2-A12C-24G": {
+   "availability": "available"
+  },
+  "GP1-L": {
+   "availability": "scarce"
+  },
+  "GP1-XL": {
+   "availability": "shortage"
+  },
+  "H100-1-80G": {
+   "availability": "available"
+  },
+  "H100-2-80G": {
+   "availability": "shortage"
+  },
+  "H100-SXM-2-80G": {
+   "availability": "available"
+  },
+  "H100-SXM-4-80G": {
+   "availability": "available"
+  },
+  "H100-SXM-8-80G": {
+   "availability": "available"
+  },
+  "L4-1-24G": {
+   "availability": "available"
+  },
+  "L4-2-24G": {
+   "availability": "available"
+  },
+  "L4-4-24G": {
+   "availability": "available"
+  },
+  "L4-8-24G": {
+   "availability": "shortage"
+  },
+  "L40S-1-48G": {
+   "availability": "available"
+  },
+  "L40S-2-48G": {
+   "availability": "available"
+  },
+  "L40S-4-48G": {
+   "availability": "shortage"
+  },
+  "L40S-8-48G": {
+   "availability": "shortage"
+  },
+  "MEMORY3-X24C-192G": {
+   "availability": "scarce"
+  },
+  "POP2-24C-96G": {
+   "availability": "scarce"
+  },
+  "POP2-64C-256G": {
+   "availability": "shortage"
+  },
+  "POP2-HC-24C-48G": {
+   "availability": "scarce"
+  },
+  "POP2-HM-16C-128G": {
+   "availability": "available"
+  },
+  "POP2-HM-24C-192G": {
+   "availability": "scarce"
+  }
+ }
+}
