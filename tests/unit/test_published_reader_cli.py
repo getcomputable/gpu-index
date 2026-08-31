@@ -229,6 +229,29 @@ def test_cli_full_match_exits_zero(record_env, monkeypatch, cli, capsys):
     assert "2 MATCH, 0 MISMATCH, 0 degraded" in out
 
 
+def test_cli_prints_minutes_only_for_sub_hour_observations(
+    tmp_path, monkeypatch, cli, capsys
+):
+    def mutate(document):
+        observed_at = "2026-08-25T14:15:00.000Z"
+        document["data"]["observations"][0]["observed_at"] = observed_at
+        document["meta"]["from_observed_at"] = observed_at
+
+    root = _tampered_record(
+        tmp_path, "observations/2026/08/25.json", mutate
+    )
+    monkeypatch.setenv("GPU_INDEX_DATA_DIR", str(root))
+    monkeypatch.delenv("GPU_INDEX_PUBLIC_BASE_URL", raising=False)
+    assert (
+        _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25")
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "H100 2026-08-25T14:15 recomputed" in out
+    assert "H100 2026-08-25T15 recomputed" in out
+    assert "2026-08-25T15:00 recomputed" not in out
+
+
 def test_cli_full_match_through_versioned_pointer_exits_zero(
     tmp_path, monkeypatch, cli, capsys
 ):

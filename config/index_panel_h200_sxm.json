@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "panel_id": "h200_sxm",
-  "description": "H200-SXM hourly panel (METHODOLOGY.md). Underlying: the H200 SXM 141GB module on an HGX baseboard -- form-factor pure. 13 members, weight floor 2.5%, claim floor 5. Selection over the raw-observatory record; captures nothing. USD only in practice and by config: no EUR member is seated, so fx_lane is none (zero FX egress, mechanical).",
+  "description": "H200-SXM panel (METHODOLOGY.md), hourly from genesis and every 15 minutes from 2026-08-29. Underlying: the H200 SXM 141GB module on an HGX baseboard -- form-factor pure. 13 members, weight floor 2.5%, claim floor 5. Selection over the raw-observatory record; captures nothing. USD only in practice and by config: no EUR member is seated, so fx_lane is none (zero FX egress, mechanical).",
   "methodology_doc": "METHODOLOGY.md",
   "design_doc": "METHODOLOGY.md",
   "bucket_prefix": "index/h200_sxm",
@@ -43,6 +43,23 @@
         22,
         23
       ]
+    },
+    {
+      "from_date": "2026-08-29",
+      "slot_minutes_utc": [
+        0, 15, 30, 45, 60, 75, 90, 105,
+        120, 135, 150, 165, 180, 195, 210, 225,
+        240, 255, 270, 285, 300, 315, 330, 345,
+        360, 375, 390, 405, 420, 435, 450, 465,
+        480, 495, 510, 525, 540, 555, 570, 585,
+        600, 615, 630, 645, 660, 675, 690, 705,
+        720, 735, 750, 765, 780, 795, 810, 825,
+        840, 855, 870, 885, 900, 915, 930, 945,
+        960, 975, 990, 1005, 1020, 1035, 1050, 1065,
+        1080, 1095, 1110, 1125, 1140, 1155, 1170, 1185,
+        1200, 1215, 1230, 1245, 1260, 1275, 1290, 1305,
+        1320, 1335, 1350, 1365, 1380, 1395, 1410, 1425
+      ]
     }
   ],
   "reject_tokens": [
@@ -51,8 +68,8 @@
     "H20"
   ],
   "calc": {
-    "methodology_id": "h200_sxm_v1_calc_v1",
-    "description": "calc_v1 panel genesis mint (h200_sxm_v1_calc_v1); METHODOLOGY.md is the binding methodology document",
+    "methodology_id": "h200_sxm_v1_calc_v5",
+    "description": "calc_v5 quarter-hour panel mint (h200_sxm_v1_calc_v5); METHODOLOGY.md is the binding methodology document",
     "availability_verified_sources": [
       "lium",
       "vast"
@@ -64,9 +81,12 @@
     "filter_window": 20,
     "filter_sigma": 3.0,
     "filter_warmup": 10,
-    "filter_sigma_floor": 0.05,
+    "filter_sigma_floor_pct": 3.0,
     "filter_terms": "recorded_currency",
     "composite_statistic": "median_ci_votes",
+    "iqm_alpha": 0.16666,
+    "vote_sigma_source": "dw_history",
+    "vote_sigma_floor_pct": 3.0,
     "manual_verify_pct": 15,
     "fx_lane": "none",
     "fx_max_staleness_days": 7,

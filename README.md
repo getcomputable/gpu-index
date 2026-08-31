@@ -80,7 +80,7 @@ observation the verifier prints the recomputed value next to the published value
 MATCH or MISMATCH verdict: each published observation carries the per-provider
 receipts (price, standard deviation, liveness weight, status) its value and
 stability band were computed from, and the verifier rebuilds the same
-weighted-median-of-votes aggregate from exactly those inputs. Every file also embeds a digest of its own canonical content,
+interquantile-mean-of-standard-deviation-votes aggregate from exactly those inputs. Every file also embeds a digest of its own canonical content,
 which is recomputed and checked on every read. Exit 0 means everything
 matched; exit 1 means a mismatch or a digest failure; exit 2 means it could
 not verify (the record source is unreachable, or nothing is published for the
@@ -110,7 +110,7 @@ verifier prints a non-fatal warning when that is the case.
 | Path | What it is |
 |---|---|
 | `src/gpu_index/observatory/` | Collection: per-provider price collectors and the snapshot recorder |
-| `src/gpu_index/index/` | Calculation: screens, per-provider statistics, the median-of-votes aggregation, liveness weighting |
+| `src/gpu_index/index/` | Calculation: screens, per-provider statistics, the vote-IQM aggregation, liveness weighting |
 | `src/gpu_index/published/` | The public record: layout, envelope digests, and the recompute-and-match verifier `./reproduce` runs |
 | `src/gpu_index/common/` | Shared primitives: HTTP transport, the object store, slot grids, JSON diffing |
 | `scripts/` | The operational entry points: capture, panel compute, period rates, published-record verification |

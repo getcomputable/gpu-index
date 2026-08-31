@@ -13,11 +13,12 @@ design, so the artifact alone recomputes it):
     "accepted" (the panel's own predicate; the publisher emits weight
     and sd non-null exactly for that contributing set);
   - each passing source votes its weight at price and price +/- sd
-    (three votes), and the index is the weighted median of all votes;
+    (three votes), and the index is the declared interquantile mean of
+    those votes (or the frozen-v1 weighted median when alpha is absent);
     the published stability band is the larger distance from the index
     to the 25th/75th weighted vote percentiles.
 
-The vote math is IMPORTED from the panel engine
+The vote/IQM math is IMPORTED from the panel engine
 (``gpu_index.index.panel.median_stddev_composite``) — the same function
 that priced the observation — never duplicated here, so this check can
 only diverge from production if the inputs diverge.

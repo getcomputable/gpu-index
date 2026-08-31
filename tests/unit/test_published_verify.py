@@ -7,17 +7,15 @@ carries per-provider receipts {price, sd, weight, status,
 filter_verdict} plus the disclosure flag the publisher's disclosure
 pass writes. The verifier rebuilds the passing set (status ok +
 filter_verdict accepted, the exact set the publisher marks
-contributing), re-derives the weighted median
+contributing), re-derives the declared vote IQM (or frozen-v1 median)
 of the three sd-votes per source with the panel engine's own
 median_stddev_composite, and must land exactly on the published value
 and stability band.
 
-Era note: the b300/b200 lanes ran a 4-slot grid before 2026-08-24 and
-hourly after; the PUBLISHED schema does not distinguish the eras
-structurally (the publisher pins calc_params.collection_interval to
-the literal "hourly"), the eras differ only in how many stamps a day
-file carries. Both densities are covered: the H100 fixture day is
-hourly-era, the B200 fixture day is slot-era (observations at T04/T10).
+Era note: the b300/b200 lanes ran a 4-slot grid before 2026-08-24,
+hourly next, and all four public lanes moved to 15 minutes from
+2026-08-29. Historical hourly and slot densities are fixture-covered;
+the projected era3 case carries the declared IQM alpha explicitly.
 """
 
 from __future__ import annotations
