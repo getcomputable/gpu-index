@@ -346,7 +346,7 @@ stability band = larger distance from the index to the
                  25th / 75th weighted vote percentiles
 ```
 
-The current `alpha` selects the central 33.332% of vote mass, from quantile 0.33334 through 0.66666. The calculation integrates that band exactly, including partial weight at its boundaries, then divides by the band's weight. `alpha = 0` is the point weighted median and remains the default for frozen v1 artifacts that do not carry the knob; `alpha = 0.5` would average the full vote distribution. Every current record carries its alpha so the choice is reproducible from that record alone.
+The current `alpha` selects the central 33.332% of vote mass, from quantile 0.33334 through 0.66666. The calculation integrates that band exactly, including partial weight at its boundaries, then divides by the band's weight. `alpha = 0` is the point weighted median and remains the default for frozen v1 artifacts that do not carry the knob; `alpha = 0.5` would average the full vote distribution. Every record priced with a nonzero alpha must carry that alpha so the choice is reproducible from the record alone.
 
 `sd_i` is the provider's own price variability over a trailing 90-day window, with the same 3% floor. This is a longer window than the outlier check's 20 observations, deliberately: the outlier sigma is a fast gross-error screen, while the vote sigma sets how much conviction a provider's votes carry and reflects its longer record.
 
