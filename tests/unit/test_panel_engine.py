@@ -1185,21 +1185,55 @@ def test_compute_observation_accepts_public_absolute_floor_alias():
     internal name.
     """
     cfg = _config()
-    params = panel_calc_params(cfg)
-    floor = params.pop("filter_sigma_floor")
-    params["filter_sigma_floor_usd_gpu_hr"] = floor
-    payload = compute_observation(
+    internal_params = panel_calc_params(cfg)
+    public_params = panel_calc_params(cfg)
+    floor = public_params.pop("filter_sigma_floor")
+    public_params["filter_sigma_floor_usd_gpu_hr"] = floor
+    internal_payload = compute_observation(
         config=cfg,
         obs_stamp=STAMP0,
-        snapshot=_snapshot([]),
+        snapshot=_golden_snapshot(),
         fx_records={},
         window_history={},
         window_currencies={},
         pending_currencies={},
         weight_state=new_weight_state(),
-        calc_params=params,
+        calc_params=internal_params,
     )
-    assert payload["panel_dark"] is True
+    public_payload = compute_observation(
+        config=cfg,
+        obs_stamp=STAMP0,
+        snapshot=_golden_snapshot(),
+        fx_records={},
+        window_history={},
+        window_currencies={},
+        pending_currencies={},
+        weight_state=new_weight_state(),
+        calc_params=public_params,
+    )
+    assert public_payload["index"] == internal_payload["index"]
+    assert public_payload["sources"] == internal_payload["sources"]
+    assert public_payload["calc_params"][
+        "filter_sigma_floor_usd_gpu_hr"
+    ] == floor
+
+
+def test_compute_observation_refuses_params_without_any_floor_key():
+    cfg = _config()
+    params = panel_calc_params(cfg)
+    del params["filter_sigma_floor"]
+    with pytest.raises(KeyError, match="filter_sigma_floor"):
+        compute_observation(
+            config=cfg,
+            obs_stamp=STAMP0,
+            snapshot=_golden_snapshot(),
+            fx_records={},
+            window_history={},
+            window_currencies={},
+            pending_currencies={},
+            weight_state=new_weight_state(),
+            calc_params=params,
+        )
 
 
 def test_compute_observation_refuses_both_absolute_floor_spellings():
