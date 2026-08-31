@@ -26,8 +26,11 @@ only diverge from production if the inputs diverge.
 Statistic declarations fail closed at this module boundary. Before
 receipts are inspected or a degraded/no-print verdict can return,
 ``recompute_observation`` requires the supported public wire value
-``calc_params.aggregation == "median_stddev_votes"`` and raises
-``UnsupportedStatisticError`` for any other declaration. That named
+``calc_params.aggregation`` to be either the immutable pre-relabel value
+``"median_stddev_votes"`` or the pinned value ``"median_ci_votes"`` and
+raises ``UnsupportedStatisticError`` for any other declaration. Both labels
+select the same engine path; ``iqm_alpha`` selects the point median versus IQM.
+That named
 error subclasses ``PublishedRecordError`` so existing broad catches
 remain compatible, while callers can distinguish unsupported math from
 a recomputed mismatch. Unsupported math is an input-contract error, not
@@ -64,7 +67,9 @@ VERDICT_MATCH = "match"
 VERDICT_MISMATCH = "mismatch"
 VERDICT_DEGRADED = "degraded"
 
-_SUPPORTED_AGGREGATION = "median_stddev_votes"
+_SUPPORTED_AGGREGATIONS = frozenset(
+    {"median_stddev_votes", "median_ci_votes"}
+)
 _ERA3_IQM_ALPHA = 0.16666
 
 
@@ -175,11 +180,11 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             f"observation {sku} {observed_at} has no calc_params"
         )
     aggregation = calc_params.get("aggregation")
-    if aggregation != _SUPPORTED_AGGREGATION:
+    if aggregation not in _SUPPORTED_AGGREGATIONS:
         raise UnsupportedStatisticError(
             f"observation {sku} {observed_at} declares unsupported "
             f"calc_params.aggregation {aggregation!r}; this verifier "
-            f"implements {_SUPPORTED_AGGREGATION!r}"
+            f"implements {sorted(_SUPPORTED_AGGREGATIONS)!r}"
         )
     iqm_alpha = calc_params.get("iqm_alpha", 0.0)
     if not _finite_number(iqm_alpha) or not 0 <= iqm_alpha <= 0.5:
