@@ -6,7 +6,7 @@ tagging.
 1. **Full test suite green**, including the contract guards:
    `pytest` passes with the golden-artifact tests
    (`tests/unit/test_golden_artifact.py` for the daily engine and
-   `tests/unit/test_panel_golden_artifact.py` for the hourly panel
+   `tests/unit/test_panel_golden_artifact.py` for the panel
    engine, byte-identity against `tests/golden/`) and the public-API
    surface test
    (`tests/unit/test_public_api.py`) untouched or deliberately updated in

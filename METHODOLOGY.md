@@ -10,7 +10,7 @@ What is the price of a GPU?
 
 Nobody agrees. Every provider quotes a different number, and existing indexes are closed black boxes: a figure you are asked to trust without seeing the data, the method, or the code behind it. Despite being rented, resold, and financed at commodity scale, compute lacks the reference rate every mature commodity market has.
 
-CGI is built to be that number, and to earn trust in the open rather than by authority. 
+CGI is built to be that number, and to earn trust in the open rather than by authority.
 
 ## The five properties
 
@@ -24,13 +24,71 @@ Five properties are the spine of the design. Every rule in this document enforce
 | Outlier-resistant | A source can lie or glitch; the number stands | Screens (section 5), self-history outlier check (section 6.4), median of votes (section 7), movement cap (section 8.2) |
 | Transparent | No black box: the method, every parameter, and every human decision are published | This document, versioned changes (section 10), published exclusions (section 6.5) |
 
-Fault-tolerant and outlier-resistant together are what "mathematically robust" means: the index never needs to know why an input went wrong. The aggregation makes a wrong input irrelevant whether the cause was breakage or manipulation, so no per-provider judgment exists anywhere in the calculation. Sections 7.3 and 8.8 demonstrate the bound with real panel data.
-
 These properties highlight our design principles directly: the data is verifiable, the method is transparent, the prints are reproducible via code, and the result is a robust price surviving data sources that disagree, err, or break.
+
+Fault-tolerant and outlier-resistant together are what "mathematically robust" means: the index never needs to know why an input went wrong. The aggregation makes a wrong input irrelevant whether the cause was breakage or manipulation, so no per-provider judgment exists anywhere in the calculation. Sections 7.3 and 8.8 demonstrate the bound with real panel data.
 
 ## About this document
 
-This is the general methodology, chip-generic: panel membership, per-SKU parameters, and the per-provider statistic are configuration, not code. Each SKU binds it through its own SKU document: B300, B200, H100-SXM, and H200-SXM. In this repository the machine-readable SKU bindings are the panel configuration files under `config/`, and every published record carries the parameter set used to compute it. Normative rules live in the numbered sections; the reasoning behind a rule sits under it in a **Why** block you can skip without losing the spec. Everything needed to re-implement the index and reproduce every published value is here, in the SKU documents, or in the published records.
+This is the general methodology, chip-generic: panel membership, per-SKU parameters, and the per-provider statistic are configuration, not code. Each SKU binds it through its own SKU document, a sub-page of this page: B300, B200, H100-SXM, and H200-SXM. Normative rules live in the numbered sections; the reasoning behind a rule sits under it in a **Why** block you can skip without losing the spec. Everything needed to re-implement the index and reproduce every published value is here, in the SKU documents, or in the published records.
+
+## Contents
+
+- [Motivation](#motivation)
+- [The five properties](#the-five-properties)
+- [About this document](#about-this-document)
+- [1. Overview](#1-overview)
+  - [1.1 Summary](#11-summary)
+  - [1.2 Design commitments](#12-design-commitments)
+  - [1.3 Conventions](#13-conventions)
+- [2. Definitions](#2-definitions)
+- [3. Collection](#3-collection)
+  - [3.1 Coverage](#31-coverage)
+  - [3.2 Source classes](#32-source-classes)
+  - [3.3 What is recorded](#33-what-is-recorded)
+  - [3.4 Normalization rules](#34-normalization-rules)
+  - [3.5 Collection mechanics](#35-collection-mechanics)
+- [4. Panel construction](#4-panel-construction)
+  - [4.1 Eligibility by source class](#41-eligibility-by-source-class)
+  - [4.2 Double counting](#42-double-counting)
+  - [4.3 Membership](#43-membership)
+- [5. Screening](#5-screening)
+  - [5.1 Product identity](#51-product-identity)
+  - [5.2 Jump screen](#52-jump-screen)
+- [6. Each provider's price](#6-each-providers-price)
+  - [6.1 Default: the lowest eligible listing](#61-default-the-lowest-eligible-listing)
+  - [6.2 Order books](#62-order-books)
+  - [6.3 Currency conversion](#63-currency-conversion)
+  - [6.4 Outlier check](#64-outlier-check)
+  - [6.5 Documented exclusions](#65-documented-exclusions)
+- [7. Aggregation](#7-aggregation)
+  - [7.1 Median of standard-deviation votes](#71-median-of-standard-deviation-votes)
+  - [7.2 Worked example](#72-worked-example)
+  - [7.3 Robustness](#73-robustness)
+  - [7.4 Stability band](#74-stability-band)
+  - [7.5 Insufficient providers](#75-insufficient-providers)
+- [8. Liveness weights](#8-liveness-weights)
+  - [8.1 Principle](#81-principle)
+  - [8.2 Returns](#82-returns)
+  - [8.3 Signal and outcome](#83-signal-and-outcome)
+  - [8.4 Admissible samples](#84-admissible-samples)
+  - [8.5 Fit and liveness score](#85-fit-and-liveness-score)
+  - [8.6 Allocation](#86-allocation)
+  - [8.7 Opening weights and the switch](#87-opening-weights-and-the-switch)
+  - [8.8 Safeguards](#88-safeguards)
+- [9. Publication and settlement](#9-publication-and-settlement)
+  - [9.1 Cadence](#91-cadence)
+  - [9.2 Missing observations](#92-missing-observations)
+  - [9.3 Settlement and the period rate](#93-settlement-and-the-period-rate)
+  - [9.4 Coverage](#94-coverage)
+- [10. Governance and reproducibility](#10-governance-and-reproducibility)
+- [11. Providers](#11-providers)
+- [12. Parameters](#12-parameters)
+  - [12.1 Collection](#121-collection)
+  - [12.2 Period rate](#122-period-rate)
+  - [12.3 Index calculation](#123-index-calculation)
+  - [12.4 Liveness weighting](#124-liveness-weighting)
+- [SKU documents](#sku-documents)
 
 ---
 
@@ -40,13 +98,13 @@ This is the general methodology, chip-generic: panel membership, per-SKU paramet
 
 What CGI delivers: one reference price for GPU compute that no single provider can materially move, that both sides of a trade can settle against, and that anyone can recompute from the public record. Each claim below is checkable against that record.
 
-- Prices are collected hourly from 28 providers across 69 chip models, unfiltered.
-- An index value, a stability band, and a liveness weight vector publish for every hourly observation. There is no designated fixing hour.
-- Each panel provider contributes one number per hour: its lowest eligible on-demand listing, except order books, which contribute a volume-weighted median.
+- Prices are collected every 15 minutes from 28 providers across 69 chip models, unfiltered.
+- An index value, a stability band, and a liveness weight vector publish for every observation, every 15 minutes. There is no designated fixing time.
+- Each panel provider contributes one number per observation: its lowest eligible on-demand listing, except order books, which contribute a volume-weighted median.
 - The index is a weighted median over votes, not a weighted average. Each provider votes at its price and its price plus and minus its own standard deviation.
 - Liveness weights are computed from measured behavior: whether a provider's recent moves anticipated the rest of the panel. No weight requires a per-provider human decision.
 - The index history is a pure function of the published record plus published parameters. Published observations are never revised.
-- A period rate is the time-average of the hourly index values within it, missing hours filled from the hours preceding them; whether it is fit to settle on is governed by a published coverage record.
+- A period rate is the time-average of the index values within it, missing observations filled from the observations preceding them; whether it is fit to settle on is governed by a published coverage record.
 
 ### 1.2 Design commitments
 
@@ -61,7 +119,7 @@ Four commitments shape everything downstream.
 
 ### 1.3 Conventions
 
-Window lengths named in observations (history window, warm-up, currency confirmation) follow the collection cadence: at hourly collection, a 20-observation window spans 20 hours.
+Window lengths named in observations (history window, warm-up, currency confirmation) follow the collection cadence: at 15-minute collection, a 20-observation window spans 5 hours.
 
 Parameters identical across all SKUs live in section 12. Parameters bound per SKU (panel membership, minimum panel, FX treatment, order-book statistic, weight floor, product identity screen, opening weights, series start, version) live in each SKU document.
 
@@ -72,7 +130,7 @@ Parameters identical across all SKUs live in section 12. Parameters bound per SK
 | Term | Meaning |
 | --- | --- |
 | SKU | One accelerator model with its own panel, index series, and SKU document |
-| Observation | One scheduled hourly reading of all configured providers |
+| Observation | One scheduled reading of all configured providers, every 15 minutes |
 | Listing | One published price for one configuration on one provider's page |
 | Panel | The fixed, enumerated list of providers whose prices enter a SKU's index (SKU document) |
 | Eligible | A listing that passes every screen in section 5 |
@@ -81,8 +139,8 @@ Parameters identical across all SKUs live in section 12. Parameters bound per SK
 | Stability band | The published uncertainty band around the index value (section 7.4) |
 | Liveness weight | A provider's computed share of influence, `w_i` (section 8) |
 | Liveness score | A provider's measured predictiveness, `Q_i`, from which weights derive (section 8.5) |
-| Settlement | The time-average of hourly index values over a calculation period, missing hours filled from preceding hours (section 9.3) |
-| Coverage | Filled hours divided by scheduled hours over a period (section 9.4) |
+| Settlement | The time-average of index values over a calculation period, missing observations filled from preceding observations (section 9.3) |
+| Coverage | Filled observations divided by scheduled observations over a period (section 9.4) |
 
 Symbols: `p_i` is provider i's observed price, `sd_i` its standard deviation over its recent history, `w_i` its liveness weight. `τ` is a sample time, `T` the last observation strictly before the one being priced, `L` the history window, `Δ` a lookback span, `h` a forward span.
 
@@ -94,7 +152,7 @@ Symbols: `p_i` is provider i's observed price, `sd_i` its standard deviation ove
 
 ### 3.1 Coverage
 
-Hourly, 28 providers, 69 chip models (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
+Every 15 minutes, 28 providers, 69 chip models (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
 
 Every panel is a selection over this record, not a separate collection effort.
 
@@ -114,7 +172,6 @@ Each provider carries two disclosure fields: `source_type` and `first_party`.
 Aggregators and resellers are collected but never panel-eligible (section 4.1).
 
 > **Why collect them at all?** Breadth of history, and cross-checking. An aggregator's figure against the provider's own page is how a wrong extraction gets caught. Aggregator tables have been observed carrying spot rates as on-demand, and prices for providers that publish none at all.
-> 
 
 ### 3.3 What is recorded
 
@@ -152,7 +209,7 @@ Aggregators and resellers are collected but never panel-eligible (section 4.1).
 | Thin-observation gate | Fewer than 8 of the 28 collected providers read successfully: the observation is discarded and the interval left unclaimed so the next run retries. The gate counts collected providers, not panel members; panel sufficiency is the calculation's minimum-panel rule (section 7.5). Recording a thin snapshot would both stop retries and become the reading the calculation uses. |
 | Alarms | A missing previous day, or a previous day missing intervals, is reported on every run until resolved. |
 
-The provider roster: section 11. Per-provider extraction recipes live in the open source collector (`src/gpu_index/observatory/sources/` in this repository).
+The provider roster: section 11. Per-provider extraction recipes live in the open source collector.
 
 ---
 
@@ -169,7 +226,6 @@ Excluded: aggregators, which publish no price of their own, and resellers, whose
 Exclusion is by panel construction, not by filter. The panel is an explicit enumerated list in the SKU document; nothing in the calculation branches on `source_type` or `first_party`, which are disclosure fields.
 
 > **Why marketplaces are in.** Vast.ai and Lium are the only venues on any live panel where the published price is a live transactable ask rather than a posted list rate, which makes them each panel's only direct read on clearing prices. Two disclosures follow: their prices embed a host and platform spread, and they are the only members where manipulation would be transactional rather than reputational, hence the specific prohibition in section 10 (Independence).
-> 
 
 ### 4.2 Double counting
 
@@ -231,7 +287,6 @@ A provider publishing an order book needs a different statistic. The distinction
 Two order books are seated across the live panels: Vast.ai and Lium. Which statistic each seat uses is per-SKU configuration (SKU documents). Where the order-book statistic applies, it prices as the volume-weighted median of rentable on-demand per-GPU asks, weighted by each offer's GPU count, under two population conditions the SKU document binds. Population accounting: the stored book must prove the full eligible population was recorded, else the seat is held out rather than pricing a truncated, one-sided-low book; fail closed, deterministic on replay. Population floors, on the H-series panels: a book below the minimum distinct machines, hosts, or sellers holds the seat out with the counts recorded.
 
 > **Why not the lowest ask?** On one real observation the lowest-price rule would have returned an unverified host 29% below the median.
-> 
 
 Every other panel member, including those classed `marketplace`, publishes a price list, so the lowest-eligible rule applies to them unchanged.
 
@@ -239,26 +294,25 @@ Every other panel member, including those classed `marketplace`, publishes a pri
 
 Conversion uses the ECB reference rate: public, citable, archived. Each rate is stored on first use and reused permanently, so replays convert at the original rate. Non-publication days walk back to the last published rate, recording its actual date. No rate within seven days: the provider is held out, never converted at a guess.
 
-The ECB publishes once per business day, so every hourly observation within a day converts at the same rate. Intraday movement in a non-USD provider's index contribution therefore reflects its own price only, not exchange-rate drift.
+The ECB publishes once per business day, so every observation within a day converts at the same rate. Intraday movement in a non-USD provider's index contribution therefore reflects its own price only, not exchange-rate drift.
 
 **Ambiguous currency labels fail closed.** Foreign-currency treatment requires a well-formed three-letter code and a native figure; anything else is held out. An apparent billing-currency switch is held out until three consecutive observations confirm it, then old history is discarded and new-currency history starts fresh.
 
 ### 6.4 Outlier check
 
-Each observed price is judged against the provider's own recent history, never cross-sectionally.
+Each observed price is judged against the provider's own recent history, never cross-sectionally. The sigma here is computed over the last 20 observations; it is deliberately separate from the 90-day sigma that prices the votes (section 7.1).
 
-```
-accept if |price - mean(last 20)| <= 3.0 * max(sd, $0.05)
+```javascript
+accept if |price - mean(last 20)| <= 3.0 * max(sd, 3% of mean(last 20))
 ```
 
 > **Why never cross-sectionally?** Providers sit at structurally different price levels. A cross-sectional test would flag normal marketplace pricing at every observation.
-> 
 
 | Property | Reason |
 | --- | --- |
 | Rejected prices still enter the history | A genuine repricing then costs one day, not perpetuity |
 | The test runs in the quoted currency | On 20 Aug 2026 a roughly 1% EUR/USD move ejected a provider whose price sat unchanged at 7.50 EUR |
-| Minimum band of plus or minus $0.15 | A frozen list price has sd 0; without a floor any repricing is rejected |
+| Minimum sigma of 3% of price | A frozen list price has sd 0; without a floor any repricing is rejected |
 | Threshold widened from 2.5 to 3.0 sd | At 2.5 it rejected a genuine $5.95 to $6.60 repricing by 1.5 cents. The aggregation in section 7 is now the primary outlier defense; this is a gross-error screen |
 
 The first ten observations pass untested. Such prices are flagged for review if more than 15% from that observation's cross-provider average, but counted.
@@ -279,7 +333,7 @@ The index is not a weighted average. It is a weighted median over votes.
 
 Each passing provider casts its full liveness weight three times: at its price and at its price plus and minus its own standard deviation.
 
-```
+```javascript
 for each passing provider i:
     vote (price_i - sd_i)  weight w_i
     vote (price_i)         weight w_i
@@ -290,31 +344,31 @@ stability band = larger distance from the index to the
                  25th / 75th weighted vote percentiles
 ```
 
-`sd_i` is the provider's own recent price variability over the section 6.4 window, with the same $0.05 floor.
+`sd_i` is the provider's own price variability over a trailing 90-day window, with the same 3% floor. This is a longer window than the outlier check's 20 observations, deliberately: the outlier sigma is a fast gross-error screen, while the vote sigma sets how much conviction a provider's votes carry and reflects its longer record.
 
 A stable provider votes tightly and concentrates its influence. A volatile one spreads its votes and dilutes its own. Because the result is a median, no single provider can pull the index past where the vote mass sits. The floor stops staleness impersonating conviction: a frozen price would otherwise cast three identical votes claiming certainty it never demonstrated.
 
 ### 7.2 Worked example
 
-Five providers. Liveness weights sum to 1; each casts them three times, so total vote weight is 3 and the median sits at cumulative weight 1.5.
+Five providers, sigmas floored at 3% of price. Liveness weights sum to 1; each casts them three times, so total vote weight is 3 and the median sits at cumulative weight 1.5.
 
 | Provider | Weight | Price | sd | Votes |
 | --- | --- | --- | --- | --- |
-| A | 0.30 | 6.60 | 0.06 | 6.54, 6.60, 6.66 |
-| B | 0.25 | 6.75 | 0.05 | 6.70, 6.75, 6.80 |
-| C | 0.20 | 6.50 | 0.12 | 6.38, 6.50, 6.62 |
+| A | 0.30 | 6.60 | 0.20 | 6.40, 6.60, 6.80 |
+| B | 0.25 | 6.75 | 0.21 | 6.54, 6.75, 6.96 |
+| C | 0.20 | 6.50 | 0.20 | 6.30, 6.50, 6.70 |
 | D | 0.15 | 7.20 | 0.25 | 6.95, 7.20, 7.45 |
 | E | 0.10 | 5.80 | 0.45 | 5.35, 5.80, 6.25 |
 
-Sorting all fifteen votes and accumulating weight, cumulative weight reaches 1.5 at the vote 6.62. The index is **6.62**. The 25th percentile of vote weight falls at 6.54 and the 75th at 6.75, so the stability band is max(6.62 - 6.54, 6.75 - 6.62) = **0.13**.
+Sorting all fifteen votes and accumulating weight, cumulative weight reaches 1.5 at the vote 6.60. The index is **6.60**. The 25th percentile of vote weight falls at 6.40 and the 75th at 6.80, so the stability band is max(6.60 - 6.40, 6.80 - 6.60) = **0.20**.
 
-Now reprice E, the cheapest and most volatile member, up 30% to 7.54. The weighted average moves from 6.63 to 6.80. The median of votes moves from 6.62 to 6.66: E's vote mass left the bottom of the book, so the median slid up one vote and no further.
+Now reprice D, the most expensive member, up 30% to 9.36. The weighted average moves from 6.63 to 6.95. The median of votes does not move: D's vote mass already sat above the median, and pushing it further up changes nothing on the other side.
 
 ### 7.3 Robustness
 
 The same experiment on real panel data. Eight providers, one repricing +30%, all else fixed:
 
-```
+```javascript
 median of votes    6.740000 -> 6.740000   (0.000000)
 weighted average   6.825054 -> 7.161576   (+0.336522)
 ```
@@ -348,7 +402,7 @@ A provider earns weight to the extent its recent price movements anticipate subs
 
 The provider's own return uses its quoted currency; the panel's return is in USD and excludes the provider being scored.
 
-```
+```javascript
 r_i(a,b)  = clamp log( p_i(b) / p_i(a) )
 
 r^-i(a,b) = clamp log(  Σ_{j≠i} w_j · p_j(b)
@@ -357,18 +411,17 @@ r^-i(a,b) = clamp log(  Σ_{j≠i} w_j · p_j(b)
 
 Both require real observations at both endpoints; a return spanning a currency change is undefined, never spliced across an exchange rate.
 
-`w_j` is the liveness weight vector published at the sample's own hour τ, held fixed at both endpoints and summed over providers with observations at both, so weight drift and membership churn cannot register as panel movement. The denominators cancel, so the vector needs no normalization. Pinning to the sample's hour keeps one vector per sample, since weights recompute hourly.
+`w_j` is the liveness weight vector published at the sample's own observation τ, held fixed at both endpoints and summed over providers with observations at both, so weight drift and membership churn cannot register as panel movement. The denominators cancel, so the vector needs no normalization. Pinning to the sample's own observation keeps one vector per sample, since weights recompute at every observation.
 
 `clamp` bounds every return at plus or minus 0.5 log (roughly +65% / -39%; the largest genuine repricing observed is around 11%).
 
 > **Why the clamp is load-bearing.** Scoring history deliberately includes prices the section 6.4 check rejected. Without a bound, one absurd-but-real observation would distort every other provider's window without limit.
-> 
 
 ### 8.3 Signal and outcome
 
 Lookbacks `Δ ∈ {6h, 1d, 2d}`, forwards `h ∈ {6h, 1d, 2d}`. At each sample time τ:
 
-```
+```javascript
 signal    X_i(τ)   = [ r_i(τ-Δ, τ) - r^-i(τ-Δ, τ) ]  over Δ
 
 outcome   y_i^h(τ) = r^-i(τ, τ+h)
@@ -380,18 +433,18 @@ The signal is movement in excess of the panel. Moving with the panel carries no 
 
 With `T` = the last observation strictly before the one being priced and `L` = 90 days:
 
-```
+```javascript
 τ ≥ T - L      inside the history window
 τ + h ≤ T      outcome realized by the cutoff
 ```
 
 plus a published weight vector at τ itself, and every leg of `X` and `y` computable from real observations. No carry-forward: a stale price is not a price.
 
-`τ + h ≤ T` is the information boundary of section 8.8: `T` is the last observation strictly before the one being priced, so nothing observed at an hour can enter that hour's own weights.
+`τ + h ≤ T` is the information boundary of section 8.8: `T` is the last observation strictly before the one being priced, so nothing observed at an observation can enter that observation's own weights.
 
 Samples decay exponentially toward the cutoff, half-life 30 days:
 
-```
+```javascript
 a(τ) = 2^( -(T - τ) / 30d )
 ```
 
@@ -399,7 +452,7 @@ a(τ) = 2^( -(T - τ) / 30d )
 
 Per provider and forward horizon, features are standardized by their `a`-weighted moments over the window, then fitted by ridge regression with an unpenalized intercept:
 
-```
+```javascript
 min over α, β:
    Σ a(τ) · ( y(τ) - α - βᵀz(τ) )²  +  λ‖β‖²
    λ = 1.0
@@ -409,7 +462,7 @@ Standardizing makes `λ` mean the same thing for a 6h feature and a 2d one. A fe
 
 The liveness score is that fit measured in-sample, against the same weighted measure:
 
-```
+```javascript
 R²      = 1 - Σ a(τ)(y - ŷ)² / Σ a(τ)(y - ȳ)²
 
 q_{i,h} = max(0, R²)
@@ -421,7 +474,7 @@ Q_i     = mean of q_{i,h} over the three forwards
 
 ### 8.6 Allocation
 
-```
+```javascript
 s_i = exp(γ Q_i) / Σ_j exp(γ Q_j)
 
 w_i = w_min + (1 - N·w_min) · s_i
@@ -451,7 +504,7 @@ Every provider receives the floor `w_min` = 2.5% first; the remainder distribute
 
 The panel switches to computed weights once and permanently, on the first day both conditions hold:
 
-```
+```javascript
 every provider meeting the attendance floor
     has a defined Q_i
 and at least 5 providers reported at that observation
@@ -465,20 +518,19 @@ Degenerate cases (too few providers for the floors to fit) publish an even split
 
 The floor governs the switch test alone. A provider below it stays index-eligible on any day it prints, and post-switch its undefined score allocates zero, so it receives the weight floor. A provider chronically below it keeps receiving the weight floor; removing it from the panel is a membership decision taken at panel review, not by the calculation.
 
-> **Why 50% is deliberately loose.** A defined score needs 10 samples per forward window, and each sample requires the provider present at four offsets (τ-48h, τ-24h, τ-6h, τ). At 50% attendance that yields roughly 68 samples, at 25% roughly two, below 10% effectively none. A single contiguous two-week outage leaves attendance near 84%. The floor therefore excuses only providers that could not be scored under any pattern, not a provider having a bad month.
-> 
+> **Why 50% is deliberately loose.** A defined score needs 10 samples per forward window, and each sample requires the provider present at four offsets (τ-48h, τ-24h, τ-6h, τ). At 50% attendance and a 15-minute cadence that yields roughly 270 samples, at 25% roughly eight, below 10% effectively none. A single contiguous two-week outage leaves attendance near 84%. The floor therefore excuses only providers that could not be scored under any pattern, not a provider having a bad month.
 
 ### 8.8 Safeguards
 
 **A uniform ceiling suffices because the aggregation bounds influence.** A manipulated provider that moves and drags others looks identical to one that genuinely leads. Take a provider at the full 30% ceiling and reprice it +30%:
 
-```
+```javascript
 index  6.970000 -> 6.970000   (0.000000)
 ```
 
 A median over standard-deviation votes does not move. Ceiling and aggregation together bound single-provider influence without per-provider judgment.
 
-**An observation cannot move its own weights.** Every weight input is realized strictly before the observation being priced. A party listing capacity minutes before an observation cannot move its own weight for it, and each hour's weights are determinable before that hour's prices are read.
+**An observation cannot move its own weights.** Every weight input is realized strictly before the observation being priced. A party listing capacity minutes before an observation cannot move its own weight for it, and each observation's weights are determinable before its prices are read.
 
 ---
 
@@ -488,29 +540,27 @@ A median over standard-deviation votes does not move. Ceiling and aggregation to
 
 ### 9.1 Cadence
 
-An index value, a stability band, and a liveness weight vector publish for each hourly observation. There is no designated fixing hour: the series is the hourly series, and every value carries the parameter set used to compute it.
+An index value, a stability band, and a liveness weight vector publish for each observation, every 15 minutes. There is no designated fixing time: the series is the 15-minute series, and every value carries the parameter set used to compute it.
 
 ### 9.2 Missing observations
 
-An hour with no usable record publishes as an explicit missing-observation entry. Never skipped, never interpolated. An hour carries no index value for one of two reasons: collection failed, or too few providers passed the screens and the hour published dark.
+An observation with no usable record publishes as an explicit missing-observation entry. Never skipped, never interpolated. An observation carries no index value for one of two reasons: collection failed, or too few providers passed the screens and the observation published dark.
 
 ### 9.3 Settlement and the period rate
 
-Two distinct operations run at two levels. The weighted median runs across providers within one hour and produces that hour's index value; it is what stops one provider moving the price. A time-average runs across hours within a period and produces a single figure for that period; it is what stops one hour moving a settlement. The index publishes only the hourly series; any period aggregation belongs to the contract that references it, and no period length is specified here.
+Two distinct operations run at two levels. The weighted median runs across providers within one observation and produces that observation's index value; it is what stops one provider moving the price. A time-average runs across observations within a period and produces a single figure for that period; it is what stops one print moving a settlement. The index publishes only the 15-minute series; any period aggregation belongs to the contract that references it, and no period length is specified here.
 
-Each of the N hours in a period enters the average at weight 1/N, so an hour wrong by D moves the period rate by D/N. At an hourly cadence a month is N of roughly 730, so a single hour printing at twice its true level moves the period rate by about 0.14%; against a single-point fixing, the same bad hour moves settlement by the full 100%.
+Each of the N observations in a period enters the average at weight 1/N, so a print wrong by D moves the period rate by D/N. At a 15-minute cadence a month is N of roughly 2,920, so a single print at twice its true level moves the period rate by about 0.034%; against a single-point fixing, the same bad print moves settlement by the full 100%.
 
-The period rate is the time-average of the hourly index values within the period, with any missing hour filled from the hours preceding it. Every hour in a gap of G missing hours takes the mean of the last min(G, L) filled hours immediately preceding it, where L = 72 hours: the window scales with the gap and caps at three days. The rule applies always, not past a threshold; it draws only on preceding hours (at a panel's genesis, hours with no prior value are dropped from the average instead); and it never feeds the weighting, which requires real observations and handles its own gaps by returning undefined.
+The period rate is the time-average of the index values within the period, with any missing observation filled from the observations preceding it. Every observation in a gap of G missing observations takes the mean of the last min(G, L) filled observations immediately preceding it, where L = 72 hours (288 observations): the window scales with the gap and caps at three days. The rule applies always, not past a threshold; it draws only on preceding observations (at a panel's genesis, observations with no prior value are dropped from the average instead); and it never feeds the weighting, which requires real observations and handles its own gaps by returning undefined.
 
-> **Why fill from preceding hours?** It invents no price movement. Averaging only the filled hours silently assigns each gap the whole-period average, and interpolating fabricates a path through it.
-> 
+> **Why fill from preceding observations?** It invents no price movement. Averaging only the filled observations silently assigns each gap the whole-period average, and interpolating fabricates a path through it.
 
-> **Why average instead of fix?** Averaging over many observations removes any single hour's significance, and with it the incentive to influence a particular moment.
-> 
+> **Why average instead of fix?** Averaging over many observations removes any single print's significance, and with it the incentive to influence a particular moment.
 
 ### 9.4 Coverage
 
-Whether a period rate is fit to settle on is a separate question, governed by coverage: filled hours divided by scheduled hours. Two thresholds, three bands:
+Whether a period rate is fit to settle on is a separate question, governed by coverage: filled observations divided by scheduled observations. Two thresholds, three bands:
 
 | Band | Coverage | Longest gap | Consequence |
 | --- | --- | --- | --- |
@@ -522,9 +572,9 @@ Bands are tested in order and the strictest match governs: any period meeting a 
 
 In hours, the 98% and 2% lines are 3 h weekly, 15 h monthly, 44 h quarterly; the 90% line is 17 h, 73 h, 219 h. Ordinary operation settles without review.
 
-The thresholds are recommended contract defaults, not index parameters: the index publishes the hourly series and the coverage record, and where a counterparty draws these lines is a contract term. They are stated so a contract has a default to adopt rather than a blank, and so any deviation is visible as one.
+The thresholds are recommended contract defaults, not index parameters: the index publishes the 15-minute series and the coverage record, and where a counterparty draws these lines is a contract term. They are stated so a contract has a default to adopt rather than a blank, and so any deviation is visible as one.
 
-The coverage report publishes every period, passing or failing: scheduled and filled hours, coverage, and every gap with its timestamps and cause. A figure that appears only when something has gone wrong is a dispute on first sight. Published hourly values are never revised: this procedure produces a period rate, and the hourly series stands as published, holes and all.
+The coverage report publishes every period, passing or failing: scheduled and filled observations, coverage, and every gap with its timestamps and cause. A figure that appears only when something has gone wrong is a dispute on first sight. Published values are never revised: this procedure produces a period rate, and the 15-minute series stands as published, holes and all.
 
 ---
 
@@ -598,8 +648,8 @@ Every value publishes inside each record. Changes require a new version. Paramet
 
 | Parameter | Value |
 | --- | --- |
-| Collection interval | hourly |
-| Index / weight recomputation | every hourly observation |
+| Collection interval | every 15 minutes |
+| Index / weight recomputation | every observation |
 | Providers collected | 28 |
 | Chip models identified | 69 |
 | Minimum providers to record an observation | 8 of 28 collected (panel-agnostic; section 3.5) |
@@ -614,9 +664,9 @@ Applies to any period a referencing contract defines; no period length is specif
 
 | Parameter | Value | Controls |
 | --- | --- | --- |
-| Fill lookback (L) | 72 h (3 days) | Cap on the averaging window used to fill a gap; window = min(gap, L) |
-| Review threshold, coverage | 98% of scheduled hours | Below it, the period rate is reviewed before certification |
-| Escalation threshold, coverage | 90% of scheduled hours | Below it, calculation-agent determination |
+| Fill lookback (L) | 72 h (288 observations) | Cap on the averaging window used to fill a gap; window = min(gap, L) |
+| Review threshold, coverage | 98% of scheduled observations | Below it, the period rate is reviewed before certification |
+| Escalation threshold, coverage | 90% of scheduled observations | Below it, calculation-agent determination |
 | Escalation threshold, longest gap | 2% of period | Above it, calculation-agent determination |
 
 The three rows below the fill lookback are recommended contract defaults, not index parameters; the index computes the same period rate either way (section 9.4).
@@ -631,13 +681,14 @@ Values identical across the live SKUs. SKU-bound parameters (minimum panel, FX s
 | Eligible tiers | on-demand (allow-list) | Only the on-demand rate is the underlying; every other tier is recorded but never eligible |
 | History window | 20 | Observations in the outlier test |
 | Threshold | 3.0 sd | Acceptance band width |
-| Minimum variability | $0.05 | Floor under a frozen price's band |
+| Minimum variability | 3% of price | Floor under both sigmas; a frozen price otherwise has sd 0 |
 | Warm-up | 10 | Observations before the test applies |
+| Vote sigma window | 90 days | Window for the sigma used in votes and the stability band (section 7.1) |
 | Test currency | as quoted | Prevents FX moves ejecting a provider |
 | Review flag | 15% | Distance from panel average flagging review |
 | Currency-change confirmation | 3 | Consecutive observations confirming a switch |
 
-Counts above (history window, warm-up, currency confirmation) are in observations, so their wall-clock span follows the collection cadence: at hourly collection the outlier window spans 20 hours and warm-up 10 hours.
+Counts above (history window, warm-up, currency confirmation) are in observations, so their wall-clock span follows the collection cadence: at 15-minute collection the outlier window spans 5 hours, warm-up 2.5 hours, and currency confirmation 45 minutes.
 
 ### 12.4 Liveness weighting
 
@@ -665,4 +716,10 @@ Identical on all panels. No per-provider values.
 
 *Prices, weights, and parameters here are current as of publication and are configuration, not fixed properties of the methodology. Every published record carries the parameter set used to compute it.*
 
-SKU bindings in this repository: [B300](config/index_panel_b300.json) · [B200](config/index_panel_b200.json) · [H100-SXM](config/index_panel_h100_sxm.json) · [H200-SXM](config/index_panel_h200_sxm.json)
+## SKU documents
+
+- SKU: B300
+- SKU: B200
+- SKU: H100-SXM
+- SKU: H200-SXM
+- [Methodology Change Log](CHANGELOG.md)
