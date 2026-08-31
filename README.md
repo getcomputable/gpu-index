@@ -41,9 +41,21 @@ pip install -e .
 
 A successful run looks like this, captured live against
 https://data.getcomputable.com on 2026-08-25, when the record published one
-observation per hour. The record now publishes one every 15 minutes, so a
-current day prints 96 observations rather than 24. The transcript is left
-exactly as recorded.
+observation per hour under published version 1. The record now publishes one
+observation every 15 minutes, so a current day prints 96 rather than 24. The
+transcript is left exactly as recorded; transcripts here are captured from
+real runs and never edited by hand.
+
+> **Known defect, tracked in COM-1455.** Against published versions 2 and 3
+> this command currently reports MISMATCH on every observation, including for
+> historical dates replayed under the current version. The cause is upstream,
+> not in this repo: the aggregate that versions 2 and 3 compute is not the
+> weighted median of the published votes that
+> [METHODOLOGY.md](METHODOLOGY.md) section 6 describes, and the published
+> `calc_params` does not disclose what it is. Version 1 remains fully
+> reproducible under its own keyspace. The reproducibility claim above holds
+> again once the aggregate is disclosed and the published weights carry
+> enough precision to reproduce it.
 
 ```
 $ ./reproduce h100 2026-08-25
