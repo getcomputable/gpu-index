@@ -26,7 +26,7 @@ Five properties are the spine of the design. Every rule in this document enforce
 
 These properties highlight our design principles directly: the data is verifiable, the method is transparent, the prints are reproducible via code, and the result is a robust price surviving data sources that disagree, err, or break.
 
-Fault-tolerant and outlier-resistant together are what "mathematically robust" means: the index never needs to know why an input went wrong. The aggregation makes a wrong input irrelevant whether the cause was breakage or manipulation, so no per-provider judgment exists anywhere in the calculation. Sections 7.3 and 8.8 demonstrate the bound with real panel data.
+Fault-tolerant and outlier-resistant together are what "mathematically robust" means: the index never needs to know why an input went wrong. The aggregation makes a wrong input irrelevant whether the cause was breakage or manipulation, so no per-provider judgment exists anywhere in the calculation. Section 7.3 explains the aggregation choice, and section 8.8 demonstrates the bound with real panel data.
 
 ## About this document
 
@@ -62,7 +62,7 @@ This is the general methodology, chip-generic: panel membership, per-SKU paramet
   - [6.4 Outlier check](#64-outlier-check)
   - [6.5 Documented exclusions](#65-documented-exclusions)
 - [7. Aggregation](#7-aggregation)
-  - [7.1 Median of standard-deviation votes](#71-median-of-standard-deviation-votes)
+  - [7.1 Interquantile mean of standard-deviation votes](#71-interquantile-mean-of-standard-deviation-votes)
   - [7.2 Worked example](#72-worked-example)
   - [7.3 Robustness](#73-robustness)
   - [7.4 Stability band](#74-stability-band)
@@ -312,7 +312,7 @@ accept if |price - mean(last 20)| <= 3.0 * max(sd, 3% of mean(last 20))
 | --- | --- |
 | Rejected prices still enter the history | A genuine repricing then costs one day, not perpetuity |
 | The test runs in the quoted currency | On 20 Aug 2026 a roughly 1% EUR/USD move ejected a provider whose price sat unchanged at 7.50 EUR |
-| Minimum sigma of 3% of price | A frozen list price has sd 0; without a floor any repricing is rejected |
+| Minimum sigma of 3% of the trailing-window mean | A frozen list price has sd 0; without a floor any repricing is rejected |
 | Threshold widened from 2.5 to 3.0 sd | At 2.5 it rejected a genuine $5.95 to $6.60 repricing by 1.5 cents. The aggregation in section 7 is now the primary outlier defense; this is a gross-error screen |
 
 The first ten observations pass untested. Such prices are flagged for review if more than 15% from that observation's cross-provider average, but counted.
@@ -348,7 +348,7 @@ stability band = larger distance from the index to the
 
 The current `alpha` selects the central 33.332% of vote mass, from quantile 0.33334 through 0.66666. The calculation integrates that band exactly, including partial weight at its boundaries, then divides by the band's weight. `alpha = 0` is the point weighted median and remains the default for frozen v1 artifacts that do not carry the knob; `alpha = 0.5` would average the full vote distribution. Every record priced with a nonzero alpha must carry that alpha so the choice is reproducible from the record alone.
 
-`sd_i` is the provider's own price variability over a trailing 90-day window, with the same 3% floor. This is a longer window than the outlier check's 20 observations, deliberately: the outlier sigma is a fast gross-error screen, while the vote sigma sets how much conviction a provider's votes carry and reflects its longer record.
+`sd_i` is the provider's own price variability over a trailing 90-day window, floored at 3% of the provider's current price. This is a longer window than the outlier check's 20 observations, deliberately: the outlier sigma is a fast gross-error screen, while the vote sigma sets how much conviction a provider's votes carry and reflects its longer record.
 
 A stable provider votes tightly and concentrates its influence. A volatile one spreads its votes and dilutes its own. Because the result averages only a central quantile band, tail votes cannot pull the index as they pull a full weighted average. The floor stops staleness impersonating conviction: a frozen price would otherwise cast three identical votes claiming certainty it never demonstrated.
 

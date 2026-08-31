@@ -82,9 +82,10 @@ receipts (price, standard deviation, liveness weight, status) its value and
 stability band were computed from, and the verifier rebuilds the same
 interquantile-mean-of-standard-deviation-votes aggregate from exactly those inputs. Every file also embeds a digest of its own canonical content,
 which is recomputed and checked on every read. Exit 0 means everything
-matched; exit 1 means a mismatch or a digest failure; exit 2 means it could
-not verify (the record source is unreachable, or nothing is published for the
-requested date). It never exits 0 without verifying. Where the published
+matched; exit 1 means a mismatch, digest failure, or invalid/unsupported
+published observation; exit 2 means it could not verify (the record source is
+unreachable, or nothing is published for the requested date). It never exits
+0 without verifying. Where the published
 disclosure policy withholds a provider's recent prices, the affected
 observation says so and is verified by digest only.
 
