@@ -6,9 +6,9 @@ golden per engine, reviewed as code).
 Rebuilds the 2026-08-16 B200 record from the SAME committed snapshot
 fixture the daily golden uses, computes the basket-era (stitched) T22
 observation with the SHIPPING panel config (config/index_panel_b200.json,
-methodology annex_a2_v0_3_calc_v6) through the real panel CLI, and asserts
+methodology annex_a2_v0_3_calc_v10) through the real panel CLI, and asserts
 the published hourly artifact is BYTE-identical to tests/golden/
-b200_panel_annex_a2_v0_3_calc_v6_2026-08-16T22.json (sha256 committed
+b200_panel_annex_a2_v0_3_calc_v10_2026-08-16T2200.json (sha256 committed
 alongside). 2026-08-16 is the lane's genesis day inside its 4-slot
 basket-record era, so this pins the record-stitching read path, the
 embedded calc_params (the D2 fence's bytes, manual-exclusion pin
@@ -50,19 +50,19 @@ SNAPSHOT_KEY = (
     "index/b200_basket/snapshots/2026-08-16/slot22-20260816T221613Z-1fdf.json"
 )
 OBSERVATION_KEY = (
-    "index/b200_basket/composites/annex_a2_v0_3_calc_v6/2026-08-16T22.json"
+    "index/b200_basket/composites/annex_a2_v0_3_calc_v10/2026-08-16T2200.json"
 )
 GOLDEN_PATH = (
     REPO_ROOT
     / "tests"
     / "golden"
-    / "b200_panel_annex_a2_v0_3_calc_v6_2026-08-16T22.json"
+    / "b200_panel_annex_a2_v0_3_calc_v10_2026-08-16T2200.json"
 )
 SHA_PATH = GOLDEN_PATH.with_name(GOLDEN_PATH.name + ".sha256")
 
 MINT_POLICY = (
     "the panel golden is the hourly pipeline's published bytes for "
-    "2026-08-16T22 — a byte-changing PR must update the golden in the same "
+    "2026-08-16T2200 — a byte-changing PR must update the golden in the same "
     "diff for review (regenerate locally with GPU_INDEX_UPDATE_GOLDEN=1, CI "
     "unset) AND, if it alters published-value behavior, mint a new "
     "methodology version (see RELEASING.md and GOVERNANCE.md; published "
@@ -118,6 +118,13 @@ def _recompute_observation(monkeypatch, capsys) -> bytes:
     computes from the fixture (utc_now sits past T22's closing mark, the
     next scheduled stamp 2026-08-17T04)."""
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    # The b200 lane is minute-KEYED from the 15-minute mint (COM-1455),
+    # and compute_panel_index refuses to RUN a minute-keyed lane without
+    # this operational lever. The lever gates a live dual-publish, not
+    # the arithmetic, so the byte-pin sets it here and nowhere else --
+    # the refusal itself stays pinned by test_minute_lattice.py::
+    # test_minute_keyed_lane_refuses_without_live_lever.
+    monkeypatch.setenv("PANEL_MINUTE_LANES_LIVE", "true")
     cli = _load_cli()
     client = FakeS3()
     client.objects[SNAPSHOT_KEY] = FIXTURE_PATH.read_bytes()
@@ -155,10 +162,10 @@ def _recompute_observation(monkeypatch, capsys) -> bytes:
     assert cli.main() == 0
     capsys.readouterr()
     # The genesis day's four scheduled stamps all published: three explicit
-    # missed artifacts and the computed T22 — never a skipped loop index.
-    for stamp in ("2026-08-16T04", "2026-08-16T10", "2026-08-16T16"):
+    # missed artifacts and the computed T2200 — never a skipped loop index.
+    for stamp in ("2026-08-16T0400", "2026-08-16T1000", "2026-08-16T1600"):
         key = (
-            "index/b200_basket/composites/annex_a2_v0_3_calc_v6/"
+            "index/b200_basket/composites/annex_a2_v0_3_calc_v10/"
             f"{stamp}.json"
         )
         assert key in client.objects
@@ -192,7 +199,7 @@ def test_panel_golden_artifact_bytes_and_sha256(monkeypatch, capsys):
     )
     if recomputed != golden:
         pytest.fail(
-            f"recomputed 2026-08-16T22 artifact (sha256={recomputed_sha}) "
+            f"recomputed 2026-08-16T2200 artifact (sha256={recomputed_sha}) "
             "does not byte-match the committed panel golden "
             f"(sha256={committed_sha}) — " + MINT_POLICY
         )

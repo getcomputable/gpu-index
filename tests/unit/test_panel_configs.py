@@ -51,7 +51,8 @@ NEUTRAL_EXCLUSION_REASON = (
 LANES = {
     "config/index_panel_b300.json": {
         "panel_id": "b300",
-        "methodology_id": "annex_a_v0_2_calc_v7",
+        "methodology_id": "annex_a_v0_2_calc_v11",
+        "minute_era": True,
         "prefix": "index/b300_basket",
         "genesis": "2026-08-10",
         "claim_floor": 5,
@@ -62,7 +63,8 @@ LANES = {
     },
     "config/index_panel_b200.json": {
         "panel_id": "b200",
-        "methodology_id": "annex_a2_v0_3_calc_v6",
+        "methodology_id": "annex_a2_v0_3_calc_v10",
+        "minute_era": True,
         "prefix": "index/b200_basket",
         "genesis": "2026-08-16",
         "claim_floor": 5,
@@ -73,7 +75,8 @@ LANES = {
     },
     "config/index_panel_h100_sxm.json": {
         "panel_id": "h100_sxm",
-        "methodology_id": "h100_sxm_v1_calc_v1",
+        "methodology_id": "h100_sxm_v1_calc_v5",
+        "minute_era": True,
         "prefix": "index/h100_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
@@ -84,7 +87,8 @@ LANES = {
     },
     "config/index_panel_h200_sxm.json": {
         "panel_id": "h200_sxm",
-        "methodology_id": "h200_sxm_v1_calc_v1",
+        "methodology_id": "h200_sxm_v1_calc_v5",
+        "minute_era": True,
         "prefix": "index/h200_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
@@ -96,6 +100,7 @@ LANES = {
     "config/index_panel_h100_broad.json": {
         "panel_id": "h100_broad",
         "methodology_id": "h100_broad_v1_calc_v1",
+        "minute_era": False,
         "prefix": "index/h100_broad",
         "genesis": "2026-08-23",
         "claim_floor": 8,
@@ -107,6 +112,7 @@ LANES = {
     "config/index_panel_h200_broad.json": {
         "panel_id": "h200_broad",
         "methodology_id": "h200_broad_v1_calc_v1",
+        "minute_era": False,
         "prefix": "index/h200_broad",
         "genesis": "2026-08-23",
         "claim_floor": 7,
@@ -119,6 +125,7 @@ LANES = {
 
 OBS_PREFIX = "index/raw_observatory"
 CUTOVER = "2026-08-24"
+MINUTE_CUTOVER = "2026-08-28"
 
 
 @pytest.fixture(scope="module")
@@ -224,14 +231,28 @@ def test_record_stitching_matches_the_design_table(configs):
             assert grids[0]["slot_hours_utc"] == [4, 10, 16, 22], rel
             assert grids[1]["from_date"] == CUTOVER, rel
             assert grids[1]["slot_hours_utc"] == list(range(24)), rel
+            assert len(grids) == 2 + int(expected["minute_era"]), rel
         else:
             assert [s["kind"] for s in sources] == ["observatory"], rel
             assert sources[0]["prefix"] == OBS_PREFIX, rel
             assert sources[0]["from_date"] == expected["genesis"], rel
             assert "to_date" not in sources[0], rel
             grids = cfg["slot_grids"]
-            assert len(grids) == 1, rel
+            assert len(grids) == 1 + int(expected["minute_era"]), rel
             assert grids[0]["slot_hours_utc"] == list(range(24)), rel
+        # The 15-minute era (COM-1455): the four PUBLIC lanes cut over on
+        # 2026-08-28 -- the boundary the published corpus shows, where
+        # every SKU's day file goes from 24 hourly rows to 96 quarter-hour
+        # rows. The two broad lanes are not published SKUs, carry no
+        # corpus record to read a cutover off, and stay hourly.
+        trailing = cfg["slot_grids"][-1]
+        if expected["minute_era"]:
+            assert trailing["from_date"] == MINUTE_CUTOVER, rel
+            assert trailing["slot_minutes_utc"] == list(
+                range(0, 1440, 15)
+            ), rel
+        else:
+            assert "slot_minutes_utc" not in trailing, rel
 
 
 def test_migrated_lanes_carry_daily_manual_exclusion_pairs_neutral_reasons(

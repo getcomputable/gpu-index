@@ -44,13 +44,13 @@ GOLDEN_SHA_PATH = (
     REPO_ROOT
     / "tests"
     / "golden"
-    / "b200_panel_annex_a2_v0_3_calc_v6_2026-08-16T22.json.sha256"
+    / "b200_panel_annex_a2_v0_3_calc_v10_2026-08-16T2200.json.sha256"
 )
 SNAPSHOT_REL = (
     "index/b200_basket/snapshots/2026-08-16/slot22-20260816T221613Z-1fdf.json"
 )
 ARTIFACT_REL = (
-    "index/b200_basket/composites/annex_a2_v0_3_calc_v6/2026-08-16T22.json"
+    "index/b200_basket/composites/annex_a2_v0_3_calc_v10/2026-08-16T2200.json"
 )
 
 _CLI_CACHE = {}
@@ -108,6 +108,12 @@ def record_dir(tmp_path, monkeypatch, capsys):
     snapshot_path.parent.mkdir(parents=True)
     snapshot_path.write_bytes(FIXTURE_PATH.read_bytes())
     monkeypatch.setenv("GPU_INDEX_DATA_DIR", str(data))
+    # b200 is minute-keyed from the 15-minute mint (COM-1455) and the CLI
+    # refuses to RUN one without the operational lever; the lever gates a
+    # live dual-publish, not the arithmetic, so the fixture that BUILDS a
+    # record sets it. --verify-published itself runs ahead of the fence
+    # and is exercised below without it.
+    monkeypatch.setenv("PANEL_MINUTE_LANES_LIVE", "true")
     cli = _wire(monkeypatch)
     monkeypatch.setattr(
         cli, "utc_now", lambda: datetime(2026, 8, 17, 5, 0, tzinfo=timezone.utc)
@@ -199,8 +205,9 @@ def test_verify_published_unpublished_refuses(record_dir, monkeypatch, capsys):
     rc = _run(monkeypatch, cli, "--verify-published", "2026-08-17T04")
     out = capsys.readouterr().out
     assert rc == 1
-    assert "not published under annex_a2_v0_3_calc_v6" in out
-    assert "--observation 2026-08-17T04 --dry-run" in out
+    assert "not published under annex_a2_v0_3_calc_v10" in out
+    # Minute-keyed lane: the CLI echoes the canonical 15-char key.
+    assert "--observation 2026-08-17T0400 --dry-run" in out
 
 
 def test_verify_published_unscheduled_stamp_refuses(

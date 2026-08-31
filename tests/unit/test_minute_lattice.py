@@ -49,18 +49,23 @@ PANEL_CONFIG_PATHS = sorted(
 # ------------------------------------------------- lattice equivalence
 
 
-def _reference_hour_stamps(config: dict, day_span: int) -> list[int]:
+def _era_marks(grid: dict) -> list[int]:
+    """One era's marks as minutes of day, in its OWN vocabulary: an hour
+    era spells hours (x60 here), a minute era spells minutes already."""
+    if "slot_hours_utc" in grid:
+        return [int(h) * 60 for h in grid["slot_hours_utc"]]
+    return [int(m) for m in grid["slot_minutes_utc"]]
+
+
+def _reference_stamps(config: dict, day_span: int) -> list[int]:
     """Scheduled stamps rebuilt from FIRST PRINCIPLES on the minute
     lattice: day ordinals walked by hand, era resolution by linear scan,
-    hour marks x60 — sharing no arithmetic with PanelSchedule."""
+    each era's own marks — sharing no arithmetic with PanelSchedule."""
     from datetime import date, timedelta
 
     genesis = date.fromisoformat(config["genesis_date"])
     eras = [
-        (
-            date.fromisoformat(g["from_date"]),
-            [int(h) * 60 for h in g["slot_hours_utc"]],
-        )
+        (date.fromisoformat(g["from_date"]), _era_marks(g))
         for g in config["slot_grids"]
     ]
     out = []
@@ -84,15 +89,21 @@ def test_real_config_schedule_matches_first_principles(config_path):
     config = load_panel_config(config_path)
     schedule = panel_schedule(config)
     span_days = 30
-    expected = _reference_hour_stamps(config, span_days)
+    expected = _reference_stamps(config, span_days)
     genesis = schedule.genesis_stamp
     got = schedule.scheduled_stamps(
         genesis, genesis - (genesis % MINUTES_PER_DAY) + span_days * MINUTES_PER_DAY
     )
     assert got == [s for s in expected if s >= genesis]
-    # Every real (hour-grid) lane's stamps are hour-aligned and hour-keyed.
-    assert all(s % 60 == 0 for s in got)
-    assert not schedule.minute_keyed
+    # Key grain follows the config's own vocabulary: a lane is
+    # minute-keyed iff some era spells minutes (COM-1455 put the public
+    # lanes' 15-minute era in from 2026-08-28, so their pre-cutover
+    # stamps stay hour-ALIGNED while the whole lane is minute-KEYED).
+    raw_grids = json.loads(config_path.read_text())["slot_grids"]
+    has_minute_era = any("slot_minutes_utc" in g for g in raw_grids)
+    assert schedule.minute_keyed is has_minute_era
+    if not has_minute_era:
+        assert all(s % 60 == 0 for s in got)
     # prev_scheduled_stamp is exactly the predecessor in the flat list.
     for idx in range(1, min(len(got), 200)):
         assert schedule.prev_scheduled_stamp(got[idx]) == got[idx - 1]
@@ -104,8 +115,8 @@ def test_real_config_schedule_matches_first_principles(config_path):
 )
 def test_real_config_calc_params_embed_grid_bytes_verbatim(config_path):
     """The D2 fence compares embedded slot_grids; the re-base must embed
-    the config AS WRITTEN (hour vocabulary, hour values) so no armed
-    lane's bytes move."""
+    each era AS WRITTEN (its own vocabulary, its own values) so no armed
+    lane's already-published bytes move."""
     from gpu_index.index.panel import panel_calc_params
 
     config = load_panel_config(config_path)
@@ -114,7 +125,11 @@ def test_real_config_calc_params_embed_grid_bytes_verbatim(config_path):
     assert params["slot_grids"] == [
         {
             "from_date": g["from_date"],
-            "slot_hours_utc": list(g["slot_hours_utc"]),
+            **(
+                {"slot_hours_utc": list(g["slot_hours_utc"])}
+                if "slot_hours_utc" in g
+                else {"slot_minutes_utc": list(g["slot_minutes_utc"])}
+            ),
         }
         for g in raw["slot_grids"]
     ]

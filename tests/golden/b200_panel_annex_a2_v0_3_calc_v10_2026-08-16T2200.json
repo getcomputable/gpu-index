@@ -44,7 +44,7 @@
       "on-demand"
     ],
     "filter_sigma": 3.0,
-    "filter_sigma_floor": 0.05,
+    "filter_sigma_floor_pct": 3.0,
     "filter_terms": "recorded_currency",
     "filter_warmup": 10,
     "filter_window": 20,
@@ -134,7 +134,7 @@
         "weight": 0.12
       }
     ],
-    "methodology_id": "annex_a2_v0_3_calc_v6",
+    "methodology_id": "annex_a2_v0_3_calc_v10",
     "min_sources_to_claim": 5,
     "record_exclusions": [],
     "record_sources": [
@@ -189,16 +189,119 @@
           22,
           23
         ]
+      },
+      {
+        "from_date": "2026-08-28",
+        "slot_minutes_utc": [
+          0,
+          15,
+          30,
+          45,
+          60,
+          75,
+          90,
+          105,
+          120,
+          135,
+          150,
+          165,
+          180,
+          195,
+          210,
+          225,
+          240,
+          255,
+          270,
+          285,
+          300,
+          315,
+          330,
+          345,
+          360,
+          375,
+          390,
+          405,
+          420,
+          435,
+          450,
+          465,
+          480,
+          495,
+          510,
+          525,
+          540,
+          555,
+          570,
+          585,
+          600,
+          615,
+          630,
+          645,
+          660,
+          675,
+          690,
+          705,
+          720,
+          735,
+          750,
+          765,
+          780,
+          795,
+          810,
+          825,
+          840,
+          855,
+          870,
+          885,
+          900,
+          915,
+          930,
+          945,
+          960,
+          975,
+          990,
+          1005,
+          1020,
+          1035,
+          1050,
+          1065,
+          1080,
+          1095,
+          1110,
+          1125,
+          1140,
+          1155,
+          1170,
+          1185,
+          1200,
+          1215,
+          1230,
+          1245,
+          1260,
+          1275,
+          1290,
+          1305,
+          1320,
+          1335,
+          1350,
+          1365,
+          1380,
+          1395,
+          1410,
+          1425
+        ]
       }
     ],
     "statistic_params": {
       "vast_vwm_verified_us_ca_v2": {}
-    }
+    },
+    "vote_sigma_floor_pct": 3.0,
+    "vote_sigma_source": "dw_history"
   },
-  "date": "2026-08-16T22",
+  "date": "2026-08-16T2200",
   "index": {
     "availability_verified_weight_share": 0.0,
-    "confidence_usd_gpu_hr": 1.4,
+    "confidence_usd_gpu_hr": 1.1543,
     "renormalized_weights": {
       "coreweave": 0.130435,
       "hyperstack": 0.130435,
@@ -212,9 +315,9 @@
     "sources_used_count": 8,
     "statistic": "median_ci_votes",
     "unweighted_mean_usd_gpu_hr": 6.780312,
-    "value_usd_gpu_hr": 6.74,
-    "vote_p25_usd_gpu_hr": 6.06,
-    "vote_p75_usd_gpu_hr": 8.14,
+    "value_usd_gpu_hr": 6.79,
+    "vote_p25_usd_gpu_hr": 6.11,
+    "vote_p75_usd_gpu_hr": 7.9443,
     "weighted_mean_usd_gpu_hr": 6.825054
   },
   "jump_screen": {
@@ -273,9 +376,10 @@
     "reference": null
   },
   "kind": "index_panel_composite",
-  "methodology_id": "annex_a2_v0_3_calc_v6",
+  "methodology_id": "annex_a2_v0_3_calc_v10",
   "observation_date": "2026-08-16",
   "observation_hour_utc": 22,
+  "observation_minute_utc": 0,
   "observation_missed": false,
   "panel_dark": false,
   "panel_id": "b200",
@@ -310,7 +414,7 @@
       "source_id": "coreweave",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.258,
         "sigma": 0.0,
         "sigma_floored": true
       },
@@ -340,7 +444,7 @@
       "source_id": "hyperstack",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.18,
         "sigma": 0.0,
         "sigma_floored": true
       },
@@ -370,7 +474,7 @@
       "source_id": "lambda",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.2007,
         "sigma": 0.0,
         "sigma_floored": true
       },
@@ -401,7 +505,7 @@
       "source_id": "massedcompute",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.141375,
         "sigma": 0.0,
         "sigma_floored": true
       },
@@ -431,7 +535,7 @@
       "source_id": "nebius",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.2145,
         "sigma": 0.0,
         "sigma_floored": true
       },
@@ -461,7 +565,7 @@
       "source_id": "runpod",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.2037,
         "sigma": 0.0,
         "sigma_floored": true
       },
@@ -492,7 +596,7 @@
       "source_id": "together",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.2457,
         "sigma": 0.0,
         "sigma_floored": true
       },
@@ -528,7 +632,7 @@
       "source_id": "verda",
       "status": "ok",
       "vote": {
-        "conf_usd_gpu_hr": 0.05,
+        "conf_usd_gpu_hr": 0.1833,
         "sigma": 0.0,
         "sigma_floored": true
       },
