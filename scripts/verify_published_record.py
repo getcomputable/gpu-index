@@ -187,7 +187,12 @@ def main(argv=None) -> int:
         except PublishedRecordError as exc:
             print(f"invalid published observation: {exc}", file=sys.stderr)
             return 1
-        stamp_label = check.observed_at[:13]
+        # MINUTE granularity (COM-1455): at the 15-minute cadence an
+        # hour-granular label prints the same stamp four times in a row,
+        # so a mismatch cannot be traced to the observation that carries
+        # it. YYYY-MM-DDTHH:MM names exactly one observation at every
+        # cadence the record has ever published.
+        stamp_label = check.observed_at[:16]
         if check.verdict == VERDICT_DEGRADED:
             degraded += 1
             print(
