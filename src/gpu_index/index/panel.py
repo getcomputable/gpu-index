@@ -1422,17 +1422,33 @@ def compute_observation(
         )
     pending = pending_currencies if pending_currencies is not None else {}
     # Exactly one floor key per params set (the embed rule): percent-mode
-    # params carry filter_sigma_floor_pct; absolute-mode (every pre-mint
-    # artifact) carry filter_sigma_floor. The required [] access keeps a
-    # malformed params dict LOUD — never a silent floor-0 default.
-    if "filter_sigma_floor_pct" in params and "filter_sigma_floor" in params:
+    # params carry filter_sigma_floor_pct; absolute-mode producer artifacts
+    # carry filter_sigma_floor, while the public projection spells the same
+    # absolute quantity filter_sigma_floor_usd_gpu_hr. The required [] access
+    # below keeps a malformed params dict LOUD — never a silent floor-0
+    # default. Producer serialization remains on its frozen internal name.
+    absolute_floor_keys = [
+        key
+        for key in (
+            "filter_sigma_floor",
+            "filter_sigma_floor_usd_gpu_hr",
+        )
+        if key in params
+    ]
+    if len(absolute_floor_keys) > 1:
+        raise ValueError(
+            "params carry BOTH filter_sigma_floor and "
+            "filter_sigma_floor_usd_gpu_hr — they name the same absolute "
+            "floor and only one spelling may be present"
+        )
+    if "filter_sigma_floor_pct" in params and absolute_floor_keys:
         # panel_calc_params embeds exactly one key and load validation
         # refuses the pair, but REPLAYED artifact-embedded params bypass
         # both — with both keys the binding floor is ambiguous, and no
         # published artifact carries both, so this raise is unreachable
         # on every replay.
         raise ValueError(
-            "params carry BOTH filter_sigma_floor and "
+            f"params carry BOTH {absolute_floor_keys[0]} and "
             "filter_sigma_floor_pct — one floor semantics per mint "
             "(ruling 2026-08-26); the binding floor would be ambiguous"
         )
@@ -1454,7 +1470,13 @@ def compute_observation(
         )
     sigma_floor_pct = params.get("filter_sigma_floor_pct")
     sigma_floor = (
-        params["filter_sigma_floor"] if sigma_floor_pct is None else 0.0
+        params[
+            absolute_floor_keys[0]
+            if absolute_floor_keys
+            else "filter_sigma_floor"
+        ]
+        if sigma_floor_pct is None
+        else 0.0
     )
     median_votes = params["composite_statistic"] == MEDIAN_STDDEV_VOTES
     # Vote floor split (founder ruling 2026-08-27): filter_sigma_floor_pct

@@ -40,6 +40,7 @@ from gpu_index.published.artifacts import (  # noqa: F401
 from gpu_index.published.reader import PublishedRecordReader  # noqa: F401
 from gpu_index.published.verify import (  # noqa: F401
     ObservationCheck,
+    UnsupportedStatisticError,
     recompute_observation,
     select_observations,
 )

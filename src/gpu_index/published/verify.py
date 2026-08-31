@@ -52,6 +52,13 @@ VERDICT_MATCH = "match"
 VERDICT_MISMATCH = "mismatch"
 VERDICT_DEGRADED = "degraded"
 
+_SUPPORTED_AGGREGATION = "median_stddev_votes"
+_ERA3_IQM_ALPHA = 0.16666
+
+
+class UnsupportedStatisticError(PublishedRecordError):
+    """The observation declares aggregate math this verifier cannot run."""
+
 # The published disclosure window must cover the weighting methodology's
 # lookback, or the reproducibility claim for the WEIGHTS degrades.
 # Derivation: liveness weights are fitted over a 90-day history of
@@ -155,6 +162,13 @@ def recompute_observation(observation: dict) -> ObservationCheck:
         raise PublishedRecordError(
             f"observation {sku} {observed_at} has no calc_params"
         )
+    aggregation = calc_params.get("aggregation")
+    if aggregation != _SUPPORTED_AGGREGATION:
+        raise UnsupportedStatisticError(
+            f"observation {sku} {observed_at} declares unsupported "
+            f"calc_params.aggregation {aggregation!r}; this verifier "
+            f"implements {_SUPPORTED_AGGREGATION!r}"
+        )
     min_to_publish = calc_params.get("min_sources_to_publish")
     if not isinstance(min_to_publish, int) or min_to_publish < 1:
         raise PublishedRecordError(
@@ -235,7 +249,11 @@ def recompute_observation(observation: dict) -> ObservationCheck:
     # The minimum-panel rule, verbatim from the panel engine: a composite
     # exists iff the passing set reaches min_sources_to_publish.
     composite = (
-        median_stddev_composite(passing, vote_stddevs)
+        median_stddev_composite(
+            passing,
+            vote_stddevs,
+            iqm_alpha=calc_params.get("iqm_alpha", 0.0),
+        )
         if len(passing) >= min_to_publish
         else None
     )
@@ -307,6 +325,25 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             "stability_band_usd_gpu_hr": recomputed_band,
         },
     )
+    if diffs and "iqm_alpha" not in calc_params:
+        # The official verdict above always follows the artifact's declared
+        # params: absent alpha means the frozen-v1 default 0.0. This second
+        # aggregate is diagnostic only. It recognizes the COM-1451 failure
+        # shape without silently accepting the undisclosed era3 rule.
+        era3_composite = median_stddev_composite(
+            passing, vote_stddevs, iqm_alpha=_ERA3_IQM_ALPHA
+        )
+        if (
+            era3_composite is not None
+            and era3_composite["value_usd_gpu_hr"] == published_value
+            and era3_composite["confidence_usd_gpu_hr"] == published_band
+        ):
+            diffs.append(
+                "calc_params.iqm_alpha is absent, so the verifier used "
+                "the frozen-v1 default 0.0; the published value and band "
+                f"instead match iqm_alpha {_ERA3_IQM_ALPHA}, which the "
+                "publisher must disclose"
+            )
     return ObservationCheck(
         sku=sku,
         observed_at=observed_at,

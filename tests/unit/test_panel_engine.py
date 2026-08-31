@@ -1177,6 +1177,52 @@ def test_compute_observation_refuses_ambiguous_floor_pair_in_params():
         )
 
 
+def test_compute_observation_accepts_public_absolute_floor_alias():
+    """Public projected calc_params unit-suffix the absolute floor key.
+
+    Artifact-param consumers accept that wire spelling at the floor
+    resolution site; producer configs and embedded bytes keep the frozen
+    internal name.
+    """
+    cfg = _config()
+    params = panel_calc_params(cfg)
+    floor = params.pop("filter_sigma_floor")
+    params["filter_sigma_floor_usd_gpu_hr"] = floor
+    payload = compute_observation(
+        config=cfg,
+        obs_stamp=STAMP0,
+        snapshot=_snapshot([]),
+        fx_records={},
+        window_history={},
+        window_currencies={},
+        pending_currencies={},
+        weight_state=new_weight_state(),
+        calc_params=params,
+    )
+    assert payload["panel_dark"] is True
+
+
+def test_compute_observation_refuses_both_absolute_floor_spellings():
+    cfg = _config()
+    params = panel_calc_params(cfg)
+    params["filter_sigma_floor_usd_gpu_hr"] = params["filter_sigma_floor"]
+    with pytest.raises(
+        ValueError,
+        match="filter_sigma_floor_usd_gpu_hr.*only one spelling",
+    ):
+        compute_observation(
+            config=cfg,
+            obs_stamp=STAMP0,
+            snapshot=_snapshot([]),
+            fx_records={},
+            window_history={},
+            window_currencies={},
+            pending_currencies={},
+            weight_state=new_weight_state(),
+            calc_params=params,
+        )
+
+
 def test_config_vote_sigma_floor_pct_validation_and_conditional_embed():
     """Floor split (founder ruling 2026-08-27): calc.vote_sigma_floor_pct
     floors the median-vote band at pct/100 of the print's OWN filter-terms

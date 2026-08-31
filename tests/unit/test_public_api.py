@@ -168,9 +168,10 @@ PUBLIC_NAMES = {
     },
     "gpu_index.published": {
         "ArtifactDigestError", "ObservationCheck", "PublishedRecordError",
-        "PublishedRecordReader", "canonical_compact_bytes", "day_key",
-        "decode_and_verify_artifact", "latest_key", "payload_digest",
-        "recompute_observation", "select_observations", "series_key",
+        "PublishedRecordReader", "UnsupportedStatisticError",
+        "canonical_compact_bytes", "day_key", "decode_and_verify_artifact",
+        "latest_key", "payload_digest", "recompute_observation",
+        "select_observations", "series_key",
     },
     "gpu_index.published.artifacts": {
         "ArtifactDigestError", "PublishedRecordError",
@@ -183,7 +184,7 @@ PUBLIC_NAMES = {
         "make_client", "series_key",
     },
     "gpu_index.published.verify": {
-        "ObservationCheck", "PublishedRecordError",
+        "ObservationCheck", "PublishedRecordError", "UnsupportedStatisticError",
         "disclosure_window_warning", "field_diffs",
         "median_stddev_composite", "recompute_observation",
         "select_observations",
