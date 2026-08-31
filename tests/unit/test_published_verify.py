@@ -347,3 +347,24 @@ def test_unsupported_statistic_refuses_before_withheld_degradation():
     observation["receipts"][0]["price_disclosure"] = "withheld"
     with pytest.raises(UnsupportedStatisticError, match="future_statistic"):
         recompute_observation(observation)
+
+
+@pytest.mark.parametrize("invalid_alpha", ["bad", True, -0.1, 0.51, float("nan")])
+def test_invalid_iqm_alpha_refuses_before_withheld_degradation(invalid_alpha):
+    observation = _projected_iqm_observation()
+    observation["calc_params"]["iqm_alpha"] = invalid_alpha
+    observation["receipts"][0]["price_disclosure"] = "withheld"
+    with pytest.raises(PublishedRecordError, match="calc_params.iqm_alpha"):
+        recompute_observation(observation)
+
+
+def test_invalid_iqm_alpha_refuses_on_insufficient_no_print():
+    observation = _projected_iqm_observation()
+    observation["status"] = "no_print"
+    observation["reason"] = "insufficient_coverage"
+    observation["value_usd_gpu_hr"] = None
+    observation["stability_band_usd_gpu_hr"] = None
+    observation["calc_params"]["min_sources_to_publish"] = 3
+    observation["calc_params"]["iqm_alpha"] = 0.75
+    with pytest.raises(PublishedRecordError, match="calc_params.iqm_alpha"):
+        recompute_observation(observation)

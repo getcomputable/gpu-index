@@ -170,6 +170,12 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             f"calc_params.aggregation {aggregation!r}; this verifier "
             f"implements {_SUPPORTED_AGGREGATION!r}"
         )
+    iqm_alpha = calc_params.get("iqm_alpha", 0.0)
+    if not _finite_number(iqm_alpha) or not 0 <= iqm_alpha <= 0.5:
+        raise PublishedRecordError(
+            f"observation {sku} {observed_at} calc_params.iqm_alpha "
+            f"must be a finite number in [0, 0.5], got {iqm_alpha!r}"
+        )
     min_to_publish = calc_params.get("min_sources_to_publish")
     if not isinstance(min_to_publish, int) or min_to_publish < 1:
         raise PublishedRecordError(
@@ -253,7 +259,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
         median_stddev_composite(
             passing,
             vote_stddevs,
-            iqm_alpha=calc_params.get("iqm_alpha", 0.0),
+            iqm_alpha=iqm_alpha,
         )
         if len(passing) >= min_to_publish
         else None
