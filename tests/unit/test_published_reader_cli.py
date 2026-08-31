@@ -229,6 +229,59 @@ def test_cli_full_match_exits_zero(record_env, monkeypatch, cli, capsys):
     assert "2 MATCH, 0 MISMATCH, 0 degraded" in out
 
 
+def test_cli_projected_era3_iqm_day_matches_end_to_end(
+    tmp_path, monkeypatch, cli, capsys
+):
+    expected = {
+        "2026-08-25T14:00:00.000Z": (2.061838, 0.082849),
+        "2026-08-25T15:00:00.000Z": (2.111838, 0.082849),
+    }
+
+    def mutate(document):
+        for observation in document["data"]["observations"]:
+            observation["calc_params"]["iqm_alpha"] = 0.16666
+            value, band = expected[observation["observed_at"]]
+            observation["value_usd_gpu_hr"] = value
+            observation["stability_band_usd_gpu_hr"] = band
+
+    root = _tampered_record(
+        tmp_path, "observations/2026/08/25.json", mutate
+    )
+    monkeypatch.setenv("GPU_INDEX_DATA_DIR", str(root))
+    monkeypatch.delenv("GPU_INDEX_PUBLIC_BASE_URL", raising=False)
+    assert (
+        _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25")
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "recomputed 2.061838 (band 0.082849)" in out
+    assert "recomputed 2.111838 (band 0.082849)" in out
+    assert "2 MATCH, 0 MISMATCH, 0 degraded" in out
+
+
+def test_cli_unsupported_statistic_exits_one_without_traceback(
+    tmp_path, monkeypatch, cli, capsys
+):
+    def mutate(document):
+        document["data"]["observations"][0]["calc_params"][
+            "aggregation"
+        ] = "future_statistic"
+
+    root = _tampered_record(
+        tmp_path, "observations/2026/08/25.json", mutate
+    )
+    monkeypatch.setenv("GPU_INDEX_DATA_DIR", str(root))
+    monkeypatch.delenv("GPU_INDEX_PUBLIC_BASE_URL", raising=False)
+    assert (
+        _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25")
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert "invalid published observation" in captured.err
+    assert "future_statistic" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_cli_prints_minutes_only_for_sub_hour_observations(
     tmp_path, monkeypatch, cli, capsys
 ):

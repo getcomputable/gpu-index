@@ -221,6 +221,15 @@ def test_missing_iqm_disclosure_mismatches_with_targeted_hint():
     assert any("frozen-v1 default 0.0" in m for m in check.messages)
 
 
+def test_declared_iqm_mismatch_does_not_claim_missing_disclosure():
+    observation = _projected_iqm_observation()
+    observation["value_usd_gpu_hr"] += 0.01
+    check = recompute_observation(observation)
+    assert check.verdict == VERDICT_MISMATCH
+    assert any("value_usd_gpu_hr" in m for m in check.messages)
+    assert all("iqm_alpha is absent" not in m for m in check.messages)
+
+
 def test_no_print_that_could_print_mismatches():
     def mutate(document):
         observation = document["data"]["observations"][1]
