@@ -20,13 +20,13 @@ Five properties are the spine of the design. Every rule in this document enforce
 | --- | --- | --- |
 | Verifiable | Every data point is sourced, timestamped, and kept | Collection record (section 3), retention (section 10) |
 | Reproducible | Every published value is a pure function of the public record plus published parameters | Replay and versioning (section 10), parameters inside every record (section 12), open code |
-| Fault-tolerant | A source can break or vanish; the number stands | Fail-loud extraction (section 3.5), explicit missing observations and the period-rate fill rule (section 9), undefined-not-zero scores (section 8.5) |
+| Fault-tolerant | A source can break or vanish; the number stands | Fail-loud extraction (section 3.5), explicit missing observations and the period-rate fill rule (section 9), undefined-not-zero scores (section 8.5), attendance (section 8.6) |
 | Outlier-resistant | A source can lie or glitch; the number stands | Screens (section 5), self-history outlier check (section 6.4), interquantile mean of votes (section 7), movement cap (section 8.2) |
 | Transparent | No black box: the method, every parameter, and every human decision are published | This document, versioned changes (section 10), published exclusions (section 6.5) |
 
 These properties highlight our design principles directly: the data is verifiable, the method is transparent, the prints are reproducible via code, and the result is a robust price surviving data sources that disagree, err, or break.
 
-Fault-tolerant and outlier-resistant together are what "mathematically robust" means: the index never needs to know why an input went wrong. The aggregation makes a wrong input irrelevant whether the cause was breakage or manipulation, so no per-provider judgment exists anywhere in the calculation. Section 7.3 explains the aggregation choice, and section 8.8 demonstrates the bound with real panel data.
+Fault-tolerant and outlier-resistant together are what "mathematically robust" means: the index never needs to know why an input went wrong. The aggregation makes a wrong input irrelevant whether the cause was breakage or manipulation, so no per-provider judgment exists anywhere in the calculation. Sections 7.3 and 8.9 demonstrate the bound.
 
 ## About this document
 
@@ -73,9 +73,10 @@ This is the general methodology, chip-generic: panel membership, per-SKU paramet
   - [8.3 Signal and outcome](#83-signal-and-outcome)
   - [8.4 Admissible samples](#84-admissible-samples)
   - [8.5 Fit and liveness score](#85-fit-and-liveness-score)
-  - [8.6 Allocation](#86-allocation)
-  - [8.7 Opening weights and the switch](#87-opening-weights-and-the-switch)
-  - [8.8 Safeguards](#88-safeguards)
+  - [8.6 Attendance](#86-attendance)
+  - [8.7 Allocation](#87-allocation)
+  - [8.8 Opening weights and the switch](#88-opening-weights-and-the-switch)
+  - [8.9 Safeguards](#89-safeguards)
 - [9. Publication and settlement](#9-publication-and-settlement)
   - [9.1 Cadence](#91-cadence)
   - [9.2 Missing observations](#92-missing-observations)
@@ -98,10 +99,10 @@ This is the general methodology, chip-generic: panel membership, per-SKU paramet
 
 What CGI delivers: one reference price for GPU compute that no single provider can materially move, that both sides of a trade can settle against, and that anyone can recompute from the public record. Each claim below is checkable against that record.
 
-- Prices are collected every 15 minutes from 28 providers across 69 chip models, unfiltered.
+- Prices are collected every 15 minutes from 28 providers, unfiltered.
 - An index value, a stability band, and a liveness weight vector publish for every observation, every 15 minutes. There is no designated fixing time.
 - Each panel provider contributes one number per observation: its lowest eligible on-demand listing, except order books, which contribute a volume-weighted median.
-- The index is an interquantile mean over votes, not a weighted average of provider prices. Each provider votes at its price and its price plus and minus its own standard deviation; the current index averages the central vote-quantile band.
+- The index is an interquantile mean over votes, not a weighted average: the weighted mean of the central third of the vote mass. Each provider votes at its price and its price plus and minus its own standard deviation.
 - Liveness weights are computed from measured behavior: whether a provider's recent moves anticipated the rest of the panel. No weight requires a per-provider human decision.
 - The index history is a pure function of the published record plus published parameters. Published observations are never revised.
 - A period rate is the time-average of the index values within it, missing observations filled from the observations preceding them; whether it is fit to settle on is governed by a published coverage record.
@@ -152,7 +153,7 @@ Symbols: `p_i` is provider i's observed price, `sd_i` its standard deviation ove
 
 ### 3.1 Coverage
 
-Every 15 minutes, 28 providers, 69 chip models (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
+Every 15 minutes, 28 providers, every chip model they price (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
 
 Every panel is a selection over this record, not a separate collection effort.
 
@@ -312,7 +313,7 @@ accept if |price - mean(last 20)| <= 3.0 * max(sd, 3% of mean(last 20))
 | --- | --- |
 | Rejected prices still enter the history | A genuine repricing then costs one day, not perpetuity |
 | The test runs in the quoted currency | On 20 Aug 2026 a roughly 1% EUR/USD move ejected a provider whose price sat unchanged at 7.50 EUR |
-| Minimum sigma of 3% of the trailing-window mean | A frozen list price has sd 0; without a floor any repricing is rejected |
+| Minimum sigma of 3% of price | A frozen list price has sd 0; without a floor any repricing is rejected |
 | Threshold widened from 2.5 to 3.0 sd | At 2.5 it rejected a genuine $5.95 to $6.60 repricing by 1.5 cents. The aggregation in section 7 is now the primary outlier defense; this is a gross-error screen |
 
 The first ten observations pass untested. Such prices are flagged for review if more than 15% from that observation's cross-provider average, but counted.
@@ -329,7 +330,7 @@ Where a recorded price is known wrong by rule and the true price was never captu
 
 ### 7.1 Interquantile mean of standard-deviation votes
 
-The index is not a weighted average of provider prices. It is an interquantile mean over weighted votes.
+The index is not a weighted average. It is an interquantile mean over votes: the weighted mean of the central third of the vote mass.
 
 Each passing provider casts its full liveness weight three times: at its price and at its price plus and minus its own standard deviation.
 
@@ -339,22 +340,22 @@ for each passing provider i:
     vote (price_i)         weight w_i
     vote (price_i + sd_i)  weight w_i
 
-alpha          = 0.16666
-index          = weighted mean of the vote-quantile band
-                 [0.5 - alpha, 0.5 + alpha]
+index          = weighted mean of the votes between the 1/3 and
+                 2/3 quantiles of cumulative vote weight, with
+                 fractional weight at the band edges
 stability band = larger distance from the index to the
                  25th / 75th weighted vote percentiles
 ```
 
-The current `alpha` selects the central 33.332% of vote mass, from quantile 0.33334 through 0.66666. The calculation integrates that band exactly, including partial weight at its boundaries, then divides by the band's weight. `alpha = 0` is the point weighted median and remains the default for frozen v1 artifacts that do not carry the knob; `alpha = 0.5` would average the full vote distribution. Every record priced with a nonzero alpha must carry that alpha so the choice is reproducible from the record alone.
+`sd_i` is the provider's own price variability over a trailing 90-day window, with the same 3% floor. This is a longer window than the outlier check's 20 observations, deliberately: the outlier sigma is a fast gross-error screen, while the vote sigma sets how much conviction a provider's votes carry and reflects its longer record.
 
-`sd_i` is the provider's own price variability over a trailing 90-day window, floored at 3% of the provider's current price. This is a longer window than the outlier check's 20 observations, deliberately: the outlier sigma is a fast gross-error screen, while the vote sigma sets how much conviction a provider's votes carry and reflects its longer record.
+A stable provider votes tightly and concentrates its influence. A volatile one spreads its votes and dilutes its own. Because only the central third of the vote mass is averaged, votes in the outer thirds have no direct effect on the value, so no small group of providers can drag the index from the tails. The floor stops staleness impersonating conviction: a frozen price would otherwise cast three identical votes claiming certainty it never demonstrated.
 
-A stable provider votes tightly and concentrates its influence. A volatile one spreads its votes and dilutes its own. Because the result averages only a central quantile band, tail votes cannot pull the index as they pull a full weighted average. The floor stops staleness impersonating conviction: a frozen price would otherwise cast three identical votes claiming certainty it never demonstrated.
+> **Why a band instead of the median?** A median depends only on the vote at the midpoint of the mass: nearby votes can move without moving the index until they cross it. Averaging the central third responds to movement throughout the band, so the index tracks the market continuously while the outer thirds still cannot touch it. Shrink the band to nothing and the statistic is the weighted median; widen it to everything and it is the weighted average. One third is the published parameter (section 12.3).
 
 ### 7.2 Worked example
 
-Five providers, sigmas floored at 3% of price. Liveness weights sum to 1; each casts them three times, so total vote weight is 3. At `alpha = 0.16666`, the index averages the vote ladder from quantile 0.33334 through 0.66666.
+Five providers, sigmas floored at 3% of price. Liveness weights sum to 1; each casts them three times, so total vote weight is 3 and the central third is the vote mass between cumulative weight 1 and 2.
 
 | Provider | Weight | Price | sd | Votes |
 | --- | --- | --- | --- | --- |
@@ -364,13 +365,21 @@ Five providers, sigmas floored at 3% of price. Liveness weights sum to 1; each c
 | D | 0.15 | 7.20 | 0.25 | 6.95, 7.20, 7.45 |
 | E | 0.10 | 5.80 | 0.45 | 5.35, 5.80, 6.25 |
 
-Sorting all fifteen votes and integrating the central quantile band produces an index of **6.642500**. The point-median diagnostic is 6.600000. The 25th percentile of vote weight falls at 6.400000 and the 75th at 6.800000, so the stability band is max(6.642500 - 6.400000, 6.800000 - 6.642500) = **0.242500**.
+Sorting all fifteen votes and accumulating weight, the central third runs from cumulative weight 1 to 2 and holds exactly four votes: 6.54 (weight 0.25), 6.60 (0.30), 6.70 (0.20), and 6.75 (0.25). Their weighted mean is the index, **6.6425**. The 25th percentile of vote weight falls at 6.40 and the 75th at 6.80, so the stability band is max(6.6425 - 6.40, 6.80 - 6.6425) = **0.2425**.
 
-Now reprice D, the most expensive member, up 30% to 9.36. The weighted average moves from 6.627500 to 6.951500. The interquantile mean remains 6.642500: D's vote mass already sat above the central band, and pushing it further up changes nothing inside that band.
+Now reprice D, the most expensive member, up 30% to 9.36. The weighted average moves from 6.63 to 6.95. The interquantile mean does not move: D's vote mass already sat in the top third, and pushing it further up changes nothing inside the band.
 
 ### 7.3 Robustness
 
-The half-width `alpha` makes the robustness choice explicit. Zero takes only the point median; 0.5 takes the full vote distribution. The live value 0.16666 keeps the center broad enough not to hinge on one quantile boundary while excluding the outer two-thirds of vote mass from the headline mean. The weighted average of provider prices and the point vote median are still published as diagnostics. Neither is the index.
+The same experiment as the calculation engine runs it, on the worked example panel (D repriced 7.20 to 9.36, all else fixed):
+
+```javascript
+interquantile mean   6.642500 -> 6.642500   (0.000000)
+median of votes      6.600000 -> 6.600000   (0.000000)
+weighted average     6.627500 -> 6.951500   (+0.324000)
+```
+
+The weighted average is still published as a diagnostic. It is not the index.
 
 ### 7.4 Stability band
 
@@ -437,7 +446,7 @@ With `T` = the last observation strictly before the one being priced and `L` = 9
 
 plus a published weight vector at τ itself, and every leg of `X` and `y` computable from real observations. No carry-forward: a stale price is not a price.
 
-`τ + h ≤ T` is the information boundary of section 8.8: `T` is the last observation strictly before the one being priced, so nothing observed at an observation can enter that observation's own weights.
+`τ + h ≤ T` is the information boundary of section 8.9: `T` is the last observation strictly before the one being priced, so nothing observed at an observation can enter that observation's own weights.
 
 Samples decay exponentially toward the cutoff, half-life 30 days:
 
@@ -469,10 +478,27 @@ Q_i     = mean of q_{i,h} over the three forwards
 
 `q_{i,h}` is undefined, not zero, with fewer than 10 samples, if the weighted variance of `y` falls below 1e-12, or if the fit is singular or `R²` non-finite. `Q_i` requires every `q_{i,h}` to be defined, so the score cannot lurch when a longer forward window comes online after a shorter one.
 
-### 8.6 Allocation
+### 8.6 Attendance
+
+A provider's weight also reflects whether it shows up. Each scheduled observation marks every provider: 1 if it was read successfully and produced a usable price, 0 if it was read successfully and produced none (a price rejected by the outlier check of section 6.4 counts as none), and unchanged if our own collection or parsing failed, since a provider is never penalized for our failure.
+
+The attendance factor `A_i` is the exponentially weighted average of this series over the 90-day regression window, with its own attendance half-life, normalized so a provider present throughout has `A_i` = 1. A newly seated provider's scheduled observations before it joined count as 0, so its first print starts near zero; at the 6-hour half-life, sustained printing reaches full attendance in about two days.
+
+The missing print itself is handled by cause:
+
+- Our own collection or parsing failure: the provider's last usable price is carried forward into the observation, and attendance is unchanged. A carried price never advances the provider's own price series, so it enters neither the liveness regression nor the vote sigma, and it never counts toward the minimum passing panel.
+- Provider read, no usable price: attendance falls and the consecutive no-price count advances. In the current version the provider sits the observation out; once attendance weighting is armed, its last usable price is carried forward instead and fades as attendance falls.
+- Hard cutoff: past 96 consecutive observations without a usable price (24 hours), the provider is excluded entirely until it produces a new usable price. Our own failures never advance the count.
+
+> **Why attendance?** A new provider should not receive full weight from its first print, and a provider that stops publishing should fade rather than vanish instantly or linger stale. The half-life sets the smooth fade during a temporary absence; the hard cutoff removes persistently absent sources. Entry, fade-out, and recovery all happen without per-provider judgment.
+
+Attendance is computed and published with every observation. In the current version the attendance sensitivity is zero, so allocation is unchanged by it; arming it is a versioned parameter change (section 12.4).
+
+### 8.7 Allocation
 
 ```javascript
-s_i = exp(γ Q_i) / Σ_j exp(γ Q_j)
+s_i = A_i^η · exp(γ Q_i) / Σ_j A_j^η · exp(γ Q_j)
+    = softmax_i( γ Q_i + η · log A_i )
 
 w_i = w_min + (1 - N·w_min) · s_i
 
@@ -481,7 +507,11 @@ then, while any w_i > w_max:
     excess over the remainder in proportion to s_i
 ```
 
+At η = 0 the attendance term vanishes and the rule is the plain softmax of γQ; that is the current version.
+
 Every provider receives the floor `w_min` = 2.5% first; the remainder distributes by share. Both bounds are uniform: no per-provider values, and no weight requires a human decision. Allocation runs in full precision and rounds once; the rounded vector is the published liveness weight.
+
+Once attendance weighting is armed, each provider's ceiling also scales with its attendance: the base ceiling times `A_i`, normalized so the ceilings together can still hold the full weight; if panel attendance is low enough that they cannot, all ceilings expand proportionally just enough to make the allocation feasible. The base floor and ceiling values are unchanged.
 
 `γ` controls how sharply score differences become weight differences. Four providers scoring 0.20 / 0.10 / 0.05 / 0.00:
 
@@ -495,7 +525,7 @@ Every provider receives the floor `w_min` = 2.5% first; the remainder distribute
 
 γ = 4 is a chosen prior, not a fitted value: predictiveness matters visibly, and a good score cannot run away with the panel. Revisiting it is a versioned change.
 
-### 8.7 Opening weights and the switch
+### 8.8 Opening weights and the switch
 
 `Q_i` requires 10 samples per forward window, so a new panel cannot compute weights on its first observations. Until it can, the index uses the panel's opening weights: the membership weights agreed when the panel was seated, published in each record like any other parameter.
 
@@ -517,15 +547,9 @@ The floor governs the switch test alone. A provider below it stays index-eligibl
 
 > **Why 50% is deliberately loose.** A defined score needs 10 samples per forward window, and each sample requires the provider present at four offsets (τ-48h, τ-24h, τ-6h, τ). At 50% attendance and a 15-minute cadence that yields roughly 270 samples, at 25% roughly eight, below 10% effectively none. A single contiguous two-week outage leaves attendance near 84%. The floor therefore excuses only providers that could not be scored under any pattern, not a provider having a bad month.
 
-### 8.8 Safeguards
+### 8.9 Safeguards
 
-**A uniform ceiling suffices because the aggregation bounds influence.** A manipulated provider that moves and drags others looks identical to one that genuinely leads. Take a provider at the full 30% ceiling and reprice it +30%:
-
-```javascript
-index  6.970000 -> 6.970000   (0.000000)
-```
-
-The interquantile mean over standard-deviation votes does not move in this experiment. Ceiling and aggregation together bound single-provider influence without per-provider judgment.
+**A uniform ceiling suffices because the aggregation bounds influence.** A manipulated provider that moves and drags others looks identical to one that genuinely leads. The ceiling and the aggregation are sized together: the averaging band is the central third of the vote mass, and the ceiling caps any provider at 30% of it, so even at maximum weight no single provider's votes can constitute the whole band, and a provider whose vote mass sits in an outer third cannot touch the value at all. Ceiling and aggregation together bound single-provider influence without per-provider judgment.
 
 **An observation cannot move its own weights.** Every weight input is realized strictly before the observation being priced. A party listing capacity minutes before an observation cannot move its own weight for it, and each observation's weights are determinable before its prices are read.
 
@@ -543,9 +567,11 @@ An index value, a stability band, and a liveness weight vector publish for each 
 
 An observation with no usable record publishes as an explicit missing-observation entry. Never skipped, never interpolated. An observation carries no index value for one of two reasons: collection failed, or too few providers passed the screens and the observation published dark.
 
+That rule scopes to the index value: the index never invents a value for a missing observation. A missing provider is handled at the provider level (section 8.6), and a carried price is that provider's own last published price, never an invented one, and never counted toward the minimum passing panel.
+
 ### 9.3 Settlement and the period rate
 
-Two distinct operations run at two levels. The interquantile mean runs across provider votes within one observation and produces that observation's index value; it is what bounds one provider's influence. A time-average runs across observations within a period and produces a single figure for that period; it is what stops one print moving a settlement. The index publishes only the 15-minute series; any period aggregation belongs to the contract that references it, and no period length is specified here.
+Two distinct operations run at two levels. The interquantile mean runs across providers within one observation and produces that observation's index value; it is what stops one provider moving the price. A time-average runs across observations within a period and produces a single figure for that period; it is what stops one print moving a settlement. The index publishes only the 15-minute series; any period aggregation belongs to the contract that references it, and no period length is specified here.
 
 Each of the N observations in a period enters the average at weight 1/N, so a print wrong by D moves the period rate by D/N. At a 15-minute cadence a month is N of roughly 2,920, so a single print at twice its true level moves the period rate by about 0.034%; against a single-point fixing, the same bad print moves settlement by the full 100%.
 
@@ -648,7 +674,6 @@ Every value publishes inside each record. Changes require a new version. Paramet
 | Collection interval | every 15 minutes |
 | Index / weight recomputation | every observation |
 | Providers collected | 28 |
-| Chip models identified | 69 |
 | Minimum providers to record an observation | 8 of 28 collected (panel-agnostic; section 3.5) |
 | Retention | life of trade + 2 years |
 | Jump threshold | 25% |
@@ -674,13 +699,12 @@ Values identical across the live SKUs. SKU-bound parameters (minimum panel, FX s
 
 | Parameter | Value | Controls |
 | --- | --- | --- |
-| Aggregation | interquantile mean of standard-deviation votes | How prices combine |
-| IQM half-width (alpha) | 0.16666 | Averages vote quantiles 0.33334 through 0.66666; 0 is the frozen-v1 median default |
+| Aggregation | interquantile mean of votes | How prices combine |
+| Aggregation band | central third of vote mass (1/3 to 2/3 quantiles) | Votes averaged; outer thirds have no direct effect |
 | Eligible tiers | on-demand (allow-list) | Only the on-demand rate is the underlying; every other tier is recorded but never eligible |
 | History window | 20 | Observations in the outlier test |
 | Threshold | 3.0 sd | Acceptance band width |
-| Outlier-test minimum variability | 3% of trailing-window mean | Floor under the fast outlier-test sigma |
-| Vote minimum variability | 3% of the provider's current price | Floor under the vote sigma; a frozen price otherwise claims false precision |
+| Minimum variability | 3% of price | Floor under both sigmas; a frozen price otherwise has sd 0 |
 | Warm-up | 10 | Observations before the test applies |
 | Vote sigma window | 90 days | Window for the sigma used in votes and the stability band (section 7.1) |
 | Test currency | as quoted | Prevents FX moves ejecting a provider |
@@ -700,13 +724,16 @@ Identical on all panels. No per-provider values.
 | History | 90 days | How far back the relationship is estimated |
 | Half-life | 30 days | How fast old observations lose influence |
 | Shrinkage penalty | 1.0 | How hard the fit is pulled toward "no relationship"; the main defense against scoring noise as skill |
-| Sensitivity (γ) | 4.0 | How sharply score differences become weight differences (section 8.6) |
+| Sensitivity (γ) | 4.0 | How sharply score differences become weight differences (section 8.7) |
 | Weight floor | 2.5% on every live panel | Minimum weight for an eligible provider, uniform within a panel; set per panel so that N times the floor leaves room for the computed allocation |
 | Weight ceiling | 30% | Maximum weight; uniform, no exceptions |
+| Attendance half-life | 6 hours | How quickly provider-side missing prints lose influence, and returning providers regain it (section 8.6) |
+| Attendance sensitivity (η) | 0 | Strength of attendance in allocation; at 0 the softmax is unchanged. Arming it is a versioned change |
+| Consecutive no-price limit | 96 observations (24 h) | Hard exclusion after sustained provider-side absence; our own collection failures never count (section 8.6) |
 | Minimum observations | 10 | Per provider, per window: observations needed before that provider can be scored. Below it the score is undefined |
 | Minimum variation | 1e-12 | The panel must have moved for prediction to be a meaningful question. Below this variance in what is predicted, the score is undefined rather than computed from nothing. Set above price-rounding noise (roughly 1e-14), below any real movement |
 | Minimum panel for transition | 5 | Whole-panel, one time: providers that must report at the observation where the index permanently switches to derived weights. Distinct from minimum observations: that asks "does this provider have enough history?", this asks "is this observation broad enough to change the methodology?" |
-| Attendance floor | 50% | Share of scheduled observations a provider must reach to gate the transition (section 8.7) |
+| Attendance floor | 50% | Share of scheduled observations a provider must reach to gate the transition (section 8.8); distinct from the attendance factor of section 8.6 |
 | Movement cap | 0.5 log | Bounds any single observation's influence; largest real move observed roughly 11% |
 
 γ and shrinkage are initial priors, not fitted values. Review is scheduled at roughly 60 days of prints; revisiting either is a versioned change.
