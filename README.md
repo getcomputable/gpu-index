@@ -39,8 +39,11 @@ pip install -e .
 
 (httpx is the only runtime dependency.)
 
-A successful run looks like this (captured live against
-https://data.getcomputable.com):
+A successful run looks like this, captured live against
+https://data.getcomputable.com on 2026-08-25, when the record published one
+observation per hour. The record now publishes one every 15 minutes, so a
+current day prints 96 observations rather than 24. The transcript is left
+exactly as recorded.
 
 ```
 $ ./reproduce h100 2026-08-25
@@ -62,7 +65,8 @@ prints the non-fatal weight-window warning described below.)
 `./reproduce <h100|h200|b300|b200> <date>` verifies the published record:
 recompute the index from the published per-provider inputs and weights and
 match it exactly; verify every file's digest. A UTC day (YYYY-MM-DD) covers all of that
-day's observations, and YYYY-MM-DDTHH targets a single one. It reads the record
+day's observations, and YYYY-MM-DDTHH narrows to the observations inside
+that hour (four, at the 15-minute cadence). It reads the record
 from a local downloaded copy (GPU_INDEX_DATA_DIR, default ./data) when it holds
 the requested day, otherwise straight from the public front: the official
 record host https://data.getcomputable.com by default; set
