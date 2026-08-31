@@ -73,7 +73,7 @@ def _projected_iqm_observation() -> dict:
         "observed_at": "2026-08-30T12:15:00.000Z",
         "status": "ok",
         "calc_params": {
-            "aggregation": "median_stddev_votes",
+            "aggregation": "median_ci_votes",
             "iqm_alpha": 0.16666,
             "min_sources_to_publish": 2,
         },
@@ -137,6 +137,15 @@ def test_projected_era3_iqm_matches_and_pins_receipt_tuple_order():
     assert check.recomputed_value == 12.199898
     assert check.recomputed_band == 7.800102
     assert check.messages == ()
+
+
+def test_pre_relabel_aggregation_uses_the_same_iqm_engine_path():
+    observation = _projected_iqm_observation()
+    observation["calc_params"]["aggregation"] = "median_stddev_votes"
+    check = recompute_observation(observation)
+    assert check.verdict == VERDICT_MATCH
+    assert check.recomputed_value == 12.199898
+    assert check.recomputed_band == 7.800102
 
 
 def test_slot_era_day_matches_including_no_print_consistency():
