@@ -108,8 +108,10 @@ live duplication of the observatory collectors.
 ## Architecture
 
 Four packages, layered `common <- observatory <- index <- published`, with
-two declared waiver edges (the vast collector shares the calc lane's
-order-book parser; the panel screens share the catalog's label machinery).
+three declared waiver edges (the vast collector shares the calc lane's
+order-book parser; the panel screens share the catalog's label machinery;
+the panel config validates carry-forward against the collector's failure
+vocabulary).
 The package map, the dependency arrows, the frozen-lane rationale, and the
 three contributor seams are in [ARCHITECTURE.md](ARCHITECTURE.md);
 `tests/unit/test_import_boundaries.py` enforces the arrows in CI.
