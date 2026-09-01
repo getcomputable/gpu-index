@@ -487,12 +487,12 @@ The attendance factor `A_i` is the exponentially weighted average of this series
 The missing print itself is handled by cause:
 
 - Our own collection or parsing failure: the provider's last usable price is carried forward into the observation, and attendance is unchanged. A carried price never advances the provider's own price series, so it enters neither the liveness regression nor the vote sigma, and it never counts toward the minimum passing panel.
-- Provider read, no usable price: attendance falls and the consecutive no-price count advances. In the current version the provider sits the observation out; once attendance weighting is armed, its last usable price is carried forward instead and fades as attendance falls.
+- Provider read, no usable price: attendance falls and the consecutive no-price count advances. The provider's last usable price is carried forward and fades as attendance falls.
 - Hard cutoff: past 96 consecutive observations without a usable price (24 hours), the provider is excluded entirely until it produces a new usable price. Our own failures never advance the count.
 
 > **Why attendance?** A new provider should not receive full weight from its first print, and a provider that stops publishing should fade rather than vanish instantly or linger stale. The half-life sets the smooth fade during a temporary absence; the hard cutoff removes persistently absent sources. Entry, fade-out, and recovery all happen without per-provider judgment.
 
-Attendance is computed and published with every observation. In the current version the attendance sensitivity is zero, so allocation is unchanged by it; arming it is a versioned parameter change (section 12.4).
+Attendance is computed and published with every observation. Attendance weighting is armed: the current version runs at attendance sensitivity η = 0.5, disclosed with every observation as `calc_params.liveness.attendance_eta`. It was armed as a versioned parameter change effective 2026-09-01 (section 12.4).
 
 ### 8.7 Allocation
 
@@ -507,11 +507,11 @@ then, while any w_i > w_max:
     excess over the remainder in proportion to s_i
 ```
 
-At η = 0 the attendance term vanishes and the rule is the plain softmax of γQ; that is the current version.
+At η = 0 the attendance term vanishes and the rule is the plain softmax of γQ; the current version runs at η = 0.5.
 
 Every provider receives the floor `w_min` = 2.5% first; the remainder distributes by share. Both bounds are uniform: no per-provider values, and no weight requires a human decision. Allocation runs in full precision and rounds once; the rounded vector is the published liveness weight.
 
-Once attendance weighting is armed, each provider's ceiling also scales with its attendance: the base ceiling times `A_i`, normalized so the ceilings together can still hold the full weight; if panel attendance is low enough that they cannot, all ceilings expand proportionally just enough to make the allocation feasible. The base floor and ceiling values are unchanged.
+With attendance weighting armed, each provider's ceiling also scales with its attendance: the base ceiling times `A_i`, normalized so the ceilings together can still hold the full weight; if panel attendance is low enough that they cannot, all ceilings expand proportionally just enough to make the allocation feasible. The base floor and ceiling values are unchanged.
 
 `γ` controls how sharply score differences become weight differences. Four providers scoring 0.20 / 0.10 / 0.05 / 0.00:
 
@@ -728,7 +728,7 @@ Identical on all panels. No per-provider values.
 | Weight floor | 2.5% on every live panel | Minimum weight for an eligible provider, uniform within a panel; set per panel so that N times the floor leaves room for the computed allocation |
 | Weight ceiling | 30% | Maximum weight; uniform, no exceptions |
 | Attendance half-life | 6 hours | How quickly provider-side missing prints lose influence, and returning providers regain it (section 8.6) |
-| Attendance sensitivity (η) | 0 | Strength of attendance in allocation; at 0 the softmax is unchanged. Arming it is a versioned change |
+| Attendance sensitivity (η) | 0.5 | Strength of attendance in allocation; at 0 the softmax is unchanged. Armed at 0.5 by the versioned change effective 2026-09-01 |
 | Consecutive no-price limit | 96 observations (24 h) | Hard exclusion after sustained provider-side absence; our own collection failures never count (section 8.6) |
 | Minimum observations | 10 | Per provider, per window: observations needed before that provider can be scored. Below it the score is undefined |
 | Minimum variation | 1e-12 | The panel must have moved for prediction to be a meaningful question. Below this variance in what is predicted, the score is undefined rather than computed from nothing. Set above price-rounding noise (roughly 1e-14), below any real movement |
