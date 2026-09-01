@@ -48,11 +48,14 @@ Every published value can be recomputed from its own receipts.
 ```
 git clone https://github.com/getcomputable/gpu-index
 cd gpu-index
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ./reproduce h100 "$(date -u +%F)"
 ```
 
-(httpx is the only runtime dependency.)
+(httpx is the only runtime dependency. The virtual environment keeps the
+install local; on systems that allow bare `pip install`, the venv lines are
+optional.)
 
 That reproduces the current UTC day: every H100 observation published so far,
 recomputed from the published per-provider receipts and matched against the
