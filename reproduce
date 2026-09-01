@@ -24,7 +24,8 @@
 # without verifying something; withheld sources degrade an observation
 # to digest-only with a distinct message.
 #
-# --full replays the full public calculation from raw disclosed inputs:
+# The default (and its explicit alias --full) replays the full public
+# calculation from raw disclosed inputs:
 # per-source prices and dispersions, status/timing facts, filter verdicts,
 # carried basis, and published calculation parameters. It derives the
 # attendance events and factors, liveness scores, weight vector, votes,
@@ -48,19 +49,23 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
-       reproduce --full <sku> <YYYY-MM-DD[THH]>
+       reproduce --receipts <sku> <YYYY-MM-DD[THH]>
        reproduce --producer <sku> <YYYY-MM-DD[THH]>
        reproduce --lane <panel_id> <YYYY-MM-DD[THH]>
        reproduce --frozen <b300|b200> <YYYY-MM-DD>
 
-  <sku>             public SKU. Verifies the PUBLISHED record
-                    (recompute-and-match): a local copy under
-                    GPU_INDEX_DATA_DIR when it holds the requested day,
-                    else the public front (GPU_INDEX_PUBLIC_BASE_URL,
-                    default https://data.getcomputable.com). Exit 0
+  <sku>             public SKU. Re-derives the PUBLISHED record end to
+                    end from raw public history (attendance, liveness,
+                    weights, votes, IQM, and the index; --full is the
+                    same, kept as an alias) and matches every value.
+                    Reads a local copy under GPU_INDEX_DATA_DIR when it
+                    holds the requested day, else the public front
+                    (GPU_INDEX_PUBLIC_BASE_URL, default
+                    https://data.getcomputable.com). Fetches trailing
+                    history, so a day takes a few minutes. Exit 0
                     all-match, 1 mismatch/digest FAIL, 2 could not verify
-  --full            derive attendance, liveness, weights, votes, IQM,
-                    and the index from raw public history only
+  --receipts        the fast check: recompute each value from its own
+                    published receipts only (no weight re-derivation)
   --producer        force the internal producer-record replay/verify
   --lane <panel_id> run any configured panel lane, e.g. h100_broad or
                     h200_broad (configured lanes that are not public SKUs)
@@ -72,12 +77,17 @@ EOF
 
 MODE=sku
 PRODUCER=0
-FULL=0
+# Full re-derivation is the default for the sku mode; --receipts opts out
+# and --full stays as an explicit alias. FULL_EXPLICIT keeps the
+# cannot-combine guard for the other modes on explicit flags only.
+FULL=1
+FULL_EXPLICIT=0
 case "${1:-}" in
   --frozen) MODE=frozen; shift ;;
   --lane) MODE=lane; shift ;;
   --producer) PRODUCER=1; shift ;;
-  --full) FULL=1; shift ;;
+  --full) FULL=1; FULL_EXPLICIT=1; shift ;;
+  --receipts) FULL=0; shift ;;
   -h|--help) usage ;;
 esac
 
@@ -97,7 +107,7 @@ esac
 
 # ---------------------------------------------------------------- frozen
 # Legacy escape hatch: the retired daily-lane behavior, verbatim.
-if [ "$FULL" -eq 1 ] && [ "$MODE" != sku ]; then
+if [ "$FULL_EXPLICIT" -eq 1 ] && [ "$MODE" != sku ]; then
   echo "--full reads the PUBLISHED record; it does not combine with --lane or --frozen" >&2
   exit 2
 fi
