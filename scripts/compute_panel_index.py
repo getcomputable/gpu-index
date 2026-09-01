@@ -1037,6 +1037,7 @@ def main() -> int:
         # to protect a keyspace neither of them touches. Publishing
         # (--sync and every persisting target) still requires the lever,
         # unchanged and test-pinned.
+        # Replay checkpoints stay unmirrored: private-state writes have no public verifier.
         error(
             f"{methodology_id}: minute-keyed lane refused for PUBLISHING "
             f"-- set PANEL_MINUTE_LANES_LIVE=true only after the "
