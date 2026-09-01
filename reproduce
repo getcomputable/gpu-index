@@ -5,6 +5,7 @@
 # Reproduce PUBLISHED index observations.
 #
 #   ./reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
+#   ./reproduce --full <sku>          <YYYY-MM-DD[THH]>
 #   ./reproduce --producer <sku>      <YYYY-MM-DD[THH]>
 #   ./reproduce --lane <panel_id>     <YYYY-MM-DD[THH]>
 #   ./reproduce --frozen <b300|b200>  <YYYY-MM-DD>
@@ -23,6 +24,13 @@
 # without verifying something; withheld sources degrade an observation
 # to digest-only with a distinct message.
 #
+# --full replays the full public calculation from raw disclosed inputs:
+# per-source prices and dispersions, status/timing facts, filter verdicts,
+# carried basis, and published calculation parameters. It derives the
+# attendance events and factors, liveness scores, weight vector, votes,
+# IQM, and final value without consuming any published derived
+# intermediate. Insufficient observable history is a typed refusal.
+#
 # Under --producer, the run replays a local collection record instead
 # (the panel engine, scripts/compute_panel_index.py;
 # h100 -> h100_sxm, h200 -> h200_sxm, b300, b200). There, an observation
@@ -40,6 +48,7 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
+       reproduce --full <sku> <YYYY-MM-DD[THH]>
        reproduce --producer <sku> <YYYY-MM-DD[THH]>
        reproduce --lane <panel_id> <YYYY-MM-DD[THH]>
        reproduce --frozen <b300|b200> <YYYY-MM-DD>
@@ -50,6 +59,8 @@ usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
                     else the public front (GPU_INDEX_PUBLIC_BASE_URL,
                     default https://data.getcomputable.com). Exit 0
                     all-match, 1 mismatch/digest FAIL, 2 could not verify
+  --full            derive attendance, liveness, weights, votes, IQM,
+                    and the index from raw public history only
   --producer        force the internal producer-record replay/verify
   --lane <panel_id> run any configured panel lane, e.g. h100_broad or
                     h200_broad (configured lanes that are not public SKUs)
@@ -61,10 +72,12 @@ EOF
 
 MODE=sku
 PRODUCER=0
+FULL=0
 case "${1:-}" in
   --frozen) MODE=frozen; shift ;;
   --lane) MODE=lane; shift ;;
   --producer) PRODUCER=1; shift ;;
+  --full) FULL=1; shift ;;
   -h|--help) usage ;;
 esac
 
@@ -84,6 +97,11 @@ esac
 
 # ---------------------------------------------------------------- frozen
 # Legacy escape hatch: the retired daily-lane behavior, verbatim.
+if [ "$FULL" -eq 1 ] && [ "$MODE" != sku ]; then
+  echo "--full reads the PUBLISHED record; it does not combine with --lane or --frozen" >&2
+  exit 2
+fi
+
 if [ "$MODE" = frozen ]; then
   case "$ARG" in
     b300) CONFIG="config/index_basket.json" ;;
@@ -145,6 +163,10 @@ else
     fi
     if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ] && { [ -z "$VERSIONED_DAY_FILE" ] || [ ! -f "$VERSIONED_DAY_FILE" ]; }; then
       export GPU_INDEX_PUBLIC_BASE_URL="https://data.getcomputable.com"
+    fi
+    if [ "$FULL" -eq 1 ]; then
+      exec "$PY" "$ROOT/scripts/verify_published_record.py" \
+        --sku "$PUB_SKU" --date "$DATE" --full
     fi
     exec "$PY" "$ROOT/scripts/verify_published_record.py" \
       --sku "$PUB_SKU" --date "$DATE"

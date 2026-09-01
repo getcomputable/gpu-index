@@ -22,6 +22,11 @@ and say so; they do not fail the run.
   verify_published_record.py --sku H100 --date 2026-08-22
   verify_published_record.py --sku B200 --date 2026-08-20T04
 
+``--full`` starts at the observable public-history origin and derives
+attendance events and factors, liveness scores, the weight vector, votes,
+IQM, and final index value from raw disclosed receipt fields. Published
+weights, liveness scores, attendance factors, and votes are never inputs.
+
 Exit codes: 0 every checked observation matched (digest OK; degraded
 observations are reported but do not fail), 1 any MISMATCH or digest
 FAIL, 2 could not verify (the record source is unreachable, no published
@@ -48,6 +53,11 @@ from gpu_index.common.bucket import BucketPublishError  # noqa: E402
 from gpu_index.published.artifacts import (  # noqa: E402
     ArtifactDigestError,
     PublishedRecordError,
+)
+from gpu_index.published.full import (  # noqa: E402
+    FullReproductionRefusal,
+    read_full_history,
+    reproduce_full_history,
 )
 from gpu_index.published.reader import PublishedRecordReader  # noqa: E402
 from gpu_index.published.verify import (  # noqa: E402
@@ -92,6 +102,77 @@ def _window_warning(reader, sku: str, date: str):
     )
 
 
+def _stamp_label(observed_at: str) -> str:
+    label = observed_at[:16]
+    # Preserve the historical hour-grain transcript while making
+    # quarter-hour observations distinguishable within an hour.
+    return label[:13] if label.endswith(":00") else label
+
+
+def _run_full(reader, *, sku: str, date: str, stamp: str | None) -> int:
+    print(
+        "raw-only full reproduction: prices, dispersions, upstream status, "
+        "carry basis, filter verdicts, timing, top-level flags, and "
+        "calc_params are inputs; published derived intermediates are not"
+    )
+    try:
+        history = read_full_history(reader, sku=sku, target_date=date)
+        run = reproduce_full_history(history, target_date=date)
+    except FullReproductionRefusal as exc:
+        print(f"FULL REFUSAL [{exc.code}]: {exc}", file=sys.stderr)
+        return 2
+    except ArtifactDigestError as exc:
+        print(f"digest FAIL: {exc}", file=sys.stderr)
+        return 1
+    except (httpx.HTTPError, BucketPublishError, OSError) as exc:
+        print(
+            f"could not verify: the published record is unreachable via "
+            f"{reader.describe()} ({exc})",
+            file=sys.stderr,
+        )
+        return 2
+    except PublishedRecordError as exc:
+        print(f"invalid published artifact: {exc}", file=sys.stderr)
+        return 1
+
+    checks = [
+        check
+        for check in run.checks
+        if stamp is None or check.observed_at.startswith(stamp)
+    ]
+    if not checks:
+        print(
+            f"FULL REFUSAL [target_not_observable]: no {sku} observation "
+            f"at {stamp or date}",
+            file=sys.stderr,
+        )
+        return 2
+
+    matched = mismatched = 0
+    for check in checks:
+        if check.verdict == VERDICT_MATCH:
+            matched += 1
+        else:
+            mismatched += 1
+        verdict = "MATCH" if check.verdict == VERDICT_MATCH else "MISMATCH"
+        print(
+            f"{check.sku} {_stamp_label(check.observed_at)} "
+            f"derived {_value_label(check.derived_value, check.derived_band)} "
+            f"published {_value_label(check.published_value, check.published_band)} "
+            f"{verdict} public digests OK"
+        )
+        weights = " ".join(
+            f"{source_id}={weight}"
+            for source_id, weight in sorted(check.derived_weights.items())
+        )
+        print(f"  weights: {weights or '(none)'}")
+    print(
+        f"summary: {len(checks)} observation(s): {matched} MATCH, "
+        f"{mismatched} MISMATCH"
+    )
+    return 1 if mismatched else 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="verify published index observations "
@@ -106,6 +187,14 @@ def main(argv=None) -> int:
         "--date",
         required=True,
         help="YYYY-MM-DD (whole UTC day) or YYYY-MM-DDTHH (one observation)",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help=(
+            "derive attendance, liveness, weights, votes, IQM, and index "
+            "values from raw public history only"
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -128,6 +217,9 @@ def main(argv=None) -> int:
     except (PublishedRecordError, BucketPublishError) as exc:
         print(f"published record: {exc}", file=sys.stderr)
         return 2
+    if args.full:
+        print(f"published record: full history via {reader.describe()}")
+        return _run_full(reader, sku=sku, date=date, stamp=stamp)
     try:
         key = reader.resolve_day_key(date, sku=sku)
         print(f"published record: {key} via {reader.describe()}")
@@ -187,11 +279,7 @@ def main(argv=None) -> int:
         except PublishedRecordError as exc:
             print(f"invalid published observation: {exc}", file=sys.stderr)
             return 1
-        stamp_label = check.observed_at[:16]
-        if stamp_label.endswith(":00"):
-            # Preserve the historical hour-grain transcript while making
-            # quarter-hour observations distinguishable within an hour.
-            stamp_label = stamp_label[:13]
+        stamp_label = _stamp_label(check.observed_at)
         if check.verdict == VERDICT_DEGRADED:
             degraded += 1
             print(

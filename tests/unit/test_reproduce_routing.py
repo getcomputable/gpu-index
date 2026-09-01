@@ -185,6 +185,16 @@ def test_public_base_url_routes_to_the_published_verifier(shim, data_dir):
     assert _shim_env(result) == "https://record.example.com/cgi"
 
 
+def test_full_mode_routes_to_the_raw_only_public_derivation(shim, data_dir):
+    result = _run(shim, data_dir, "--full", "h100", "2026-09-01")
+
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert "--sku H100 --date 2026-09-01 --full" in line
+    assert _shim_env(result) == "https://data.getcomputable.com"
+
+
 def test_producer_flag_forces_the_internal_replay(shim, data_dir):
     # Even with a published day file present, --producer keeps the
     # previous producer-record semantics verbatim.

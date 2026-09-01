@@ -63,6 +63,7 @@ _META_KEYS = frozenset(
         "disclosure_restatement_count",
     }
 )
+_SERIES_META_OPTIONAL_KEYS = frozenset({"window_basis_at"})
 # License block: the three fields the publisher actually emits. A
 # verifier must never need a licensing URL to check a price, so
 # ``commercial_licensing`` is tolerated-when-present, not required --
@@ -288,10 +289,23 @@ def _require_keys(
         )
 
 
-def _validate_meta(meta: Any, observations: List[Any]) -> None:
+def _validate_meta(
+    meta: Any, observations: List[Any], *, data_kind: str
+) -> None:
     if not isinstance(meta, dict):
         raise PublishedRecordError("envelope meta must be an object")
-    _require_keys(meta, _META_KEYS, "envelope meta")
+    _require_keys(
+        meta,
+        _META_KEYS,
+        "envelope meta",
+        optional=(
+            _SERIES_META_OPTIONAL_KEYS
+            if data_kind == "gpu_index_series"
+            else frozenset()
+        ),
+    )
+    if "window_basis_at" in meta:
+        _validate_effective_from(meta["window_basis_at"], "meta.window_basis_at")
     if meta["schema_version"] != 1:
         raise PublishedRecordError(
             f"unsupported meta.schema_version {meta['schema_version']!r} "
@@ -525,7 +539,9 @@ def decode_and_verify_artifact(raw: bytes) -> dict:
             "CC-BY-NC-4.0 pin"
         )
     observations = _validate_data(document["data"])
-    _validate_meta(document["meta"], observations)
+    _validate_meta(
+        document["meta"], observations, data_kind=document["data"]["kind"]
+    )
     payload = {
         key: document[key] for key in ("data", "meta", "license")
     }
