@@ -1012,22 +1012,37 @@ def main() -> int:
     if args.verify_published:
         return verify_published_observation(args, config, params, schedule)
 
-    if schedule.minute_keyed and os.environ.get(
-        "PANEL_MINUTE_LANES_LIVE"
-    ) != "true":
+    if (
+        schedule.minute_keyed
+        and not args.dry_run
+        and os.environ.get("PANEL_MINUTE_LANES_LIVE") != "true"
+    ):
         # The mechanical gate on the 15-minute mint prerequisites: a
         # minute-keyed doc passes every validator by design -- and
         # --check-config above stays fence-free so a config-only PR can
-        # validate offline -- but RUNNING one before the minute-grain
+        # validate offline -- but PUBLISHING one before the minute-grain
         # ingest and the replay-checkpoint follow-up are live would
         # dual-publish a keyspace the downstream cannot read while the
         # replay walk grows toward the per-lane cap. Loud refusal, one
         # lane (the sweeper's rc aggregation keeps the other lanes
         # running); arming is one env set, same as every lever.
+        #
+        # SCOPED TO THE PUBLISHING PATH. The hazard the fence names is
+        # DUAL-PUBLISHING, and the two read-only modes cannot commit it:
+        # --verify-published returns above (a byte-for-byte recompute
+        # that writes nothing), and --dry-run derives observations and
+        # prints them, writing nothing either. Refusing those two would
+        # fence off the one thing this repository exists for -- replaying
+        # the serving generation of a lane whose grid is minute-keyed --
+        # to protect a keyspace neither of them touches. Publishing
+        # (--sync and every persisting target) still requires the lever,
+        # unchanged and test-pinned.
         error(
-            f"{methodology_id}: minute-keyed lane refused -- set "
-            f"PANEL_MINUTE_LANES_LIVE=true only after the minute-grain "
-            f"ingest and the replay-checkpoint follow-up are live"
+            f"{methodology_id}: minute-keyed lane refused for PUBLISHING "
+            f"-- set PANEL_MINUTE_LANES_LIVE=true only after the "
+            f"minute-grain ingest and the replay-checkpoint follow-up "
+            f"are live. Read-only replay (--dry-run) and "
+            f"--verify-published are unaffected and need no lever"
         )
         return 1
 

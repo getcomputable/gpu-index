@@ -557,10 +557,19 @@ def test_period_boundary_minute_form_refused_on_hour_lane_at_parse():
     ) == date_hour_to_stamp("2026-08-01", 16)
 
 
-def test_minute_keyed_lane_refuses_without_live_lever(tmp_path, monkeypatch):
-    """PANEL_MINUTE_LANES_LIVE is the mechanical prerequisite gate: a
-    minute-keyed config validates offline (--check-config) but refuses
-    to RUN until the lever is set."""
+def test_minute_keyed_lane_refuses_without_live_lever(
+    tmp_path, monkeypatch, capsys
+):
+    """PANEL_MINUTE_LANES_LIVE is the mechanical prerequisite gate,
+    scoped to the hazard it names -- DUAL-PUBLISHING.
+
+    A minute-keyed config validates offline (--check-config), replays
+    read-only without any lever (--dry-run; --verify-published likewise,
+    returning before the fence), and refuses to PUBLISH until the lever
+    is set. The read-only modes write nothing, so there is no keyspace
+    for them to dual-publish into -- and refusing them would fence off
+    replaying the serving generation of a lane whose grid is
+    minute-keyed, which is the one thing this repository exists for."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -590,9 +599,33 @@ def test_minute_keyed_lane_refuses_without_live_lever(tmp_path, monkeypatch):
         ["compute_panel_index.py", "--config", str(cfg_path), "--check-config"],
     )
     assert mod.main() == 0
-    # A run refuses loudly before touching the bucket.
+    # A PUBLISHING run refuses loudly before touching the bucket.
     monkeypatch.setattr(
         "sys.argv",
         ["compute_panel_index.py", "--config", str(cfg_path), "--sync"],
     )
     assert mod.main() == 1
+    # ... and says so in terms of publishing, so an operator reading the
+    # refusal knows a read-only replay is available without the lever.
+    assert "PUBLISHING" in capsys.readouterr().out
+
+    # A READ-ONLY replay of the same lane runs with no lever at all. An
+    # empty record yields observation_missed artifacts and writes
+    # nothing -- the point is that the fence does not fire.
+    monkeypatch.setenv("GPU_INDEX_DATA_DIR", str(tmp_path / "empty-record"))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "compute_panel_index.py",
+            "--config",
+            str(cfg_path),
+            "--observation",
+            "2026-09-01T0015",
+            "--dry-run",
+        ],
+    )
+    assert mod.main() == 0
+    assert "minute-keyed lane refused" not in capsys.readouterr().out
+    assert not (tmp_path / "empty-record").exists() or not list(
+        (tmp_path / "empty-record").rglob("*.json")
+    )
