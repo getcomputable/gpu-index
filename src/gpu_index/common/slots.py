@@ -2,20 +2,30 @@
 # Copyright 2026 Computable
 """Slot gating: which capture slot a run belongs to, and idempotency.
 
-The capture job fires every 30 minutes (dozens of runs a day) but must
-record only the configured 2-4 slots. A run
-claims the LATEST slot mark at or before now (wrapping to the previous
-day's last slot), then skips itself if any snapshot already exists for
-that (date, slot) — so the first firing after each slot mark does the
-capture, every later firing in the window is a cheap no-op, and a
-scheduler dying for one firing self-heals on the next. A slot with no
-firing at all before the NEXT mark stays visibly missing — there is no
-backfill across marks. Fills recorded after the mark hour but inside the
-window carry ``late_fill: true`` in the snapshot, so what "the 16:00 UTC
-print" means (and any staleness rule for a multi-hour-late fill) is the
-composite reader's call, made on honest data — the methodology's
-promote-nearest rule (canonical-slot substitution) also belongs there, not
-in the capture path.
+The capture job fires more often than its configured slot marks (dozens
+of firings a day at the sparse basket cadence; a claim + self-heal pair
+per mark at the 15-minute observatory cadence). A run claims the LATEST
+slot mark at or before now (wrapping to the previous day's last slot),
+then skips itself if any snapshot already exists for that (date, slot)
+— so the first firing after each slot mark does the capture, every
+later firing in the window is a cheap no-op, and a scheduler dying for
+one firing self-heals on the next. A slot with no firing at all before
+the NEXT mark stays visibly missing — there is no backfill across
+marks. Fills recorded after the mark's own wall-clock window but inside
+the claim window carry ``late_fill: true`` in the snapshot, so what
+"the 16:00 UTC print" means (and any staleness rule for a late fill) is
+the composite reader's call, made on honest data — the methodology's
+promote-nearest rule (canonical-slot substitution) also belongs there,
+not in the capture path.
+
+SLOT IDENTITY: a slot is a MINUTE-OF-DAY mark (0..1439); the legacy hour
+vocabulary normalizes to its :00 minute (h*60). The KEY TOKEN format
+follows the lane's config vocabulary, pinned for the keyspace's whole
+life per writer generation: hour-vocabulary configs write the legacy
+``slot<HH>-`` token, minute-vocabulary configs write ``slot<HHMM>-`` for
+EVERY mark (":00" included) — the readers (gpu_index.common.store)
+normalize both to minute-of-day, so both token eras of one keyspace stay
+readable forever. The live lanes are minute-keyed from 2026-08-29.
 """
 
 from __future__ import annotations

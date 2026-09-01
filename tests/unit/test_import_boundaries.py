@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
 """CI fence for the package dependency arrows (ARCHITECTURE.md):
-common <- observatory <- index <- published, plus exactly two declared
+common <- observatory <- index <- published, plus exactly three declared
 waivers. A new cross-package import fails here until it is either
-removed or documented as a third waiver in ARCHITECTURE.md."""
+removed or documented as a further waiver in ARCHITECTURE.md."""
 
 from __future__ import annotations
 
@@ -19,10 +19,13 @@ ALLOWED_EDGES = {
     ("published", "common"),
     ("published", "index"),
 }
-# The two declared waivers (ARCHITECTURE.md): file -> module prefixes.
+# The three declared waivers (ARCHITECTURE.md): file -> module prefixes.
 WAIVERS = {
     "observatory/sources/vast.py": ("gpu_index.index.composite", "gpu_index.index.sources"),
     "index/": ("gpu_index.observatory.catalog",),
+    # The carry-forward failure scope validates against the capture
+    # lane's ONE classification vocabulary (METHODOLOGY.md section 8.6).
+    "index/panel_config.py": ("gpu_index.observatory.collect",),
 }
 
 

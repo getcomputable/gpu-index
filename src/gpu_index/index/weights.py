@@ -532,14 +532,26 @@ def allocate_weights(
     weight_min: float,
     weight_max: float,
     source_caps: Optional[Dict[str, float]] = None,
+    attendance_factors: Optional[Dict[str, float]] = None,
+    attendance_eta: float = 0.0,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    """Softmax allocation (METHODOLOGY.md §8.6) plus the risk-cap layer: softmax(gamma * Q)
+    """Softmax allocation (METHODOLOGY.md §8.7) plus the risk-cap layer: softmax(gamma * Q)
     shares over the eligible set, everyone floored at weight_min, the
     remainder distributed by share, then caps applied by iteratively
     capping violators at cap_i = min(weight_max, source_caps[i]) and
     redistributing their excess to the uncapped proportionally to share.
     The capped set grows monotonically, so the loop terminates within N
     passes. Full precision throughout; the caller rounds ONCE at the end.
+
+    ATTENDANCE (METHODOLOGY.md §8.7): ``attendance_factors`` ({sid: A_i
+    in [0, 1], FULL precision}; named to stay clear of this module's
+    attendance() ratio helper) and ``attendance_eta`` arm the
+    attendance-weighted variant, dispatched to
+    _allocate_weights_attendance below. The gate is STRUCTURAL: with the
+    factors None (every day-mode caller -- the frozen daily series never
+    passes them) or eta == 0 NOTHING new is computed -- no log, no
+    per-seat floor arithmetic -- and this body runs byte-identically to
+    the pre-attendance engine.
 
     Per-source caps are optional RISK haircuts (e.g. a thin-order-book
     marketplace cap): predictiveness allocates WITHIN risk bounds, never
@@ -563,6 +575,16 @@ def allocate_weights(
         (unsatisfiable arithmetic; the validator refuses such configs at
         load — this is runtime armor) publishes exactly uniform 1/N.
     """
+    if attendance_factors is not None and attendance_eta > 0:
+        return _allocate_weights_attendance(
+            scores,
+            gamma=gamma,
+            weight_min=weight_min,
+            weight_max=weight_max,
+            source_caps=source_caps,
+            attendance_factors=attendance_factors,
+            eta=attendance_eta,
+        )
     ids = sorted(scores)
     n = len(ids)
     flags: Dict[str, Any] = {"degenerate_allocation": None, "capped": []}
@@ -595,8 +617,42 @@ def allocate_weights(
     shares = {sid: exp_shares[sid] / share_total for sid in ids}
     spread = 1.0 - n * weight_min
     weights = {sid: weight_min + spread * shares[sid] for sid in ids}
+    _redistribute_capped_excess(ids, weights, shares, caps, flags)
+    return weights, flags
+
+
+def _redistribute_capped_excess(
+    ids: List[str],
+    weights: Dict[str, float],
+    shares: Dict[str, float],
+    caps: Dict[str, float],
+    flags: Dict[str, Any],
+) -> None:
+    """The iterative cap solver, shared VERBATIM by the legacy and the
+    attendance-armed allocators (the two bodies were byte-identical
+    copies): cap violators at cap_i, hand their excess to the uncapped
+    proportionally to share. The capped set grows monotonically, so the
+    loop terminates within len(ids) passes. Mutates ``weights`` and sets
+    flags["capped"]. FLOAT-OP ORDER IS LOAD-BEARING: the legacy path's
+    bytes are golden-pinned and the armed path's A_i=1 reduction is
+    bit-parity-pinned against it, so any edit here must keep the exact
+    operation sequence.
+
+    Corners, each inherited with its original rationale:
+      - every source at its cap: the mass invariant plus the callers'
+        cap-mass gate force sum(caps) == 1 within float dust (the
+        exactly-1.0 corner: three 0.30s + a 0.10) -- the honest
+        allocation IS the caps; the residual excess is dust.
+      - pool underflow: extreme-but-finite gamma can underflow every
+        non-max share to exactly 0.0; the excess is still conserved
+        deterministically by spreading it equally over the uncapped
+        rather than darking the publish on a divide. (On the armed path
+        an A_i = 0 seat that picks up dust here exceeds its 0 cap and is
+        capped back to its explicit 0.0 row on the next pass --
+        termination untouched.)
+    """
     capped: List[str] = []
-    for _ in range(n):
+    for _ in range(len(ids)):
         over = [
             sid
             for sid in ids
@@ -611,25 +667,130 @@ def allocate_weights(
             capped.append(sid)
         uncapped = [sid for sid in ids if sid not in capped]
         if not uncapped:
-            # Every source is at its cap. The mass invariant plus the
-            # cap-mass gate above force sum(caps) == 1 within float dust
-            # (the exactly-1.0 corner: three 0.30s +
-            # a 0.10) — the honest allocation IS the caps themselves, so
-            # publish them; the residual excess is dust by construction.
             flags["capped"] = sorted(capped)
-            return weights, flags
+            return
         pool = sum(shares[sid] for sid in uncapped)
         if pool <= 0.0:
-            # Extreme-but-finite gamma can underflow every non-max share to
-            # exactly 0.0 (exp(gamma * dQ) at dQ << 0); the excess must
-            # still be conserved deterministically — spread it equally over
-            # the uncapped rather than darking the publish on a divide.
             for sid in uncapped:
                 weights[sid] += excess / len(uncapped)
             continue
         for sid in uncapped:
             weights[sid] += excess * shares[sid] / pool
     flags["capped"] = sorted(capped)
+
+
+def _allocate_weights_attendance(
+    scores: Dict[str, float],
+    *,
+    gamma: float,
+    weight_min: float,
+    weight_max: float,
+    source_caps: Optional[Dict[str, float]],
+    attendance_factors: Dict[str, float],
+    eta: float,
+) -> Tuple[Dict[str, float], Dict[str, Any]]:
+    """The ARMED attendance-weighted allocation (METHODOLOGY.md §8.7);
+    reached only via allocate_weights' structural gate, eta > 0. The
+    domain (``scores`` keys) is the caller's D4-extended voting set
+    (eligible union carry-casting seats). Deviations from the legacy
+    body, each ruled:
+
+      1. EXPONENT: x_i = gamma*(Q_i - Q_max) + eta*ln(A_i), stabilized
+         by subtracting max_i x_i over the COMBINED exponent (both terms
+         <= 0 after the shift, so exp never overflows at any gamma/eta).
+         An A_i = 0 seat is dropped from the softmax BEFORE any log (ln
+         is never called on 0) -- its cap and floor are 0 and it keeps
+         an explicit 0.0 weight row when in the domain (a disclosed
+         invariant change while armed: the engine otherwise never
+         publishes a literal-0 weight).
+      2. CEILING: cap_i = min(weight_max * A_i, source_caps_i) -- the
+         risk caps stay a separate upper bound.
+      3. FLOOR COLLAPSES WITH THE CEILING (rule D6): per-seat floor_i =
+         min(weight_min, cap_i); a fading seat rides smoothly to
+         near-zero instead of hitting a second exclusion cliff at
+         A_i ~ w_min/w_max. The legacy any-cap-below-floor uniform armor
+         is therefore NOT here -- unreachable from attendance by
+         construction (floors <= caps), it remains config armor on the
+         legacy path only. The spread is written as (1 - n*w_min) +
+         sum(w_min - floor_i) so at A_i = 1 for all i every intermediate
+         float -- caps, floors, exponents, spread -- reduces BIT-EXACTLY
+         to the legacy body (the A=1 bit-parity pin).
+      4. INFEASIBLE CEILINGS (rule D7): sum(cap) < 1 publishes the
+         cap-proportional expansion cap_i / sum(caps) -- the methodology's
+         c_i/C formula (w_max*A_i / sum(A_j*w_max) when no risk cap
+         binds); allocation pinned at the ceilings, Q/eta have no slack
+         on those stamps only; flagged.
+      5. CORNER GUARDS: sum(cap) == 0 (every domain seat at A_i = 0)
+         publishes uniform-over-domain with a fallback_reason
+         (config-armor semantics -- division guarded); n*w_min > 1 keeps
+         the legacy uniform armor verbatim.
+    """
+    ids = sorted(scores)
+    n = len(ids)
+    flags: Dict[str, Any] = {"degenerate_allocation": None, "capped": []}
+    if n == 0:
+        return {}, flags
+    factors = {sid: float(attendance_factors[sid]) for sid in ids}
+    caps = {
+        sid: min(
+            float(weight_max) * factors[sid],
+            float((source_caps or {}).get(sid, weight_max)),
+        )
+        for sid in ids
+    }
+    uniform = {sid: 1.0 / n for sid in ids}
+    if n * weight_min > 1.0 + _CAP_EPS:
+        flags["degenerate_allocation"] = "uniform"
+        flags["fallback_reason"] = (
+            f"bounds unsatisfiable for n={n}: n*w_min={n * weight_min:.6f}"
+        )
+        return uniform, flags
+    cap_mass = sum(caps.values())
+    if cap_mass <= _CAP_EPS:
+        # Every domain seat at A_i = 0 (a first-print panel corner): no
+        # ceiling can hold any mass -- publish uniform loudly rather
+        # than divide by zero.
+        flags["degenerate_allocation"] = "uniform"
+        flags["fallback_reason"] = (
+            f"attendance cap mass 0 for n={n}: every domain seat at "
+            "A_i=0; uniform weights published"
+        )
+        return uniform, flags
+    if cap_mass < 1.0 - _CAP_EPS:
+        # Rule D7: the existing cap-proportional branch IS the
+        # methodology's c_i/C expansion -- expanded ceilings sum to
+        # exactly 1, the allocation is pinned at the ceilings, and the
+        # stamp is audit-visible forever.
+        flags["degenerate_allocation"] = "cap_proportional"
+        # The reason string is the LEGACY text verbatim (the caps here
+        # are the attendance-scaled ones): at A_i = 1 for all i the
+        # armed body must reduce bit-exactly to the legacy body, flags
+        # included -- the fallback_reason rides the artifact.
+        flags["fallback_reason"] = (
+            f"cap mass {cap_mass:.6f} < 1 for n={n}: weights scaled "
+            "proportionally to the caps"
+        )
+        return {sid: caps[sid] / cap_mass for sid in ids}, flags
+    floors = {sid: min(float(weight_min), caps[sid]) for sid in ids}
+    q_max = max(scores.values())
+    # A_i = 0 seats leave the softmax BEFORE the log (docstring item 1);
+    # cap_mass >= 1 - eps above guarantees at least one A_i > 0 seat.
+    exponents = {
+        sid: gamma * (scores[sid] - q_max) + eta * math.log(factors[sid])
+        for sid in ids
+        if factors[sid] > 0.0
+    }
+    x_max = max(exponents.values())
+    exp_shares = {sid: math.exp(x - x_max) for sid, x in exponents.items()}
+    share_total = sum(exp_shares[sid] for sid in exp_shares)
+    shares = {sid: exp_shares.get(sid, 0.0) / share_total for sid in ids}
+    deficit_total = sum(weight_min - floors[sid] for sid in ids)
+    spread = (1.0 - n * weight_min) + deficit_total
+    weights = {sid: floors[sid] + spread * shares[sid] for sid in ids}
+    # The SAME iterative cap solver as the legacy body (one home --
+    # _redistribute_capped_excess): per-seat attendance ceilings ride in
+    # through ``caps``; the A=1 bit-parity pin covers the sharing.
+    _redistribute_capped_excess(ids, weights, shares, caps, flags)
     return weights, flags
 
 
@@ -1021,6 +1182,115 @@ def validate_attendance_floor(dw_params: Dict[str, Any]) -> float:
     return float(value)
 
 
+# The attendance-weighting knob triple (METHODOLOGY.md §8.6). Names are
+# CROSS-REPO FROZEN (the published records, this engine, and the panel
+# configs must agree verbatim); the three ride together as one
+# conditional embed -- key ABSENT means the attendance-free legacy
+# engine byte-identically (the D2 dark contract).
+ATTENDANCE_PARAM_KEYS = (
+    "attendance_half_life_hours",
+    "attendance_eta",
+    "no_price_exclusion_hours",
+)
+
+# weight_state["events"] codes: state-2-with-entry ("np": read fine, no
+# usable price -- the streak advances) and state-3 ("sk": OUR failure --
+# dropped from the A_i sums, streak held). State-1 is implicit (stamp
+# present in state prices on the grid); a no-entry stamp is implicit too
+# (absent from both -- counted 0 in A_i, streak held, the ramp-in row).
+EVENT_NO_PRICE = "np"
+EVENT_SKIP = "sk"
+VALID_EVENT_CODES = (EVENT_NO_PRICE, EVENT_SKIP)
+
+
+def attendance_minted(dw_params: Optional[Dict[str, Any]]) -> bool:
+    """Whether a dynamic-weights param set carries the minted attendance
+    knob triple -- THE predicate for every attendance codepath, one home
+    (a hand-spelled key check drifting from this one is the silent-fork
+    class). Presence of ONE member decides because validation refuses
+    partial sets."""
+    return "attendance_half_life_hours" in (dw_params or {})
+
+
+def attendance_armed(dw_params: Optional[Dict[str, Any]]) -> bool:
+    """Minted AND attendance_eta > 0 -- rule R2's single arming lever
+    (carry, K_A exclusion, ceiling scaling, and the tilt all gate on
+    it)."""
+    return (
+        attendance_minted(dw_params)
+        and float(dw_params["attendance_eta"]) > 0
+    )
+
+
+def validate_attendance_params(
+    dw_params: Dict[str, Any],
+) -> Optional[Dict[str, float]]:
+    """Load-time fence for the attendance knob triple (METHODOLOGY.md
+    section 8.6), the attendance_floor pattern: called by the PANEL
+    config loader, one home for the bounds. Returns None when the triple
+    is wholly absent (the knob-less legacy shape), else the validated
+    float triple; raises on a partial set or an out-of-range value.
+
+    Bounds, each load-bearing: the half-life and the exclusion window are
+    wall-time HOURS (rule R3 -- an observation-counted knob silently
+    changes meaning at every cadence mint) and must fit inside the
+    history window the events state is retained for (the determinism
+    bound needs events coverage over the exclusion window); eta >= 0 with
+    eta == 0 the dark posture (rule D2). The eta>0-requires-carry-knobs
+    rule (D5) is validated at the CALC level in panel_config -- the carry
+    pair lives one nesting level up from this block."""
+    present = [k for k in ATTENDANCE_PARAM_KEYS if k in dw_params]
+    if not present:
+        return None
+    if len(present) != len(ATTENDANCE_PARAM_KEYS):
+        missing = sorted(set(ATTENDANCE_PARAM_KEYS) - set(present))
+        raise ValueError(
+            f"dynamic_weights attendance knobs ride together (all three of "
+            f"{list(ATTENDANCE_PARAM_KEYS)} or none): missing {missing}"
+        )
+    history_hours = int(dw_params["history_days"]) * 24
+    half_life = dw_params["attendance_half_life_hours"]
+    if not (
+        isinstance(half_life, (int, float))
+        and not isinstance(half_life, bool)
+        and math.isfinite(half_life)
+        and 0 < half_life <= history_hours
+    ):
+        raise ValueError(
+            f"dynamic_weights.attendance_half_life_hours must be a finite "
+            f"number in (0, history_days*24 = {history_hours}], got "
+            f"{half_life!r}"
+        )
+    eta = dw_params["attendance_eta"]
+    if not (
+        isinstance(eta, (int, float))
+        and not isinstance(eta, bool)
+        and math.isfinite(eta)
+        and eta >= 0
+    ):
+        raise ValueError(
+            f"dynamic_weights.attendance_eta must be a finite number >= 0, "
+            f"got {eta!r}"
+        )
+    exclusion = dw_params["no_price_exclusion_hours"]
+    if not (
+        isinstance(exclusion, (int, float))
+        and not isinstance(exclusion, bool)
+        and math.isfinite(exclusion)
+        and 0 < exclusion <= history_hours
+    ):
+        raise ValueError(
+            f"dynamic_weights.no_price_exclusion_hours must be a finite "
+            f"number in (0, history_days*24 = {history_hours}], got "
+            f"{exclusion!r}"
+        )
+    return {
+        "attendance_half_life_hours": float(half_life),
+        "attendance_eta": float(eta),
+        "no_price_exclusion_hours": float(exclusion),
+    }
+
+
 def attendance(
     state_prices: Dict[str, Dict[int, Dict[str, Any]]],
     sid: str,
@@ -1062,6 +1332,176 @@ def attendance(
     scheduled = len(scheduled_set)
     ratio = 1.0 if scheduled == 0 else printed / scheduled
     return {"printed": printed, "scheduled": scheduled, "ratio": ratio}
+
+
+def compute_attendance_view(
+    weight_state: Dict[str, Any],
+    ids: Sequence[str],
+    *,
+    obs_stamp: int,
+    schedule: Any,
+    dw_params: Dict[str, Any],
+    scheduled_window: Optional[Sequence[int]] = None,
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    """The attendance-weighting per-source view at one observation
+    (METHODOLOGY.md section 8.6): {sid: {factor, streak, excluded}} for
+    every id, or None when the lane's dw_params lack the minted knob
+    triple (the structural skip -- a knob-less lane never computes ANY
+    of this, the D2 dark contract).
+
+    factor -- the EWMA attendance A_i, exact: over the era-aware,
+    genesis-clipped scheduled stamps in the HALF-OPEN pre-advance window
+    [obs - history_days*1440, obs), with the decay
+    w(s) = 2**(-(obs - s) / H_A_minutes),
+
+        A_i = sum_{s not skip} w(s)*present_i(s) / sum_{s not skip} w(s)
+
+    where present_i(s) = 1 exactly when s sits in the source's
+    weight-state PRICES series (the trusted-print presence record --
+    accepted, sigma-fenced, and mismatch-pending prints alike), state-3
+    stamps (events code "sk") drop from numerator AND denominator (the
+    only reading under which an always-present provider scores exactly
+    1.0 through our-failure stamps), and every other scheduled stamp --
+    "np" events and no-entry stamps alike -- counts 0 (the ramp-in rule).
+    Denominator 0 (lane genesis / all-skip window) = 1.0, the existing
+    ratio's genesis convention. FULL precision: the allocator consumes
+    this value raw; the published 9dp attendance_factor is
+    disclosure-only rounding at publication.
+
+    Perf: ONE decay table per observation, shared across all sources --
+    one pow per stamp, not per stamp*source; fixed iteration order over
+    the sorted stamp window; pure Python, no incremental accumulator
+    (bounded replay rebuilds from window history). Bit-identical to the
+    naive per-source recompute (test-pinned).
+
+    streak / excluded -- the K_A hard cutoff: a BACKWARD walk over the
+    SAME scheduled window the EWMA reads -- [obs - history_days*1440,
+    obs), half-open, pre-advance, era-aware, genesis-clipped -- in which
+    SKIP stamps ("sk" events, our failures) consume NOTHING. Each
+    non-skip stamp contributes ITS OWN era's spacing (the gap to its
+    previous scheduled stamp, deterministic from the schedule alone; a
+    genesis stamp with no predecessor contributes 0 -- conservative,
+    later exclusion):
+
+      - first state-1 stamp (in prices)      => NOT excluded (resolve);
+      - accumulated non-skip span >= K_A
+        with >= 1 state-2 seen               => EXCLUDED (resolve);
+      - window exhausted, no state-1: when the window is the FULL
+        history span (genesis_stamp <= obs - history*1440), EXCLUDED
+        iff >= 1 state-2 was seen -- a seat with zero usable prints
+        across the entire history window is past any K_A <= history
+        bound, and a seat with no state-2 at all has nothing to carry
+        anyway; a GENESIS-CLIPPED window (lane younger than history)
+        resolves by the span leg alone, so a seat quiet since genesis
+        still gets its full K_A grace.
+
+    Deterministic under prune skew (a pure function of the
+    strictly-retained window every walker holds), skip-robust (our-side
+    outages can never un-exclude: a 23h outage bracketed by two bad
+    prints is not 24h of absence), and era-mint-robust (per-stamp
+    spacing -- no flap at cadence boundaries). ``no_price_streak`` is
+    the consecutive state-2 count in the same walk -- held by "sk" and
+    no-entry stamps, reset by state-1 -- and the walk continues past a
+    resolved verdict to state-1 or the cap for the count, so the streak
+    saturates at the window's stamp count and is identical whether the
+    lane is armed or dark (disclosure-only). Exclusion fires ONLY when
+    armed (attendance_eta > 0, rule R2); K_A is wall-time hours (rule
+    R3) snapped to whole lattice minutes exactly like
+    gpu_index.index.panel.carry_window_minutes. While dark the streak
+    still publishes and excluded is present-but-False.
+
+    Hours convert to minutes HERE, once -- the one seam."""
+    if not attendance_minted(dw_params):
+        return None
+    obs_stamp = int(obs_stamp)
+    half_life_minutes = float(dw_params["attendance_half_life_hours"]) * 60.0
+    exclusion_minutes = int(
+        round(float(dw_params["no_price_exclusion_hours"]) * 60.0)
+    )
+    armed = attendance_armed(dw_params)
+    history_minutes = int(dw_params["history_days"]) * 1440
+    if scheduled_window is None:
+        scheduled_window = schedule.scheduled_stamps(
+            obs_stamp - history_minutes, obs_stamp
+        )
+    # ONE decay table per observation: the window is shared by all
+    # sources, so w(s) is too. The exclusion walk shares the SAME window
+    # (the hard determinism cap), so its per-stamp era spacings -- each
+    # stamp's gap to its previous scheduled stamp -- are likewise
+    # computed once here: one prev_scheduled_stamp call for the window's
+    # oldest stamp (0 at genesis: no predecessor exists), plain
+    # differences inside.
+    decay = [
+        2.0 ** (-(obs_stamp - s) / half_life_minutes)
+        for s in scheduled_window
+    ]
+    spacings: List[int] = []
+    if scheduled_window:
+        before_window = schedule.prev_scheduled_stamp(scheduled_window[0])
+        last = before_window
+        for s in scheduled_window:
+            spacings.append(0 if last is None else int(s) - int(last))
+            last = s
+    # The exhausted-window leg's semantics split (docstring): a FULL
+    # history window ends in the dead-across-history verdict; a
+    # genesis-clipped one resolves by the span leg alone.
+    window_is_full = int(schedule.genesis_stamp) <= obs_stamp - history_minutes
+    prices = weight_state.get("prices") or {}
+    event_state = weight_state.get("events") or {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for sid in sorted(set(str(s) for s in ids)):
+        series = prices.get(sid) or {}
+        events = event_state.get(sid) or {}
+        numerator = 0.0
+        denominator = 0.0
+        for s, w in zip(scheduled_window, decay):
+            if events.get(s) == EVENT_SKIP:
+                continue
+            denominator += w
+            if s in series:
+                numerator += w
+        factor = 1.0 if denominator == 0.0 else numerator / denominator
+        # The backward walk (docstring): skips consume nothing; the
+        # verdict LATCHES where the law resolves it, and the walk then
+        # continues to state-1 / the cap purely for the streak count
+        # (arm-independent disclosure).
+        streak = 0
+        nonskip_span = 0
+        state2_seen = False
+        state1_found = False
+        span_verdict = False
+        for i in range(len(scheduled_window) - 1, -1, -1):
+            s = scheduled_window[i]
+            if s in series:
+                state1_found = True
+                break
+            code = events.get(s)
+            if code == EVENT_SKIP:
+                continue  # our failure: consumes nothing, holds the run
+            nonskip_span += spacings[i]
+            if code == EVENT_NO_PRICE:
+                state2_seen = True
+                streak += 1
+            # no-entry: contributes span, holds the streak
+            if (
+                not span_verdict
+                and state2_seen
+                and nonskip_span >= exclusion_minutes
+            ):
+                span_verdict = True
+        # The verdict resolves at whichever comes FIRST walking backward:
+        # a latched span verdict stands even when a state-1 print sits
+        # deeper (the walk only continued past it for the streak count);
+        # the exhausted-window legs apply only when neither resolved.
+        excluded = span_verdict or (
+            not state1_found and state2_seen and window_is_full
+        )
+        out[sid] = {
+            "factor": factor,
+            "streak": streak,
+            "excluded": bool(armed and excluded),
+        }
+    return out
 
 
 def predictive_scores_obs(
@@ -1261,6 +1701,8 @@ def compute_panel_weights(
     dw_params: Dict[str, Any],
     fallback_weights: Dict[str, float],
     schedule: Any,
+    carrying: Sequence[str] = (),
+    attendance_view: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """One OBSERVATION's weight_calc block for the hourly panel lanes --
     the compute_dynamic_weights contract per observation, with the A2
@@ -1303,9 +1745,56 @@ def compute_panel_weights(
     hour-keyed lanes, THHMM on minute-keyed -- schedule.stamp_key). NO
     slot_prints key: every observation's own artifact records its
     trusted prints, replay ingests them per observation.
+
+    ATTENDANCE-WEIGHTING (METHODOLOGY.md section 8.6-8.7). On a lane
+    whose dw_params carry the minted knob triple this block additionally
+    computes the per-source attendance view (compute_attendance_view --
+    ONE decay table per observation, the same scheduled window as the
+    triple) and:
+
+      - publishes attendance_factor (9dp disclosure rounding; the
+        allocator eats FULL precision) / no_price_streak /
+        no_price_excluded on every sources row, over the WIDENED
+        publication domain scored UNION all members (fallback_weights'
+        keyspace: a seat absent longer than the history window still
+        publishes its exclusion state). Widening is
+        per-source-independent (a never-printed member scores None
+        everywhere), so the passer / quorum sets below, which read the
+        ORIGINAL scored list, are unchanged by it.
+      - when ARMED (attendance_eta > 0, rule R2) tilts the softmax by
+        eta*ln(A_i) and scales each seat's ceiling and floor with its
+        attendance (rules D4/D6/D7 -- see allocate_weights).
+
+    ``carrying`` -- the ARMED state-2 carry-casting seats (rule D4, the
+    caller's gate): the allocation domain extends to eligible UNION
+    carrying, so a quiet seat's re-cast vote fades under its own
+    (current) weight row; weights sum to 1 over the full voting set. The
+    A2 switch quorum still counts len(eligible) only -- carried seats
+    never help a lane latch dynamic. Non-empty carrying on a lane
+    without the minted knobs raises.
+
+    ``attendance_view`` -- an optional PRECOMPUTED compute_attendance_view
+    result (the scheduled_window amortization pattern):
+    compute_observation computes the one view per observation and
+    threads it here; it MUST be that function's output for the same
+    (pre-advance state, obs_stamp, dw_params) over ids covering every
+    published seat. None on minted lanes computes it internally (direct
+    callers/tests); passing one on a knob-less lane raises.
     """
     obs_stamp = int(obs_stamp)
     eligible = list(eligible)
+    carrying = [str(s) for s in carrying]
+    minted = attendance_minted(dw_params)
+    if carrying and not minted:
+        raise ValueError(
+            "carrying seats require the minted attendance knob triple -- "
+            "the armed D4 domain cannot extend on a knob-less lane"
+        )
+    if attendance_view is not None and not minted:
+        raise ValueError(
+            "attendance_view requires the minted attendance knob triple -- "
+            "a knob-less lane has no attendance law to publish under"
+        )
     history_minutes = int(dw_params["history_days"]) * 1440
     window_start = obs_stamp - history_minutes
     prices = weight_state.get("prices") or {}
@@ -1316,6 +1805,23 @@ def compute_panel_weights(
         if any(window_start <= t < obs_stamp for t in series)
     )
     scored = list(eligible) + [sid for sid in recent if sid not in eligible]
+    # Publication domain: on minted lanes every member (the
+    # fallback_weights keyspace) joins the published rows; knob-less
+    # lanes keep the scored set verbatim (byte parity).
+    published = scored + (
+        [sid for sid in sorted(fallback_weights) if sid not in scored]
+        if minted
+        else []
+    )
+    if attendance_view is None and minted:
+        attendance_view = compute_attendance_view(
+            weight_state,
+            published,
+            obs_stamp=obs_stamp,
+            schedule=schedule,
+            dw_params=dw_params,
+            scheduled_window=scheduled_window,
+        )
     attendance_by_sid = {
         sid: attendance(
             prices,
@@ -1325,7 +1831,7 @@ def compute_panel_weights(
             window_minutes=history_minutes,
             scheduled_window=scheduled_window,
         )
-        for sid in scored
+        for sid in published
     }
     attendance_floor = float(dw_params["attendance_floor"])
     passers = [
@@ -1336,7 +1842,7 @@ def compute_panel_weights(
     scores = predictive_scores_obs(
         weight_state,
         obs_stamp=obs_stamp,
-        source_ids=scored,
+        source_ids=published,
         dw_params=dw_params,
         schedule=schedule,
     )
@@ -1358,14 +1864,25 @@ def compute_panel_weights(
     stamp_iso = schedule.stamp_key(obs_stamp)
 
     flags: Dict[str, Any] = {"degenerate_allocation": None, "capped": []}
-    if not eligible:
+    # Rule D4: when armed, the allocation domain is eligible UNION the
+    # carry-casting state-2 seats -- a quiet seat's re-cast vote fades
+    # under a REAL (current) weight row instead of a frozen booked one.
+    # Empty carrying (every dark and knob-less lane) leaves the domain =
+    # eligible verbatim.
+    domain = eligible + [sid for sid in carrying if sid not in eligible]
+    eta = float(dw_params["attendance_eta"]) if minted else 0.0
+    armed = eta > 0
+    if not domain:
         weights: Dict[str, float] = {}
     elif mode == MODE_FALLBACK:
-        weights = {sid: float(fallback_weights[sid]) for sid in eligible}
+        # Fallback mode ignores eta entirely (config vector, byte-parity
+        # doctrine); an armed carrying seat still gets its config row --
+        # its re-cast vote needs a weight whichever mode the lane is in.
+        weights = {sid: float(fallback_weights[sid]) for sid in domain}
     else:
         q_values = {
             sid: (scores[sid]["Q"] if scores[sid]["Q"] is not None else 0.0)
-            for sid in eligible
+            for sid in domain
         }
         weights, flags = allocate_weights(
             q_values,
@@ -1373,6 +1890,21 @@ def compute_panel_weights(
             weight_min=float(dw_params["weight_min"]),
             weight_max=float(dw_params["weight_max"]),
             source_caps=dw_params.get("source_weight_caps") or {},
+            # Structural gate: the attendance inputs are NOT CONSTRUCTED
+            # unless armed -- eta 0 / knobs absent run the legacy
+            # allocator byte-identically (the kwargs are not even
+            # passed).
+            **(
+                {
+                    "attendance_factors": {
+                        sid: attendance_view[sid]["factor"]
+                        for sid in domain
+                    },
+                    "attendance_eta": eta,
+                }
+                if armed
+                else {}
+            ),
         )
     rounded = {sid: round(w, 6) for sid, w in weights.items()}
     for sid, w in rounded.items():
@@ -1401,6 +1933,26 @@ def compute_panel_weights(
                 "attendance_ratio": round(
                     float(attendance_by_sid[sid]["ratio"]), 9
                 ),
+                # Attendance-weighting fields, minted lanes only --
+                # beside the untouched attendance triple.
+                # attendance_factor is DISCLOSURE rounding (9dp, the q/Q
+                # rule); the allocator consumed full precision above.
+                # no_price_excluded is present-but-False while dark.
+                **(
+                    {
+                        "attendance_factor": round(
+                            float(attendance_view[sid]["factor"]), 9
+                        ),
+                        "no_price_streak": int(
+                            attendance_view[sid]["streak"]
+                        ),
+                        "no_price_excluded": bool(
+                            attendance_view[sid]["excluded"]
+                        ),
+                    }
+                    if attendance_view is not None
+                    else {}
+                ),
             }
             for sid in sorted(scores)
         },
@@ -1422,6 +1974,7 @@ def advance_panel_weight_state(
     vector: Optional[Dict[str, float]],
     mode: str,
     dw_params: Dict[str, Any],
+    events: Optional[Dict[str, str]] = None,
 ) -> None:
     """Advance the OBSERVATION-mode weight state with one published
     observation's pinned facts, then prune. ONE state machine for live
@@ -1439,6 +1992,13 @@ def advance_panel_weight_state(
         Empty/dark observations store NO vector, same as day mode.
       - mode: the block's pinned mode; the latch is monotonic (fallback
         -> dynamic, never back).
+      - events: this observation's np/sk attendance classifications
+        ({sid: code}, gpu_index.index.panel.attendance_events_for_stamp)
+        -- stored under weight_state["events"][sid][stamp] ONLY when the
+        lane's dw_params carry the minted attendance knob triple
+        (METHODOLOGY.md section 8.6: a knob-less lane's state must never
+        grow the key -- the D2 dark contract). Codes are fail-closed:
+        anything outside {"np", "sk"} raises.
 
     PRUNING (design section 5 perf): price and vector stamps STRICTLY
     older than obs_stamp - (history + max_forward + margin), all in
@@ -1469,11 +2029,17 @@ def advance_panel_weight_state(
     KEEPS MORE data, and everything below the strict threshold is never
     consulted by any computation (the proof above), so deferring the
     sweep is trivially score-neutral; the extra retention is bounded at
-    one day of stamps. The prices series' OTHER consumer, the dw vote
-    tail (dw_vote_tail in this module, ruling 2026-08-27), reads no
-    older than obs_stamp - the history window in minutes -- strictly
-    inside the kept range -- so the deferred sweep is vote-neutral as
-    well as score-neutral.
+    one day of stamps. The prices series' OTHER consumers -- the dw vote
+    tail (dw_vote_tail in this module, ruling 2026-08-27) and the
+    attendance A_i / streak reads (compute_attendance_view) -- read no
+    older than obs_stamp - the history window in minutes (A_i; the
+    bounded streak window is validated <= history at load), strictly
+    inside the kept range, so the deferred sweep is attendance-neutral
+    as well as vote- and score-neutral. The EVENTS series prunes in this
+    same sweep at the same threshold; a source whose prices prune empty
+    but still holds in-range events is deliberately NOT dropped from
+    events (a silent streak reset across a long absence would fake a
+    recovery).
     """
     obs_stamp = int(obs_stamp)
     history_minutes = int(dw_params["history_days"]) * 1440
@@ -1489,6 +2055,19 @@ def advance_panel_weight_state(
             f"PRUNE_MARGIN_MINUTES ({max_forward} + {PRUNE_MARGIN_MINUTES}); "
             f"pruning would eat live feature endpoints"
         )
+    attendance_lane = attendance_minted(dw_params)
+    if attendance_lane:
+        # Event codes validate BEFORE any mutation below: a mid-advance
+        # raise would leave the prints/vector/latch written and the
+        # events not -- a torn state no replay produces. The advance is
+        # all-or-nothing.
+        for sid in sorted(events or {}):
+            code = events[sid]
+            if code not in VALID_EVENT_CODES:
+                raise ValueError(
+                    f"unknown attendance event code {code!r} for {sid} at "
+                    f"stamp {obs_stamp}"
+                )
     prices = weight_state.setdefault("prices", {})
     for sid in sorted(prints or {}):
         entry = prints[sid]
@@ -1504,6 +2083,15 @@ def advance_panel_weight_state(
         weight_state["mode"] = MODE_DYNAMIC
     else:
         weight_state.setdefault("mode", MODE_FALLBACK)
+    if attendance_lane:
+        # Attendance events, conditional on the MINTED knob triple: a
+        # knob-less lane's state must never grow the key (the D2 dark
+        # contract). np/sk only; state-1 stays implicit in prices,
+        # no-entry implicit in absence from both. Codes were validated
+        # fail-closed in the pre-pass above (all-or-nothing).
+        event_state = weight_state.setdefault("events", {})
+        for sid in sorted(events or {}):
+            event_state.setdefault(sid, {})[obs_stamp] = events[sid]
     threshold = obs_stamp - (
         history_minutes + max_forward + PRUNE_MARGIN_MINUTES
     )
@@ -1517,6 +2105,13 @@ def advance_panel_weight_state(
             del series[stamp]
         if not series:
             del prices[sid]
+    event_series = weight_state.get("events") or {}
+    for sid in sorted(event_series):
+        series = event_series[sid]
+        for stamp in [t for t in series if t < threshold]:
+            del series[stamp]
+        if not series:
+            del event_series[sid]
     stale_vectors = sorted(t for t in vectors if t < threshold)
     for stamp in stale_vectors[:-1]:  # keep the newest as resolution anchor
         del vectors[stamp]

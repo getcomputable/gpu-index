@@ -195,6 +195,12 @@ from gpu_index.index.composite import (  # noqa: E402
 )
 from gpu_index.index.fx import ensure_rates, load_stored_rates, rates_cover  # noqa: E402
 from gpu_index.index.panel import (  # noqa: E402
+    ATTENDANCE_KNOWN_STATUSES,
+    CARRIED_STATUS,
+    CARRY_BASIS_NO_PRICE,
+    attendance_events_for_stamp,
+    carry_prints_for,
+    carry_window_minutes,
     compile_screens,
     compute_observation,
     embedded_calc_params,
@@ -205,6 +211,7 @@ from gpu_index.index.panel import (  # noqa: E402
     record_exclusion_reason,
     record_source_for,
     resolve_member_print,
+    update_carry_book,
 )
 from gpu_index.index.panel_config import (  # noqa: E402
     PanelConfigError,
@@ -236,6 +243,7 @@ from gpu_index.index.weights import (  # noqa: E402
     MODE_DYNAMIC,
     PRUNE_MARGIN_MINUTES,
     advance_panel_weight_state,
+    attendance_minted,
     new_weight_state,
     series_print,
 )
@@ -334,6 +342,88 @@ def _next_scheduled_stamp(schedule, stamp: int) -> int:
     return upcoming[0]
 
 
+def _warn_unknown_attendance_statuses(stamp_iso: str, sources) -> None:
+    """Fail-closed visibility for the attendance classifier: a source
+    status this binary does not know -- a LATER binary's vocabulary on
+    the replay path, pure armor on the live path (compute_observation's
+    own statuses are a closed set) -- classifies as SKIP (A_i frozen, no
+    silent penalty), and the freeze must be LOUD, never a silently wrong
+    fade. ONE helper for both call sites (replay ingest + freshly
+    composed payloads); the engine module stays pure, so the log half
+    lives here."""
+    unknown = sorted(
+        {
+            str(entry.get("status"))
+            for entry in sources or []
+            if isinstance(entry, dict)
+            and entry.get("status") not in ATTENDANCE_KNOWN_STATUSES
+        }
+    )
+    if unknown:
+        warn(
+            f"{stamp_iso}: unknown source status(es) {unknown} "
+            "classified fail-closed as attendance SKIP (A_i frozen) "
+            "-- a newer binary's vocabulary; update this one"
+        )
+
+
+def _carried_warn_lines(stamp_iso: str, entry: dict, params: dict) -> list:
+    """The carried-seat log lines for one artifact row -- the basis
+    line plus, past HALF the minted carry window, the escalation whose
+    DIAGNOSIS branches on the carry basis: a failure_kind carry means
+    OUR collector is broken (fix it before the seat expires dark); a
+    no_price carry means the PROVIDER has published nothing usable
+    (there is no collector to fix -- the K_A cutoff and the carry window
+    are the relevant fences). Pure function of (row, params) so the
+    texts are unit-testable."""
+    carried = entry.get("carried") or {}
+    no_price = carried.get("carry_basis") == CARRY_BASIS_NO_PRICE
+    basis = (
+        f"carry_basis={carried.get('carry_basis')}"
+        if no_price
+        else f"failure_kind={carried.get('failure_kind')}"
+    )
+    cause = (
+        "provider produced no usable price (armed attendance)"
+        if no_price
+        else "raw entry failed collection"
+    )
+    lines = [
+        f"{stamp_iso}: {entry['source_id']} vote CARRIED from "
+        f"{carried.get('from')} "
+        f"(age {carried.get('age_minutes')}m, {basis}) -- "
+        f"{cause}; last accepted vote re-cast"
+    ]
+    # Escalation: a transient heals in one or two marks; half a window of
+    # carries needs a human.
+    age = carried.get("age_minutes")
+    window = carry_window_minutes(params)
+    if isinstance(age, (int, float)) and age > window / 2:
+        if no_price:
+            exclusion_minutes = int(
+                round(
+                    float(
+                        params["dynamic_weights"]["no_price_exclusion_hours"]
+                    )
+                    * 60.0
+                )
+            )
+            lines.append(
+                f"{stamp_iso}: {entry['source_id']} provider has produced "
+                f"no accepted print for {age}m; K_A cutoff at "
+                f"{exclusion_minutes}m / carry window {window}m"
+            )
+        else:
+            lines.append(
+                f"{stamp_iso}: {entry['source_id']} has been "
+                f"carried past HALF its minted window "
+                f"({age}m of {window}m) -- "
+                "this is no longer a transient; fix the "
+                "collector before the seat expires dark"
+            )
+    return lines
+
+
 def advance_panel_state_from_published(
     stored: dict,
     window_history: dict,
@@ -360,7 +450,17 @@ def advance_panel_state_from_published(
     the artifact's own stamp, under the artifact's own dw params -- the
     no-slot_prints replay rule: the sources[] block IS the print record,
     so nothing is ever re-derived from raw (which can legitimately grow
-    after publication)."""
+    after publication).
+
+    On a lane whose artifact params carry the minted attendance knob
+    triple (METHODOLOGY.md section 8.6), the advance also derives the
+    stamp's np/sk attendance events from the published rows via the SAME
+    classifier the live path ran
+    (gpu_index.index.panel.attendance_events_for_stamp -- the
+    classification is replay-derivable by construction, including both
+    carried flavors via carry_basis and the observation_missed /
+    record_quarantined precedence flags); knob-less artifacts advance
+    with no events and the state never grows the key."""
     artifact_params = stored.get("calc_params") or {}
     filter_terms = str(artifact_params.get("filter_terms", DEFAULT_FILTER_TERMS))
     prints: dict = {}
@@ -381,13 +481,25 @@ def advance_panel_state_from_published(
                     entry["chosen"]["usd_per_gpu_hr"], observation
                 )
     weight_calc = stored.get("weight_calc") or {}
+    dw_params = artifact_params["dynamic_weights"]
+    events = None
+    if attendance_minted(dw_params):
+        events = attendance_events_for_stamp(
+            stored.get("sources") or [],
+            observation_missed=bool(stored.get("observation_missed")),
+            record_quarantined=stored.get("record_quarantined"),
+        )
+        _warn_unknown_attendance_statuses(
+            stored["date"], stored.get("sources") or []
+        )
     advance_panel_weight_state(
         weight_state,
         obs_stamp=obs_key_to_stamp(stored["date"]),
         prints=prints,
         vector=weight_calc.get("weights"),
         mode=weight_calc.get("mode", "fallback"),
-        dw_params=artifact_params["dynamic_weights"],
+        dw_params=dw_params,
+        events=events,
     )
 
 
@@ -652,6 +764,7 @@ def verify_published_observation(args, config, params, schedule) -> int:
     window_currencies: dict = {}
     pending_currencies: dict = {}
     weight_state: dict = new_weight_state()
+    carry_book: dict = {}
     lookback = params["jump_screen"]["reference_max_lookback"]
     recent_payloads: deque = deque(maxlen=lookback)
     for prior in schedule.scheduled_stamps(schedule.genesis_stamp, target):
@@ -677,6 +790,7 @@ def verify_published_observation(args, config, params, schedule) -> int:
             pending_currencies,
             weight_state,
         )
+        update_carry_book(carry_book, prior_stored)
         recent_payloads.append(prior_stored)
 
     # The observation's snapshot: the artifact's own pinned verdict. A
@@ -745,6 +859,13 @@ def verify_published_observation(args, config, params, schedule) -> int:
         weight_state=weight_state,
         reference_prints=reference_prints,
         reference_label=reference_label,
+        # The carry book slice usable at this stamp -- None on knob-less
+        # lanes (carry_prints_for gates on the minted pair), a
+        # window-bounded slice otherwise. Byte-for-byte recompute needs
+        # the same book the live run held.
+        carry_prints=carry_prints_for(
+            carry_book, obs_stamp=target, params=params
+        ),
         schedule=schedule,
         calc_params=params,
         compiled_screens=compile_screens(params),
@@ -891,22 +1012,37 @@ def main() -> int:
     if args.verify_published:
         return verify_published_observation(args, config, params, schedule)
 
-    if schedule.minute_keyed and os.environ.get(
-        "PANEL_MINUTE_LANES_LIVE"
-    ) != "true":
+    if (
+        schedule.minute_keyed
+        and not args.dry_run
+        and os.environ.get("PANEL_MINUTE_LANES_LIVE") != "true"
+    ):
         # The mechanical gate on the 15-minute mint prerequisites: a
         # minute-keyed doc passes every validator by design -- and
         # --check-config above stays fence-free so a config-only PR can
-        # validate offline -- but RUNNING one before the minute-grain
+        # validate offline -- but PUBLISHING one before the minute-grain
         # ingest and the replay-checkpoint follow-up are live would
         # dual-publish a keyspace the downstream cannot read while the
         # replay walk grows toward the per-lane cap. Loud refusal, one
         # lane (the sweeper's rc aggregation keeps the other lanes
         # running); arming is one env set, same as every lever.
+        #
+        # SCOPED TO THE PUBLISHING PATH. The hazard the fence names is
+        # DUAL-PUBLISHING, and the two read-only modes cannot commit it:
+        # --verify-published returns above (a byte-for-byte recompute
+        # that writes nothing), and --dry-run derives observations and
+        # prints them, writing nothing either. Refusing those two would
+        # fence off the one thing this repository exists for -- replaying
+        # the serving generation of a lane whose grid is minute-keyed --
+        # to protect a keyspace neither of them touches. Publishing
+        # (--sync and every persisting target) still requires the lever,
+        # unchanged and test-pinned.
         error(
-            f"{methodology_id}: minute-keyed lane refused -- set "
-            f"PANEL_MINUTE_LANES_LIVE=true only after the minute-grain "
-            f"ingest and the replay-checkpoint follow-up are live"
+            f"{methodology_id}: minute-keyed lane refused for PUBLISHING "
+            f"-- set PANEL_MINUTE_LANES_LIVE=true only after the "
+            f"minute-grain ingest and the replay-checkpoint follow-up "
+            f"are live. Read-only replay (--dry-run) and "
+            f"--verify-published are unaffected and need no lever"
         )
         return 1
 
@@ -1091,6 +1227,15 @@ def main() -> int:
     window_currencies: dict = {}
     pending_currencies: dict = {}
     weight_state: dict = new_weight_state()
+    # Carry-forward reference book (METHODOLOGY.md section 8.6): each
+    # seat's most recent ACCEPTED print, folded from every artifact the
+    # replay walks (published verbatim or computed-this-run --
+    # byte-deterministic either way, the recent_payloads rule). A plain
+    # dict, not a deque: entries age out by the minted window at read
+    # time (carry_prints_for), so no era-dependent lookback arithmetic.
+    # Kept warm even on knob-less lanes (cheap; <= one small dict per
+    # member) so a minted flip needs no state migration.
+    carry_book: dict = {}
     # Jump-screen reference book: the trailing published/computed
     # payloads, bounded by the config's walk-back (the reference for
     # stamp t is the most recent prior non-missed artifact within
@@ -1286,6 +1431,7 @@ def main() -> int:
                 weight_state,
             )
             last_published_params = stored.get("calc_params")
+            update_carry_book(carry_book, stored)
             recent_payloads.append(stored)
             # Drift scanning is bounded in OBSERVATIONS and GATED to the
             # daily 16:00Z sweep / --drift-scan (module docstring);
@@ -1463,6 +1609,11 @@ def main() -> int:
             weight_state=weight_state,
             reference_prints=reference_prints,
             reference_label=reference_label,
+            # None on knob-less lanes (carry_prints_for gates on the
+            # minted pair), a window-bounded slice of carry_book else.
+            carry_prints=carry_prints_for(
+                carry_book, obs_stamp=stamp, params=params
+            ),
             schedule=schedule,
             # Hot-loop invariant: params/screens resolve ONCE per run
             # (compute_observation checks the methodology_id so the
@@ -1472,6 +1623,19 @@ def main() -> int:
             record_quarantined=quarantine_reason,
         )
         recent_payloads.append(payload)
+        update_carry_book(carry_book, payload)
+        if attendance_minted(params["dynamic_weights"]):
+            # Live-path twin of the replay scan: pure armor -- this
+            # binary's own statuses are a closed set.
+            _warn_unknown_attendance_statuses(stamp_iso, payload["sources"])
+        for entry in payload["sources"]:
+            if entry.get("status") == CARRIED_STATUS:
+                # Loud but not red, the quarantine posture: the basis is
+                # artifact data (vote_basis + the seat's carried block),
+                # and the seat re-observes whenever its collector heals
+                # (state-3) or the provider prints again (no_price).
+                for line in _carried_warn_lines(stamp_iso, entry, params):
+                    warn(line)
 
         weight_calc = payload.get("weight_calc") or {}
         if weight_calc.get("switched_on"):
