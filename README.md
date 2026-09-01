@@ -45,7 +45,9 @@ inputs, and every published value live in the open.
 
 ## Reproduce a published value
 
-Every published value can be recomputed from its own receipts.
+Every published value can be re-derived end to end from the public record
+alone: the attendance factors, the liveness weights, the votes, and the value
+itself, never consuming a published intermediate.
 
 ```
 git clone https://github.com/getcomputable/gpu-index
@@ -59,32 +61,36 @@ pip install -e .
 install local; on systems that allow bare `pip install`, the venv lines are
 optional.)
 
-That reproduces the current UTC day: every H100 observation published so far,
-recomputed from the published per-provider receipts and matched against the
-published value, with every artifact digest verified. Exit 0 means every value
-and digest matched, 1 means a mismatch, and 2 means nothing could be verified.
-To check another accelerator or time, run
-`./reproduce <h100|h200|b300|b200> YYYY-MM-DD`; add `THH` to check one UTC hour.
+That re-derives the current UTC day from raw public history: attendance
+events and factors, liveness scores, the weight vector, the votes, and each
+observation's value, all computed from disclosed inputs and matched against
+the published record, with every artifact digest verified. It fetches the
+trailing history it needs, so a full day takes a few minutes. Exit 0 means
+every value and digest matched, 1 means a mismatch, and 2 means nothing could
+be verified. To check another accelerator or time, run
+`./reproduce <h100|h200|b300|b200> YYYY-MM-DD`; add `THH` to check one UTC
+hour. For the fast check that recomputes each value from its own published
+receipts only, run `./reproduce --receipts <sku> <date>`.
 
 A successful run looks like this, recorded live against
-https://data.getcomputable.com on 2026-08-31 at 18:31 UTC. The transcript is
-left exactly as recorded, with the repeated middle lines elided.
+https://data.getcomputable.com on 2026-09-01 at 07:29 UTC. The transcript is
+left exactly as recorded; the repeated middle lines and each observation's
+derived 16-source weight vector are elided.
 
 ```
 $ ./reproduce h100 "$(date -u +%F)"
-published record: H100/v4/observations/2026/08/31.json via public HTTPS front https://data.getcomputable.com
-digest OK: 2e406eef6a178179cd260c24a2d17706bad7280daa8e9e4b203710e14a532626
-H100 2026-08-31T00 recomputed 3.463378 (band 0.563078) published 3.463378 (band 0.563078) MATCH digest OK
-H100 2026-08-31T00:15 recomputed 3.463379 (band 0.563079) published 3.463379 (band 0.563079) MATCH digest OK
-[... 70 more MATCH lines ...]
-H100 2026-08-31T18 recomputed 3.530037 (band 0.519443) published 3.530037 (band 0.519443) MATCH digest OK
-H100 2026-08-31T18:15 recomputed 3.530067 (band 0.519526) published 3.530067 (band 0.519526) MATCH digest OK
-summary: 74 observation(s): 74 MATCH, 0 MISMATCH, 0 degraded
-[... non-fatal weight-window warning; the recompute-and-match above is unaffected ...]
+published record: full history via public HTTPS front https://data.getcomputable.com
+raw-only full reproduction: prices, dispersions, upstream status, carry basis, filter verdicts, timing, top-level flags, and calc_params are inputs; published derived intermediates are not
+H100 2026-09-01T00 derived 3.456577 (band 0.556277) published 3.456577 (band 0.556277) MATCH public digests OK
+H100 2026-09-01T00:15 derived 3.457619 (band 0.557319) published 3.457619 (band 0.557319) MATCH public digests OK
+[... 26 more MATCH lines, each followed by its derived weight vector ...]
+H100 2026-09-01T07 derived 3.465561 (band 0.565261) published 3.465561 (band 0.565261) MATCH public digests OK
+H100 2026-09-01T07:15 derived 3.465393 (band 0.565093) published 3.465393 (band 0.565093) MATCH public digests OK
+summary: 30 observation(s): 30 MATCH, 0 MISMATCH
 ```
 
-Run `./reproduce` with no arguments for the other modes, which replay a local
-collection record rather than the published one.
+Run `./reproduce --receipts` for the receipts-only value check; `--producer`
+and `--lane` replay a local collection record rather than the published one.
 
 ## What is here
 

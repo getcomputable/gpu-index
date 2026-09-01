@@ -261,6 +261,15 @@ def test_unknown_license_key_refuses():
         decode_and_verify_artifact(_encode(_redigest(document)))
 
 
+def test_series_window_basis_timestamp_is_a_named_optional_meta_key():
+    document = json.loads(_load("series/24h.json"))
+    document["meta"]["window_basis_at"] = "2026-09-01T06:35:00.000Z"
+
+    envelope = decode_and_verify_artifact(_encode(_redigest(document)))
+
+    assert envelope["meta"]["window_basis_at"] == "2026-09-01T06:35:00.000Z"
+
+
 def test_latest_accepts_and_validates_version_pointer_metadata():
     document = json.loads(_load("latest.json"))
     document["data"]["versions"] = [

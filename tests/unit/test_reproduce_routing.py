@@ -151,6 +151,9 @@ def test_default_with_no_env_verifies_against_the_official_front(
     (line,) = _shim_lines(result)
     assert "verify_published_record.py" in line
     assert "--sku H100 --date 2026-08-24" in line
+    # The default is the raw-only full re-derivation; --receipts is the
+    # opt-out for the fast receipts-only recompute.
+    assert "--full" in line
     assert _shim_env(result) == "https://data.getcomputable.com"
 
 
@@ -183,6 +186,27 @@ def test_public_base_url_routes_to_the_published_verifier(shim, data_dir):
     assert "verify_published_record.py" in line
     assert "--sku B200 --date 2026-08-20" in line
     assert _shim_env(result) == "https://record.example.com/cgi"
+
+
+def test_full_mode_routes_to_the_raw_only_public_derivation(shim, data_dir):
+    result = _run(shim, data_dir, "--full", "h100", "2026-09-01")
+
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert "--sku H100 --date 2026-09-01 --full" in line
+    assert _shim_env(result) == "https://data.getcomputable.com"
+
+
+def test_receipts_flag_routes_to_the_receipts_only_verifier(shim, data_dir):
+    result = _run(shim, data_dir, "--receipts", "h100", "2026-09-01")
+
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "verify_published_record.py" in line
+    assert "--sku H100 --date 2026-09-01" in line
+    assert "--full" not in line
+    assert _shim_env(result) == "https://data.getcomputable.com"
 
 
 def test_producer_flag_forces_the_internal_replay(shim, data_dir):

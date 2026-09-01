@@ -44,6 +44,7 @@ PUBLIC_MODULES = {
     "gpu_index.index.weights",
     "gpu_index.published",
     "gpu_index.published.artifacts",
+    "gpu_index.published.full",
     "gpu_index.published.reader",
     "gpu_index.published.verify",
     "gpu_index.observatory",
