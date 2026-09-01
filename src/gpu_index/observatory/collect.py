@@ -13,6 +13,7 @@ errors — visible holes, never a silently shorter list.
 
 from __future__ import annotations
 
+import contextvars
 import threading
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Set
@@ -103,7 +104,8 @@ def call_with_deadline(
         except BaseException as exc:  # noqa: BLE001 — reported by the caller
             outcome["error"] = exc
 
-    worker = threading.Thread(target=_target, daemon=True)
+    context = contextvars.copy_context()
+    worker = threading.Thread(target=context.run, args=(_target,), daemon=True)
     worker.start()
     worker.join(deadline)
     if worker.is_alive():

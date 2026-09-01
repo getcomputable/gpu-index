@@ -6,6 +6,7 @@
 #
 #   ./reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
 #   ./reproduce --full <sku>          <YYYY-MM-DD[THH]>
+#   ./reproduce --collect <sku>
 #   ./reproduce --producer <sku>      <YYYY-MM-DD[THH]>
 #   ./reproduce --lane <panel_id>     <YYYY-MM-DD[THH]>
 #   ./reproduce --frozen <b300|b200>  <YYYY-MM-DD>
@@ -50,6 +51,7 @@ usage() {
   cat >&2 <<'EOF'
 usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
        reproduce --receipts <sku> <YYYY-MM-DD[THH]>
+       reproduce --collect <sku>
        reproduce --producer <sku> <YYYY-MM-DD[THH]>
        reproduce --lane <panel_id> <YYYY-MM-DD[THH]>
        reproduce --frozen <b300|b200> <YYYY-MM-DD>
@@ -66,6 +68,10 @@ usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
                     all-match, 1 mismatch/digest FAIL, 2 could not verify
   --receipts        the fast check: recompute each value from its own
                     published receipts only (no weight re-derivation)
+  --collect         collect current source prices for the latest print
+                    and compare them with its receipts. Past source
+                    inputs are not retroactively observable. A changed
+                    price is expected and is not a verification failure
   --producer        force the internal producer-record replay/verify
   --lane <panel_id> run any configured panel lane, e.g. h100_broad or
                     h200_broad (configured lanes that are not public SKUs)
@@ -82,14 +88,28 @@ PRODUCER=0
 # cannot-combine guard for the other modes on explicit flags only.
 FULL=1
 FULL_EXPLICIT=0
+COLLECT=0
 case "${1:-}" in
   --frozen) MODE=frozen; shift ;;
   --lane) MODE=lane; shift ;;
   --producer) PRODUCER=1; shift ;;
   --full) FULL=1; FULL_EXPLICIT=1; shift ;;
   --receipts) FULL=0; shift ;;
+  --collect) COLLECT=1; shift ;;
   -h|--help) usage ;;
 esac
+
+if [ "$COLLECT" -eq 1 ]; then
+  [ $# -eq 1 ] || usage
+  ARG=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  case "$ARG" in
+    h100|h200|b300|b200) ;;
+    *) echo "unknown sku '$1' (expected h100, h200, b300, or b200)" >&2; exit 2 ;;
+  esac
+  ROOT=$(cd "$(dirname "$0")" && pwd)
+  PY=${PYTHON:-python3}
+  exec "$PY" "$ROOT/scripts/collect_latest_receipts.py" --sku "$ARG"
+fi
 
 [ $# -eq 2 ] || usage
 ARG=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')

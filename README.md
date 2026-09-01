@@ -92,6 +92,14 @@ summary: 30 observation(s): 30 MATCH, 0 MISMATCH
 Run `./reproduce --receipts` for the receipts-only value check; `--producer`
 and `--lane` replay a local collection record rather than the published one.
 
+To compare the latest print with prices visible at its sources now, run
+`./reproduce --collect <h100|h200|b300|b200>`. It reports `SAME`, `MOVED`,
+`UNREACHABLE`, or `SKIPPED` for every receipt and summarizes the counts.
+`MOVED` means the provider price changed since capture, not that the published
+record disagrees; marketplace prices move often, so that result is expected.
+Only the latest print can be checked this way because past source inputs are not
+retroactively observable.
+
 ## What is here
 
 | Path | What it is |

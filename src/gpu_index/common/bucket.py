@@ -201,13 +201,13 @@ class PublicReadStore:
         from gpu_index.common.http import (
             DEFAULT_TIMEOUT,
             MAX_RESPONSE_BYTES,
-            UA,
+            current_user_agent,
         )
 
         self.base_url = base_url.rstrip("/")
         self.max_bytes = MAX_RESPONSE_BYTES if max_bytes is None else int(max_bytes)
         self._timeout = DEFAULT_TIMEOUT if timeout is None else float(timeout)
-        self._user_agent = UA
+        self._user_agent = current_user_agent()
         self._client = client  # injectable for tests (httpx mock transports)
 
     def _http(self):
