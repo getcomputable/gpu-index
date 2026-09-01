@@ -129,6 +129,15 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       dynamic_weights.history_days per-source history;
                       requires median_ci_votes, and dw_history requires
                       the dynamic_weights block),
+                      carry_forward_window_hours? +
+                      carry_forward_failure_kinds? (CONDITIONAL pair,
+                      both or neither: a member whose raw capture entry
+                      failed collection in one of the named failure
+                      classes re-casts its last accepted vote for up to
+                      the window, in (0, 168] hours and never past
+                      dynamic_weights.history_days*24; kinds are
+                      gpu_index.observatory.collect's vocabulary.
+                      METHODOLOGY.md section 8.6),
                       manual_verify_pct?, fx_lane (REQUIRED
                       ecb|none), fx_max_staleness_days?,
                       availability_verified_sources? (OPTIONAL [member
@@ -150,7 +159,16 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       (REQUIRED -- rule A1: panel weights recompute at
                       every observation, a panel without the block has no
                       weight law; includes the A2 attendance_floor,
-                      validated by gpu_index.index.weights.validate_attendance_floor).
+                      validated by gpu_index.index.weights.validate_attendance_floor,
+                      and the OPTIONAL attendance knob triple
+                      attendance_half_life_hours + attendance_eta +
+                      no_price_exclusion_hours -- all three or none,
+                      validated by
+                      gpu_index.index.weights.validate_attendance_params;
+                      attendance_eta > 0 additionally REQUIRES the carry
+                      pair above with no_price_exclusion_hours <=
+                      carry_forward_window_hours, METHODOLOGY.md
+                      sections 8.6-8.7).
                       calc.drift_scan_observations is a RETIRED location,
                       refused loudly (see the top-level key above).
 
@@ -321,6 +339,10 @@ _CALC_KEYS = frozenset(
         "statistic_params",
         "dynamic_weights",
         "availability_verified_sources",
+        # Carry-forward knob pair (METHODOLOGY.md section 8.6):
+        # CONDITIONAL, both-or-neither, validated in _validate_calc.
+        "carry_forward_window_hours",
+        "carry_forward_failure_kinds",
         # Retired locations -- recognized so their DEDICATED refusals
         # (naming the successor) fire instead of the generic unknown-key
         # message.
@@ -357,6 +379,13 @@ _DYNAMIC_WEIGHTS_KEYS = frozenset(
         "max_abs_log_return",
         "source_weight_caps",
         "attendance_floor",
+        # Attendance-weighting knob triple (METHODOLOGY.md section 8.6;
+        # names cross-repo frozen). Conditional: all three or none --
+        # gpu_index.index.weights.validate_attendance_params is the one
+        # home for the rule and its bounds.
+        "attendance_half_life_hours",
+        "attendance_eta",
+        "no_price_exclusion_hours",
     }
 )
 _JUMP_SCREEN_KEYS = frozenset(
@@ -1054,6 +1083,79 @@ def _validate_calc(
                 "calc.dynamic_weights -- the vote tail spans "
                 "dynamic_weights.history_days of per-source history"
             )
+    if ("carry_forward_window_hours" in calc) != (
+        "carry_forward_failure_kinds" in calc
+    ):
+        # Carry-forward (METHODOLOGY.md section 8.6): the window without
+        # a failure scope (or a scope without a window) is half a rule --
+        # an author reading either key alone would misread what carries.
+        raise PanelConfigError(
+            "calc.carry_forward_window_hours and "
+            "calc.carry_forward_failure_kinds ride together (both or "
+            "neither) -- a carry window needs a failure scope and a "
+            "failure scope needs a window"
+        )
+    if "carry_forward_window_hours" in calc:
+        window_hours = calc["carry_forward_window_hours"]
+        if not (
+            isinstance(window_hours, (int, float))
+            and not isinstance(window_hours, bool)
+            and 0 < window_hours <= 168
+        ):
+            raise PanelConfigError(
+                "calc.carry_forward_window_hours must be a number in "
+                f"(0, 168] (hours; 168 = the 7-day outer precedent), "
+                f"got {window_hours!r}"
+            )
+        # One vocabulary home: the capture lane speaks first
+        # (gpu_index.observatory.collect classifies), the calc lane must
+        # use the same words -- the QUARANTINE_REASON pattern. Lazy
+        # import like the statistic registry above.
+        from gpu_index.observatory.collect import VALID_FAILURE_KINDS
+
+        kinds = calc["carry_forward_failure_kinds"]
+        if (
+            not isinstance(kinds, list)
+            or not kinds
+            or not all(isinstance(k, str) and k for k in kinds)
+        ):
+            raise PanelConfigError(
+                "calc.carry_forward_failure_kinds must be a non-empty "
+                f"list of failure-kind strings, got {kinds!r}"
+            )
+        if len(set(kinds)) != len(kinds):
+            raise PanelConfigError(
+                "calc.carry_forward_failure_kinds carries duplicate "
+                f"entries: {kinds!r}"
+            )
+        unknown = sorted(set(kinds) - set(VALID_FAILURE_KINDS))
+        if unknown:
+            raise PanelConfigError(
+                f"calc.carry_forward_failure_kinds names unknown kind(s) "
+                f"{unknown} -- valid kinds are "
+                f"{sorted(VALID_FAILURE_KINDS)} "
+                "(gpu_index.observatory.collect's classification "
+                "vocabulary)"
+            )
+        # Bounded-replay fence: the carry book is engine-consulted state,
+        # and the CLI's state window rebuilds ONLY dw
+        # history_days*1440 (+ horizons + margin) of it -- a carry window
+        # reaching past that would make a cold replay miss book entries a
+        # live run had, forking published bytes. history_days*24 is the
+        # conservative bound (the horizons+margin slack is deliberately
+        # not spent).
+        dw_block = calc.get("dynamic_weights") or {}
+        history_days = dw_block.get("history_days")
+        if (
+            isinstance(history_days, int)
+            and window_hours > history_days * 24
+        ):
+            raise PanelConfigError(
+                f"calc.carry_forward_window_hours ({window_hours}) exceeds "
+                f"dynamic_weights.history_days*24 ({history_days * 24}) -- "
+                "the carry book must rebuild fully inside the bounded "
+                "replay's state window or cold replays fork published bytes"
+            )
     if calc.get("manual_verify_pct") is not None:
         _require_number(
             calc["manual_verify_pct"], "calc.manual_verify_pct", lo=0
@@ -1085,6 +1187,35 @@ def _validate_calc(
     _validate_dynamic_weights(
         calc.get("dynamic_weights"), members, member_ids, schedule
     )
+    # Attendance arming gate (rule D5, METHODOLOGY.md section 8.6):
+    # eta > 0 switches on the state-2 carry read path, and carry is ONE
+    # mechanism with ONE book and ONE wall-time window -- an armed lane
+    # without the carry knob pair would have no book to serve its fading
+    # seats, and an exclusion window wider than the carry window would
+    # keep serving carried votes for a seat the cutoff already ruled
+    # dead. Cross-LEVEL by necessity (the carry pair lives in calc, the
+    # attendance triple in calc.dynamic_weights), so the rule sits here
+    # rather than in the dw validator.
+    dw_validated = calc["dynamic_weights"]
+    if "attendance_eta" in dw_validated and dw_validated["attendance_eta"] > 0:
+        if "carry_forward_window_hours" not in calc:
+            raise PanelConfigError(
+                "calc.dynamic_weights.attendance_eta > 0 requires the "
+                "carry knob pair (calc.carry_forward_window_hours + "
+                "calc.carry_forward_failure_kinds) -- armed attendance "
+                "carries state-2 seats from the ONE carry book (rule D5)"
+            )
+        if float(dw_validated["no_price_exclusion_hours"]) > float(
+            calc["carry_forward_window_hours"]
+        ):
+            raise PanelConfigError(
+                f"calc.dynamic_weights.no_price_exclusion_hours "
+                f"({dw_validated['no_price_exclusion_hours']!r}) must not "
+                f"exceed calc.carry_forward_window_hours "
+                f"({calc['carry_forward_window_hours']!r}) -- the hard "
+                "cutoff must fire at or before the carry window expires "
+                "(rule D5)"
+            )
     if "drift_scan_observations" in calc:
         # Retired location (amended into the mints before any observation
         # published): the drift-scan bound is an OPERATIONAL knob and must
@@ -1271,7 +1402,11 @@ def _validate_dynamic_weights(
         # observation; a panel without the block has no weight law.
         raise PanelConfigError("calc.dynamic_weights is required for panels")
     _refuse_unknown_keys(dw, _DYNAMIC_WEIGHTS_KEYS, "calc.dynamic_weights")
-    from gpu_index.index.weights import VALID_WEIGHT_SCHEMES, validate_attendance_floor
+    from gpu_index.index.weights import (
+        VALID_WEIGHT_SCHEMES,
+        validate_attendance_floor,
+        validate_attendance_params,
+    )
 
     if dw.get("scheme") not in VALID_WEIGHT_SCHEMES:
         raise PanelConfigError(
@@ -1373,6 +1508,15 @@ def _validate_dynamic_weights(
     # the one home of the rule and its bounds.
     try:
         validate_attendance_floor(dw)
+    except ValueError as exc:
+        raise PanelConfigError(str(exc)) from exc
+    # Attendance-weighting knob triple: OPTIONAL, all three or none,
+    # bounds owned by gpu_index.index.weights (one home, the
+    # attendance_floor pattern). The eta>0-requires-carry-knobs rule is
+    # cross-LEVEL (the carry pair lives in calc) and validated by the
+    # caller, _validate_calc.
+    try:
+        validate_attendance_params(dw)
     except ValueError as exc:
         raise PanelConfigError(str(exc)) from exc
     min_span_minutes = (

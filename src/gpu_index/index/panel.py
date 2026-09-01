@@ -49,6 +49,34 @@ What is panel-NEW, each a design-doc rule:
     (gpu_index.index.weights.compute_panel_weights: per-observation R-cutoff on the
     era grid, A2 attendance floor, hour-stamped vectors), advanced with
     each observation's own trusted prints AFTER the vector is computed;
+  - CARRY-FORWARD (METHODOLOGY.md section 8.6, conditional knob pair
+    carry_forward_window_hours + carry_forward_failure_kinds): a member
+    whose raw capture entry failed collection in a minted failure class
+    re-casts its last accepted vote -- price, band, and weight verbatim
+    from the carried-from artifact -- as status ``carried``. A carried
+    seat enters ONLY the vote set: not the filter window, not the weight
+    series, not the warm-up mean, and never the claim floor; the
+    composite gains a ``vote_basis`` {observed, carried} disclosure.
+    Absent knob = the seat drops and the panel reweights over the hole,
+    byte-identically;
+  - ATTENDANCE WEIGHTING (METHODOLOGY.md sections 8.6-8.7, minted knob
+    triple attendance_half_life_hours + attendance_eta +
+    no_price_exclusion_hours, conditional like iqm_alpha): every
+    scheduled observation classifies each seat three ways
+    (attendance_events_for_stamp -- usable print / read-fine-no-price /
+    our-failure skip) and publishes a per-source EWMA attendance factor,
+    no-price streak, and exclusion flag over ALL members
+    (gpu_index.index.weights.compute_attendance_view /
+    compute_panel_weights). While DARK (eta = 0) that is all: allocation,
+    eligibility, carry, and composite are byte-identical to the
+    knob-less lane. ARMED (eta > 0, one lever): quiet seats carry their
+    booked vote through the four state-2 exit sites below (carry_basis
+    "no_price") under a CURRENT fading weight row (rule D4), the softmax
+    tilts by eta*ln(A_i) with attendance-scaled ceilings and collapsing
+    floors (rules D6/D7), and a seat past the hard cutoff of consecutive
+    no-price hours is excluded until it prints again. Knobs absent =
+    every byte identical to the pre-attendance engine (the D2 dark
+    contract, golden-pinned);
   - the artifact is per OBSERVATION: kind ``index_panel_composite``,
     ``date`` = the fixed-width YYYY-MM-DDTHH stamp (lexicographic ==
     chronological, so the store's no-regress pointer works unchanged),
@@ -82,6 +110,7 @@ out exactly one.
 
 from __future__ import annotations
 
+import copy
 import math
 import statistics
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -113,7 +142,11 @@ from gpu_index.index.fx import (
     FxUnavailableError,
     eur_to_usd,
 )
-from gpu_index.index.panel_schedule import stamp_to_date_minute, stamp_to_obs_key
+from gpu_index.index.panel_schedule import (
+    obs_key_to_stamp,
+    stamp_to_date_minute,
+    stamp_to_obs_key,
+)
 
 # Pinned public re-exports (tests/unit/test_public_api.py): the
 # minute re-base stopped using stamp_to_date_hour/stamp_to_hour_iso here, but downstream
@@ -124,7 +157,12 @@ from gpu_index.index.panel_schedule import (  # noqa: F401
 )
 from gpu_index.index.weights import (
     DEFAULT_TARGET_VARIANCE_FLOOR,
+    EVENT_NO_PRICE,
+    EVENT_SKIP,
     advance_panel_weight_state,
+    attendance_armed,
+    attendance_minted,
+    compute_attendance_view,
     compute_panel_weights,
     dw_vote_tail,  # re-exported: the vote-tail seam lives with the series
     series_print,
@@ -143,6 +181,25 @@ from gpu_index.observatory.catalog import boundary_pattern, normalize_label
 
 PANEL_SCHEMA_VERSION = 1
 PANEL_COMPOSITE_KIND = "index_panel_composite"
+
+# Carry-forward status (METHODOLOGY.md section 8.6): a seat re-casting a
+# booked vote is NOT "ok" -- an "ok" seat means the provider was read and
+# priced at THIS observation, and every downstream reader (drift scan,
+# jump-reference book, replay ingest) leans on that. A carried row
+# carries ``chosen`` but no ``filter`` verdict, so it advances neither
+# the outlier window nor the weight series: a stale price is a held
+# vote, never a print. The window is calc.carry_forward_window_hours.
+CARRIED_STATUS = "carried"
+
+# Carried-block basis discriminator (METHODOLOGY.md section 8.6): an
+# ARMED state-2 carry (provider read fine, no usable price -- the
+# ok-no-chosen / held_out / uncorroborated_jump / untrusted_currency
+# shapes, rule D5) publishes carry_basis "no_price" in its carried
+# block, where a collection-failure carry publishes its failure_kind.
+# The basis is the REPLAY discriminator: the attendance classifier
+# decides state-2 (A_i counts 0, streak advances) vs state-3 (our
+# failure: skip, streak holds) from this one published byte.
+CARRY_BASIS_NO_PRICE = "no_price"
 
 # Vote-sigma source (founder ruling 2026-08-27): WHICH per-source history a
 # passing print's vote stddev is computed over. "filter_window" is the
@@ -668,6 +725,25 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
             if "vote_sigma_floor_pct" in calc
             else {}
         ),
+        # Carry-forward (METHODOLOGY.md section 8.6): CONDITIONAL pair
+        # like iqm_alpha -- absent means a failed seat drops and the
+        # panel reweights over the hole (every already-published
+        # artifact's bytes stay untouched; the D2 fence owns the flip, so
+        # the knob ships as a minted successor, never an edit). Load
+        # validation guarantees both-or-neither and the kinds vocabulary;
+        # sorted for canonical bytes.
+        **(
+            {
+                "carry_forward_window_hours": float(
+                    calc["carry_forward_window_hours"]
+                ),
+                "carry_forward_failure_kinds": sorted(
+                    str(k) for k in calc["carry_forward_failure_kinds"]
+                ),
+            }
+            if "carry_forward_window_hours" in calc
+            else {}
+        ),
         "manual_verify_pct": float(
             calc.get("manual_verify_pct", DEFAULT_MANUAL_VERIFY_PCT)
         ),
@@ -727,6 +803,26 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
             # any other -- it rides the artifact so the switch decision
             # replays from published bytes alone.
             "attendance_floor": float(dw["attendance_floor"]),
+            # Attendance-weighting knob triple (METHODOLOGY.md section
+            # 8.6): CONDITIONAL like iqm_alpha -- keys absent means the
+            # attendance-free legacy engine byte-identically (the D2 dark
+            # contract: knob-less lanes must never grow bytes); present
+            # (all three together, load-validated) means the minted lane,
+            # eta = 0 the dark posture. Presence keyed on ONE member of
+            # the triple because validation refuses partial sets.
+            **(
+                {
+                    "attendance_half_life_hours": float(
+                        dw["attendance_half_life_hours"]
+                    ),
+                    "attendance_eta": float(dw["attendance_eta"]),
+                    "no_price_exclusion_hours": float(
+                        dw["no_price_exclusion_hours"]
+                    ),
+                }
+                if attendance_minted(dw)
+                else {}
+            ),
             "fallback_weights": {
                 m["source_id"]: m["weight"] for m in member_params
             },
@@ -1158,6 +1254,237 @@ def jump_reference_prints(
     return out
 
 
+def update_carry_book(
+    carry_book: Dict[str, Dict[str, Any]],
+    payload: Dict[str, Any],
+) -> None:
+    """Fold one panel artifact (published or computed-this-run) into the
+    caller's carry book: {source_id: the seat's most recent ACCEPTED
+    print}, the carry-forward reference (METHODOLOGY.md section 8.6).
+
+    Admission is deliberately narrower than jump_reference_prints' ok-only
+    rule: a carried seat re-casts a full prior VOTE, so only a seat that
+    actually voted may serve -- status "ok", chosen with a finite USD
+    price, filter verdict accepted, finite weight, and (when the artifact
+    carries one) a vote block with a finite band. A sigma-fenced print
+    (status ok, accepted false) never enters: the fence held it out of
+    the index, and carrying it would re-admit exactly the value the fence
+    refused. A "carried" seat never enters either -- carry never chains,
+    so a seat is only ever carried from a print somebody OBSERVED, and
+    the window measures from that observation.
+
+    Values are DEEP-copied (chosen can hold nested mutables --
+    fx_errors_partial, statistic sub-blocks): a book entry is later
+    embedded verbatim in a new artifact, and the source payload, the
+    book, and every artifact embedding from it must never share a
+    mutable object -- a future annotation pass on any nested value
+    would otherwise silently poison an already-appended payload.
+
+    panel_dark hours DO feed the book (deliberate): a below-floor hour's
+    accepted votes are real observed accepted prints -- the floor gates
+    the PUBLICATION, not the observation -- so the carry reference is the
+    seat's last accepted vote whether or not its hour printed an index
+    value."""
+    stamp = obs_key_to_stamp(str(payload["date"]))
+    for detail in payload.get("sources") or []:
+        if not isinstance(detail, dict) or detail.get("status") != "ok":
+            continue
+        chosen = detail.get("chosen")
+        verdict = detail.get("filter") or {}
+        weight = detail.get("weight")
+        if (
+            not isinstance(chosen, dict)
+            or not _finite_number(chosen.get("usd_per_gpu_hr"))
+            or float(chosen["usd_per_gpu_hr"]) <= 0
+            or verdict.get("accepted") is not True
+            or not _finite_number(weight)
+            or float(weight) <= 0
+        ):
+            # Positivity mirrors the jump screen's ref_native <= 0
+            # refusal: a zero weight would re-cast a mute vote, a
+            # negative one corrupts the renormalization denominator --
+            # fail closed against degenerate archived prints.
+            #
+            # RULED CONSEQUENCE: a K_A-excluded seat's fresh accepted
+            # RECOVERY print publishes with weight None (no weight row
+            # while excluded), so it lands here and does NOT refresh the
+            # book. If the seat re-quiets, the next armed carry re-casts
+            # the OLDER pre-exclusion booked price -- conservative, and
+            # still age-fenced by the carry window. Test-pinned.
+            continue
+        vote = detail.get("vote")
+        if vote is not None and not (
+            isinstance(vote, dict)
+            and _finite_number(vote.get("conf_usd_gpu_hr"))
+            and float(vote["conf_usd_gpu_hr"]) >= 0
+        ):
+            continue
+        carry_book[str(detail["source_id"])] = {
+            "stamp": stamp,
+            "stamp_iso": str(payload["date"]),
+            "chosen": copy.deepcopy(chosen),
+            "vote": copy.deepcopy(vote) if vote is not None else None,
+            "weight": float(weight),
+        }
+
+
+def carry_prints_for(
+    carry_book: Dict[str, Dict[str, Any]],
+    *,
+    obs_stamp: int,
+    params: Dict[str, Any],
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    """The slice of the carry book usable at ``obs_stamp`` under this
+    lane's minted window, or None when the lane carries no knob (the
+    engine's carry branch is doubly gated: no knob in params, no branch).
+    Age is lattice minutes -- strictly positive (a book can never serve
+    its own stamp; the caller folds an artifact in only after compose)
+    and bounded by carry_forward_window_hours."""
+    kinds = params.get("carry_forward_failure_kinds")
+    if not kinds:
+        return None
+    window_minutes = carry_window_minutes(params)
+    return {
+        source_id: entry
+        for source_id, entry in carry_book.items()
+        if 0 < int(obs_stamp) - int(entry["stamp"]) <= window_minutes
+    }
+
+
+def carry_window_minutes(params: Dict[str, Any]) -> int:
+    """The minted carry window on the lattice: whole MINUTES (stamps are
+    minutes, so the boundary must be integer arithmetic -- a float
+    product like 0.7h * 60 = 41.999999... would expire a seat one lattice
+    step off the operator's mental model). int(round()) snaps a
+    fractional-hour mint to its nearest minute, deterministically. ONE
+    home shared by carry_prints_for and the engine's defense-in-depth
+    re-check, so the two bounds can never drift."""
+    return int(round(float(params["carry_forward_window_hours"]) * 60.0))
+
+
+# ------------------------------------- attendance classification
+#
+# ONE classifier for the live path (compute_observation classifies the
+# sources block it just built) and replay (the CLI's
+# advance_panel_state_from_published classifies the published rows), so
+# the two can never drift -- every verdict below is decided by published
+# artifact bytes alone (top-level flags, per-source status, carried-block
+# basis, filter verdict). Parity is additionally test-pinned.
+
+# State-2-with-entry statuses beyond the ok-shaped rows: the provider was
+# READ FINE and produced nothing usable (held_out = thin_book /
+# no_population_accounting; uncorroborated_jump = the L5 quarantine).
+_ATTENDANCE_NO_PRICE_STATUSES = ("held_out", QUARANTINE_REASON)
+
+# State-3 our-side statuses: collection/FX/ops failures where the
+# provider is not to blame -- dropped from BOTH A_i sums, streak held.
+# timeout/budget error kinds classify here too (rule R1: the A_i skip
+# vocabulary is independent of the ruled CARRY kinds).
+_ATTENDANCE_SKIP_STATUSES = (
+    "error",
+    "fx_unavailable",
+    "manually_excluded",
+    "unimplemented",
+)
+
+# The COMPLETE status vocabulary the classifier maps deliberately. A
+# status outside this set (a seat vocabulary added by a LATER binary,
+# reachable only through replayed artifacts) fails CLOSED to skip --
+# A_i freezes, no silent penalty -- and the CLI's replay ingest warns
+# loudly on it (log + A_i freeze). This engine module stays pure (zero
+# I/O), so the log half lives at the CLI call site.
+ATTENDANCE_KNOWN_STATUSES = frozenset(
+    ("ok", "missing", CARRIED_STATUS)
+    + _ATTENDANCE_NO_PRICE_STATUSES
+    + _ATTENDANCE_SKIP_STATUSES
+)
+
+
+def classify_attendance_source(detail: Dict[str, Any]) -> Optional[str]:
+    """One artifact source row -> its attendance event code: EVENT_NO_PRICE
+    (state 2: counted 0 in A_i, streak advances), EVENT_SKIP (state 3: our
+    failure, dropped from the A_i sums, streak held), or None for the two
+    IMPLICIT rows -- a state-1 trusted print (the stamp lands in the
+    weight-state prices series, which is the presence record) and a
+    no-entry "missing" seat (absent from both: counted 0 in A_i, streak
+    held, never carried -- the methodology's ramp-in row; capture-config
+    drift shares this shape deliberately, presenting as a visibly falling
+    A_i tripwire rather than a silent skip).
+
+    Callers apply the artifact-LEVEL precedence rule first
+    (attendance_events_for_stamp): this per-row table is only meaningful
+    on a live snapshot.
+
+    A status this table does not know (a seat vocabulary added later)
+    fails CLOSED to EVENT_SKIP -- A_i freezes rather than silently
+    penalizing the provider; test-pinned."""
+    status = detail.get("status")
+    if status == "ok":
+        chosen = detail.get("chosen")
+        if not isinstance(chosen, dict):
+            # ok-no-chosen: read fine, zero eligible rows survived the
+            # screens (eligible_rows = 0 / all screened out).
+            return EVENT_NO_PRICE
+        verdict = detail.get("filter")
+        if isinstance(verdict, dict) and verdict.get("untrusted_currency"):
+            # Rule D1: chosen exists but no trustworthy filter value --
+            # a print the provider published that we cannot use.
+            return EVENT_NO_PRICE
+        # Trusted print: accepted, sigma-FENCED, and
+        # currency-mismatch-pending all count PRESENT (the fence holds a
+        # print out of the INDEX, never out of the presence record).
+        return None
+    if status in _ATTENDANCE_NO_PRICE_STATUSES:
+        return EVENT_NO_PRICE
+    if status == CARRIED_STATUS:
+        carried = detail.get("carried")
+        if (carried or {}).get("carry_basis") == CARRY_BASIS_NO_PRICE:
+            # Armed state-2 carry: the provider had no usable price and
+            # its booked vote was re-cast -- still absent.
+            return EVENT_NO_PRICE
+        # Collection-failure carry (failure_kind in the block): our
+        # failure, the seat's A_i is frozen.
+        return EVENT_SKIP
+    if status == "missing":
+        return None  # no entry: the implicit ramp-in row (docstring)
+    # Known our-side skip statuses (_ATTENDANCE_SKIP_STATUSES) land here
+    # -- and so does any status this table does not know, fail-closed as
+    # our-side skip (docstring; the CLI warns on the unknown ones).
+    return EVENT_SKIP
+
+
+def attendance_events_for_stamp(
+    sources: Sequence[Any],
+    *,
+    observation_missed: Any,
+    record_quarantined: Any,
+) -> Dict[str, str]:
+    """{source_id: event code} for one observation's source rows -- the
+    attendance classifier over a whole stamp, np/sk entries only (state-1
+    and no-entry stay implicit, the weight_state.events encoding).
+
+    PRECEDENCE RULE: artifact-level verdicts come first. An
+    observation_missed or record_quarantined stamp is state-3 SKIP for
+    EVERY source, whatever the per-source rows read (they all say
+    "missing" on such stamps -- there is no per-source status for a
+    lane-wide capture outage, and counting one against every provider's
+    A_i is exactly the penalty the methodology forbids)."""
+    out: Dict[str, str] = {}
+    if observation_missed or record_quarantined:
+        for detail in sources or []:
+            if isinstance(detail, dict) and detail.get("source_id") is not None:
+                out[str(detail["source_id"])] = EVENT_SKIP
+        return out
+    for detail in sources or []:
+        if not isinstance(detail, dict) or detail.get("source_id") is None:
+            continue
+        code = classify_attendance_source(detail)
+        if code is not None:
+            out[str(detail["source_id"])] = code
+    return out
+
+
+
 def apply_panel_jump_screen(
     current: Dict[str, Dict[str, Any]],
     reference_prints: Optional[Dict[str, Dict[str, Any]]],
@@ -1315,6 +1642,7 @@ def compute_observation(
     weight_state: Optional[Dict[str, Any]] = None,
     reference_prints: Optional[Dict[str, Dict[str, Any]]] = None,
     reference_label: Optional[str] = None,
+    carry_prints: Optional[Dict[str, Dict[str, Any]]] = None,
     schedule: Optional[Any] = None,
     calc_params: Optional[Dict[str, Any]] = None,
     compiled_screens: Optional[Dict[str, Any]] = None,
@@ -1404,6 +1732,12 @@ def compute_observation(
     obs_date, obs_minute_of_day = stamp_to_date_minute(obs_stamp)
     obs_hour, obs_minute = divmod(obs_minute_of_day, 60)
     stamp_iso = schedule.stamp_key(obs_stamp)
+    # ONE local for the artifact's observation_missed flag: the published
+    # byte and the attendance classifier's precedence input must be the
+    # same value by construction -- a quarantined stamp is NOT missed
+    # (the record may hold bytes; they are quarantined), and live/replay
+    # parity depends on both readers seeing the identical pair of flags.
+    observation_missed = snapshot is None and record_quarantined is None
     record_entry = record_source_for(params["record_sources"], obs_date)
 
     filter_terms = params["filter_terms"]
@@ -1526,6 +1860,35 @@ def compute_observation(
         compiled_screens if compiled_screens is not None else compile_screens(params)
     )
     member_ids = [m["source_id"] for m in params["members"]]
+    dynamic_params = params["dynamic_weights"]
+    carry_kinds = set(params.get("carry_forward_failure_kinds") or [])
+
+    # ONE attendance view per observation (METHODOLOGY.md section 8.6):
+    # None on knob-less lanes (the structural skip), computed ONCE here
+    # on minted lanes -- pre-advance, over all members -- and threaded
+    # into compute_panel_weights below (the scheduled_window
+    # amortization pattern). Two consumers here:
+    #
+    #   - the K_A hard exclusion, ARMED lanes only (the view's verdict is
+    #     armed-gated internally, rule R2): an excluded seat is OUT of
+    #     this observation entirely -- no weight row, no carry, no vote
+    #     -- until a new state-1 print (which still advances its windows
+    #     below, the recovery path) re-admits it at the NEXT observation
+    #     (the verdict is a pure pre-advance function of [.., obs)).
+    #     Applies in BOTH weight modes (an eligibility mechanism).
+    #   - the weight block's publication + armed allocation inputs.
+    attendance_view = compute_attendance_view(
+        weight_state,
+        member_ids,
+        obs_stamp=obs_stamp,
+        schedule=schedule,
+        dw_params=dynamic_params,
+    )
+    excluded_now: frozenset = frozenset(
+        sid
+        for sid in attendance_view or {}
+        if attendance_view[sid]["excluded"]
+    )
 
     source_entries = {
         s["source_id"]: s for s in (snapshot or {}).get("sources", [])
@@ -1610,17 +1973,74 @@ def compute_observation(
     )
     quarantined = {q["source_id"] for q in jump_block["quarantined"]}
 
+    # ARMED state-2 carry gate (METHODOLOGY.md section 8.6, rules
+    # D4/D5): when eta > 0 (single lever, R2) a seat that was READ FINE
+    # but produced no usable price this observation -- any of the four
+    # ruled shapes: ok-no-chosen, held_out, uncorroborated_jump,
+    # untrusted_currency -- re-casts its last ACCEPTED vote from the ONE
+    # carry book, under the D4-extended vector's CURRENT (fading)
+    # weight. The candidate set is resolved HERE, before the weight
+    # block, so the allocation domain can extend to it; the actual row
+    # emission is threaded per shape at the four exit sites below.
+    # Gates, each ruled: arming requires the carry knob pair minted (D5,
+    # load-validated; both re-checked here for replayed params), the
+    # book slice is window-bounded (carry_prints_for + the
+    # defense-in-depth re-check), a K_A-excluded seat never carries,
+    # fx_unavailable is state-3 and stays un-carried, a seat with no
+    # booked print silently does not carry, and a median lane's book
+    # entry must hold a full vote. Empty on every dark lane.
+    state2_carries: Dict[str, Dict[str, Any]] = {}
+    if (
+        attendance_armed(dynamic_params)
+        and carry_prints
+        and "carry_forward_window_hours" in params
+    ):
+        for source_id in member_ids:
+            resolved = resolutions[source_id]
+            if "excluded_reason" in resolved:
+                continue  # manually excluded: state-3, never carries
+            if (resolved.get("entry") or {}).get("status") != "ok":
+                continue  # error/missing/unimplemented: not state-2
+            if source_id in excluded_now:
+                continue  # the K_A cutoff stops carry
+            chosen = resolved.get("chosen")
+            if chosen is not None and chosen.get("fx_unavailable"):
+                continue  # our FX feed: state-3, un-carried (pinned)
+            state2 = (
+                chosen is None
+                or bool(chosen.get("held_out"))
+                or source_id in quarantined
+                or resolved.get("observation") is None
+            )
+            if not state2:
+                continue  # a trusted state-1 print: nothing to carry
+            entry_book = (carry_prints or {}).get(source_id)
+            if entry_book is None:
+                continue  # no booked print: silent no-carry
+            if not (
+                0
+                < obs_stamp - int(entry_book["stamp"])
+                <= carry_window_minutes(params)
+            ):
+                continue  # defense in depth, the state-3 gate's fence
+            if median_votes and not isinstance(entry_book.get("vote"), dict):
+                continue  # a median lane's carry re-casts a FULL vote
+            state2_carries[source_id] = entry_book
+
     # The eligible set (who printed a TRUSTED value this observation) --
     # quarantined members are OUT: at capture their rows never became
     # prints, and the calc-lane verdict must have the same reach.
+    # K_A-excluded members (armed lanes) are OUT too: exclusion is an
+    # eligibility mechanism -- a fresh print's re-admission lands at the
+    # NEXT observation, after the print has advanced the window below.
     eligible = [
         source_id
         for source_id in member_ids
         if resolutions[source_id].get("observation") is not None
         and source_id not in quarantined
+        and source_id not in excluded_now
     ]
 
-    dynamic_params = params["dynamic_weights"]
     weight_block = compute_panel_weights(
         weight_state,
         obs_stamp=obs_stamp,
@@ -1628,6 +2048,12 @@ def compute_observation(
         dw_params=dynamic_params,
         fallback_weights=dynamic_params["fallback_weights"],
         schedule=schedule,
+        # Rule D4: carry-casting state-2 seats join the allocation
+        # domain (sorted: fixed iteration order). Empty when dark.
+        carrying=sorted(state2_carries),
+        # The view computed above: one computation per observation
+        # serves exclusion, publication, and allocation.
+        attendance_view=attendance_view,
     )
     weight_of: Dict[str, Optional[float]] = {
         source_id: weight_block["weights"].get(source_id)
@@ -1640,6 +2066,54 @@ def compute_observation(
     prints_today: Dict[str, float] = {}
     filter_inputs: Dict[str, Optional[Tuple[float, str]]] = {}
     trusted_prints: Dict[str, Dict[str, Any]] = {}
+    carried_ids: set = set()
+
+    def _cast_state2_carry(detail: Dict[str, Any], source_id: str) -> bool:
+        """Thread ONE state-2 shape's exit through the armed carry gate
+        (METHODOLOGY.md section 8.6; the four call sites below are the
+        four ruled shapes). When the seat is carry-casting this stamp,
+        re-cast its booked price/band under its CURRENT (fading) weight
+        from the D4-extended vector -- never the booked weight, which is
+        the collection-failure machinery's rule -- and publish the
+        carried row with the carry_basis discriminator (the replay
+        byte). The seat enters ONLY the vote set: not prints_today, not
+        filter_inputs, not trusted_prints, not the claim floor
+        (carried_ids), never the jump-reference book (status carried).
+        Returns False on every dark lane (state2_carries empty) -- the
+        shape publishes its normal row byte-identically."""
+        entry_book = state2_carries.get(source_id)
+        if entry_book is None:
+            return False
+        # Deep copy like the collection-failure branch: one book entry
+        # can serve several consecutive carried observations, and those
+        # artifacts must not share nested mutables.
+        book_chosen = copy.deepcopy(entry_book["chosen"])
+        # The D4-extended vector holds a row for every carrying seat by
+        # construction (compute_panel_weights' domain), so this float()
+        # can never see None.
+        current_weight = float(weight_of[source_id])
+        detail["weight"] = weight_of[source_id]
+        detail["status"] = CARRIED_STATUS
+        detail["carried"] = {
+            "from": entry_book["stamp_iso"],
+            "age_minutes": int(obs_stamp) - int(entry_book["stamp"]),
+            "carry_basis": CARRY_BASIS_NO_PRICE,
+        }
+        detail["chosen"] = book_chosen
+        passing.append(
+            (
+                source_id,
+                current_weight,
+                float(book_chosen["usd_per_gpu_hr"]),
+            )
+        )
+        carried_ids.add(source_id)
+        if median_votes:
+            vote = copy.deepcopy(entry_book["vote"])
+            detail["vote"] = vote
+            vote_stddevs[source_id] = vote["conf_usd_gpu_hr"]
+        sources_block.append(detail)
+        return True
 
     for source_id in member_ids:
         resolved = resolutions[source_id]
@@ -1663,6 +2137,10 @@ def compute_observation(
             continue
         chosen = resolved.get("chosen")
         if chosen is not None and chosen.get("held_out"):
+            # Carry threading site 1 of 4 (D5): held_out -- thin_book /
+            # no_population_accounting (the order-book population gate).
+            if _cast_state2_carry(detail, source_id):
+                continue
             # Statistic hold-out (section 4): the gate/floor verdict with
             # its counts is the day's record for this seat.
             detail["status"] = "held_out"
@@ -1670,6 +2148,92 @@ def compute_observation(
             sources_block.append(detail)
             continue
         if chosen is None or chosen.get("fx_unavailable"):
+            # Carry threading site 2 of 4 (D5): ok-no-chosen -- the seat
+            # was read fine and zero eligible rows survived.
+            # fx_unavailable never reaches the gate (state-3, un-carried;
+            # state2_carries structurally excludes it).
+            if chosen is None and _cast_state2_carry(detail, source_id):
+                continue
+            # Carry-forward (METHODOLOGY.md section 8.6): a seat whose
+            # raw entry FAILED COLLECTION in a minted failure class
+            # re-casts its last accepted vote verbatim -- price, band,
+            # and weight from the carried-from artifact (the provider's
+            # posted price is a quote: it remains their live offer until
+            # they change it). Scope is deliberately narrow: entry status
+            # "error" with a matching failure_kind only. fx_unavailable
+            # shares this branch but is NOT a collection failure (the
+            # entry was ok; the FX record is what's missing) and stays
+            # un-carried; "missing"/"unimplemented" entries carry no
+            # failure_kind and can never match. The carried seat enters
+            # ONLY the vote set: not prints_today (warm-up mean), not
+            # filter_inputs (window advance), not trusted_prints (weight
+            # series), not the claim floor (a carried quorum must never
+            # keep a dark panel lit -- panel_dark counts observed passers
+            # only).
+            carried_from = None
+            if (
+                carry_kinds
+                and chosen is None
+                and (entry or {}).get("status") == "error"
+                and (entry or {}).get("failure_kind") in carry_kinds
+                # K_A exclusion stops EVERY carry basis ("no weight row,
+                # no carry, no vote"); the set is empty on every unarmed
+                # lane, so this clause is inert until a mint arms eta.
+                and source_id not in excluded_now
+            ):
+                carried_from = (carry_prints or {}).get(source_id)
+                if carried_from is not None and not (
+                    0
+                    < int(obs_stamp) - int(carried_from["stamp"])
+                    <= carry_window_minutes(params)
+                ):
+                    # Defense in depth: carry_prints_for already bounds
+                    # the book by the minted window, but the caller
+                    # contract must not be the ONLY fence -- a future
+                    # caller passing a raw carry_book would otherwise
+                    # re-cast arbitrarily stale prices under a minted
+                    # window that never fired.
+                    carried_from = None
+                if carried_from is not None and median_votes:
+                    # A median lane's carried seat must re-cast a full
+                    # vote; a book entry without one (fail closed --
+                    # update_carry_book admits vote-less entries only
+                    # from weighted-mean lanes) cannot serve here.
+                    if not isinstance(carried_from.get("vote"), dict):
+                        carried_from = None
+            if carried_from is not None:
+                # Deep copy like the book's own admission: the same book
+                # entry can serve several consecutive carried hours, and
+                # those artifacts must not share nested mutables.
+                book_chosen = copy.deepcopy(carried_from["chosen"])
+                detail["weight"] = float(carried_from["weight"])
+                detail["status"] = CARRIED_STATUS
+                detail["carried"] = {
+                    "from": carried_from["stamp_iso"],
+                    "age_minutes": int(obs_stamp)
+                    - int(carried_from["stamp"]),
+                    "failure_kind": entry["failure_kind"],
+                }
+                # The quarantine shape (chosen WITHOUT a filter verdict):
+                # replay's advance_panel_state_from_published requires
+                # both, so a carried seat advances neither the filter
+                # window nor the weight series -- a stale price is not a
+                # print, it is a held vote.
+                detail["chosen"] = book_chosen
+                passing.append(
+                    (
+                        source_id,
+                        float(carried_from["weight"]),
+                        float(book_chosen["usd_per_gpu_hr"]),
+                    )
+                )
+                carried_ids.add(source_id)
+                if median_votes:
+                    vote = copy.deepcopy(carried_from["vote"])
+                    detail["vote"] = vote
+                    vote_stddevs[source_id] = vote["conf_usd_gpu_hr"]
+                sources_block.append(detail)
+                continue
             detail["status"] = (
                 "fx_unavailable"
                 if chosen and chosen.get("fx_unavailable")
@@ -1692,6 +2256,12 @@ def compute_observation(
             sources_block.append(detail)
             continue
         if source_id in quarantined:
+            # Carry threading site 3 of 4 (D5): uncorroborated_jump --
+            # the L5 quarantine. The carried row replaces the would-be
+            # print; the record still holds the quarantined evidence, and
+            # the jump_screen block discloses the verdict either way.
+            if _cast_state2_carry(detail, source_id):
+                continue
             # L5 at calc: held out for THIS observation only; the would-be
             # print stays in the artifact as evidence, but it enters
             # neither the filter window nor the weight series (capture
@@ -1706,6 +2276,10 @@ def compute_observation(
         # untrusted/mismatch paths leave it None (no vote is cast there).
         vote_tail: Optional[List[float]] = None
         if observation is None:
+            # Carry threading site 4 of 4 (D5): untrusted_currency --
+            # rule D1's chosen-but-untrusted shape.
+            if _cast_state2_carry(detail, source_id):
+                continue
             # Rule D1, fail-closed: no trustworthy value exists in
             # window terms. Held out; the window is preserved.
             verdict: Dict[str, Any] = {
@@ -1802,7 +2376,12 @@ def compute_observation(
             # AND sigma-fenced (the fence holds a print out of the INDEX,
             # never out of the weight series; R-winsor bounds it).
             trusted_prints[source_id] = series_print(price, observation)
-        if verdict["accepted"]:
+        # A K_A-excluded seat (armed lanes only; empty set otherwise)
+        # casts NO vote this observation even on a fresh accepted print:
+        # the exclusion verdict is pre-advance, the print above still
+        # advances its windows and the weight series (the recovery path),
+        # and the NEXT observation re-admits it.
+        if verdict["accepted"] and source_id not in excluded_now:
             passing.append((source_id, float(weight_of[source_id]), price))
             if median_votes:
                 # The compute_day fx-factor rule verbatim: a non-USD vote
@@ -1881,8 +2460,13 @@ def compute_observation(
         )
 
     # Claim floor -> explicit dark artifact (design section 3 step 8).
+    # Carried seats are OUT of the count (conservative): carry may move
+    # the median a printing panel composes, but a panel that would have
+    # gone dark on its observed seats alone goes dark still -- carried
+    # votes must never keep a dying panel looking alive. With no carry
+    # knob carried_ids is empty and the count is len(passing) verbatim.
     min_claim = params["min_sources_to_claim"]
-    if len(passing) >= min_claim:
+    if len(passing) - len(carried_ids) >= min_claim:
         composite = (
             median_stddev_composite(
                 passing,
@@ -1918,10 +2502,28 @@ def compute_observation(
             / passing_total,
             6,
         )
+        # Basis mix: how many of this observation's votes were observed
+        # this hour vs carried from a prior print -- the public
+        # continuity disclosure. CONDITIONAL on the minted knob like
+        # iqm_alpha (a knob-less lane's artifact bytes must not grow
+        # keys), but UNCONDITIONAL per knob-carrying observation:
+        # {observed: N, carried: 0} on an all-observed hour is the
+        # disclosure working, not noise.
+        if carry_kinds:
+            composite["vote_basis"] = {
+                "observed": len(passing) - len(carried_ids),
+                "carried": len(carried_ids),
+            }
 
     # Advance the observation-mode weight state with this observation's
     # pinned facts -- AFTER the vector was computed (nothing observed at t
-    # enters t's weights), the same order replay applies.
+    # enters t's weights), the same order replay applies. On a minted
+    # attendance lane the advance also records this stamp's np/sk
+    # classifications, decided from the SAME source rows the artifact
+    # publishes (attendance_events_for_stamp is the one classifier replay
+    # runs over the published rows -- live/replay parity by
+    # construction); knob-less lanes pass None and their state never
+    # grows the events key (the D2 dark contract).
     advance_panel_weight_state(
         weight_state,
         obs_stamp=obs_stamp,
@@ -1929,6 +2531,15 @@ def compute_observation(
         vector=weight_block["weights"],
         mode=weight_block["mode"],
         dw_params=dynamic_params,
+        events=(
+            attendance_events_for_stamp(
+                sources_block,
+                observation_missed=observation_missed,
+                record_quarantined=record_quarantined,
+            )
+            if attendance_minted(dynamic_params)
+            else None
+        ),
     )
 
     return {
@@ -1956,7 +2567,7 @@ def compute_observation(
         ),
         # A quarantined stamp is NOT missed: the record may hold bytes;
         # they are quarantined by config (F6), a recorded fact of its own.
-        "observation_missed": snapshot is None and record_quarantined is None,
+        "observation_missed": observation_missed,
         "record_quarantined": record_quarantined,
         "panel_dark": composite is None,
         "index": composite,

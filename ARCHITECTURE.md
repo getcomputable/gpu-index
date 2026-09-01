@@ -17,7 +17,7 @@ common  <--  observatory  <--  index  <--  published
 
 Every package may import `common`. `index` consumes the observatory's
 record and its label machinery; `published` re-derives published values
-with the index engine's own vote math. Two edges are declared waivers
+with the index engine's own vote math. Three edges are declared waivers
 rather than layering accidents:
 
 1. `observatory/sources/vast.py` imports `gpu_index.index.composite`
@@ -28,6 +28,12 @@ rather than layering accidents:
 2. `index` imports `gpu_index.observatory.catalog` (label normalization
    and the token-boundary matcher) so a token means the same thing to the
    catalog and to the panel screens.
+3. `index/panel_config.py` imports `gpu_index.observatory.collect`
+   (`VALID_FAILURE_KINDS`) so the carry-forward failure scope
+   (METHODOLOGY.md section 8.6) is validated against the ONE
+   classification vocabulary the capture lane records with — an error
+   string is not a contract, and a second copy of the kinds list would
+   drift silently.
 
 The observatory and index packages deliberately share single-home
 machinery in both directions (the catalog's label normalization feeds the

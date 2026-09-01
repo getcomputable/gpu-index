@@ -83,6 +83,9 @@ PUBLIC_NAMES = {
         "recently_printed", "series_print", "solve_linear",
         "dw_vote_tail", "source_return", "stamp_to_hour_iso",
         "validate_attendance_floor",
+        # Attendance weighting (METHODOLOGY.md sections 8.6-8.7).
+        "attendance_armed", "attendance_minted",
+        "compute_attendance_view", "validate_attendance_params",
     },
     "gpu_index.index.config": {
         "BasketConfigError", "load_basket_config", "sources_by_id",
@@ -148,6 +151,14 @@ PUBLIC_NAMES = {
         "stamp_to_hour_iso", "stamp_to_obs_key", "us_ca_verified_host",
         "vast_vwm_verified_us_ca_floor", "vast_vwm_verified_us_ca_v2",
         "vote_stddev", "weighted_composite", "window_incompatible",
+        # Carry-forward and attendance weighting (METHODOLOGY.md
+        # sections 8.6-8.7): the carry book, the shared stamp decoder it
+        # keys on, and the one attendance classifier both the live path
+        # and replay run.
+        "attendance_armed", "attendance_events_for_stamp",
+        "attendance_minted", "carry_prints_for", "carry_window_minutes",
+        "classify_attendance_source", "compute_attendance_view",
+        "obs_key_to_stamp", "update_carry_book",
     },
     "gpu_index.index.panel_config": {
         "PanelConfigError", "PanelSchedule", "PanelScheduleError",
