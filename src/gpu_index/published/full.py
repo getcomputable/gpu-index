@@ -37,6 +37,14 @@ class FullReproductionRefusal(PublishedRecordError):
 
 
 @dataclass(frozen=True)
+class FullDivergence:
+    quantity: str
+    source_id: Optional[str]
+    derived: Any
+    published: Any
+
+
+@dataclass(frozen=True)
 class FullObservationCheck:
     sku: str
     observed_at: str
@@ -46,6 +54,7 @@ class FullObservationCheck:
     derived_band: Optional[float]
     published_band: Optional[float]
     derived_weights: Dict[str, float]
+    first_divergence: Optional[FullDivergence] = None
 
 
 @dataclass(frozen=True)
@@ -220,6 +229,41 @@ def public_weight_print(receipt: dict, *, observed_at: str) -> dict:
     }
 
 
+def _first_divergence(
+    receipts: list[dict],
+    block: dict,
+    derived_weights: Dict[str, float],
+    *,
+    derived_value: Optional[float],
+    published_value: Optional[float],
+    derived_band: Optional[float],
+    published_band: Optional[float],
+) -> Optional[FullDivergence]:
+    by_source = {str(receipt["source_id"]): receipt for receipt in receipts}
+    comparisons = (
+        ("attendance", "attendance_factor", "attendance_factor"),
+        ("score", "Q", "liveness_score"),
+    )
+    for quantity, derived_key, published_key in comparisons:
+        for source_id in sorted(by_source):
+            derived = (block["sources"].get(source_id) or {}).get(derived_key)
+            published = by_source[source_id].get(published_key)
+            if derived != published:
+                return FullDivergence(
+                    quantity, source_id, derived, published
+                )
+    for source_id in sorted(by_source):
+        derived = derived_weights.get(source_id)
+        published = by_source[source_id].get("weight")
+        if derived != published:
+            return FullDivergence("weight", source_id, derived, published)
+    derived = (derived_value, derived_band)
+    published = (published_value, published_band)
+    if derived != published:
+        return FullDivergence("value", None, derived, published)
+    return None
+
+
 def read_full_history(reader: Any, *, sku: str, target_date: str) -> list[dict]:
     """Read the contiguous public history required by the weighting engine.
 
@@ -381,6 +425,27 @@ def reproduce_full_history(
             attendance_view=attendance,
         )
 
+        derived_weights: Dict[str, float] = {}
+        for receipt in receipts:
+            source_id = str(receipt["source_id"])
+            if receipt.get("upstream_status") == "carried":
+                carried = carry_book.get(source_id)
+                if carried is None:
+                    raise FullReproductionRefusal(
+                        "insufficient_carry_history",
+                        f"{observation['observed_at']} {source_id}: the public "
+                        "history has no prior accepted raw vote for this carry",
+                    )
+                weight = (
+                    block["weights"].get(source_id)
+                    if receipt.get("carry_basis") == "no_price"
+                    else carried["weight"]
+                )
+            else:
+                weight = block["weights"].get(source_id)
+            if weight is not None:
+                derived_weights[source_id] = float(weight)
+
         passing = []
         stddevs = {}
         for receipt in receipts:
@@ -390,19 +455,10 @@ def reproduce_full_history(
             upstream_status = receipt.get("upstream_status")
             if upstream_status == "carried":
                 carried = carry_book.get(source_id)
-                if carried is None:
-                    raise FullReproductionRefusal(
-                        "insufficient_carry_history",
-                        f"{observation['observed_at']} {source_id}: the public "
-                        "history has no prior accepted raw vote for this carry",
-                    )
+                assert carried is not None
                 price = carried["price"]
                 sd = carried["sd"]
-                weight = (
-                    block["weights"].get(source_id)
-                    if receipt.get("carry_basis") == "no_price"
-                    else carried["weight"]
-                )
+                weight = derived_weights.get(source_id)
             elif upstream_status == "ok":
                 price = receipt.get("price")
                 sd = receipt.get("sd")
@@ -435,21 +491,30 @@ def reproduce_full_history(
         if observation_date == target_date:
             published_value = observation.get("value_usd_gpu_hr")
             published_band = observation.get("stability_band_usd_gpu_hr")
+            divergence = _first_divergence(
+                receipts,
+                block,
+                derived_weights,
+                derived_value=derived_value,
+                published_value=published_value,
+                derived_band=derived_band,
+                published_band=published_band,
+            )
             checks.append(
                 FullObservationCheck(
                     sku=str(observation.get("sku", "")),
                     observed_at=str(observation["observed_at"]),
                     verdict=(
                         VERDICT_MATCH
-                        if (derived_value, derived_band)
-                        == (published_value, published_band)
+                        if divergence is None
                         else VERDICT_MISMATCH
                     ),
                     derived_value=derived_value,
                     published_value=published_value,
                     derived_band=derived_band,
                     published_band=published_band,
-                    derived_weights=dict(block["weights"]),
+                    derived_weights=derived_weights,
+                    first_divergence=divergence,
                 )
             )
 

@@ -166,6 +166,18 @@ def _run_full(reader, *, sku: str, date: str, stamp: str | None) -> int:
             for source_id, weight in sorted(check.derived_weights.items())
         )
         print(f"  weights: {weights or '(none)'}")
+        if check.first_divergence is not None:
+            divergence = check.first_divergence
+            source = (
+                f" {divergence.source_id}"
+                if divergence.source_id is not None
+                else ""
+            )
+            print(
+                f"  FIRST DIVERGENCE: {check.observed_at}{source} "
+                f"{divergence.quantity} derived {divergence.derived!r} "
+                f"published {divergence.published!r}"
+            )
     print(
         f"summary: {len(checks)} observation(s): {matched} MATCH, "
         f"{mismatched} MISMATCH"

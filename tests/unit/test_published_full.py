@@ -79,9 +79,9 @@ def _observation():
                 "currency": "USD",
                 "fx_rate": None,
                 # Forbidden as derivation inputs. Deliberately nonsense.
-                "weight": 0.0,
-                "liveness_score": 999.0,
-                "attendance_factor": 0.0,
+                "weight": 0.2,
+                "liveness_score": None,
+                "attendance_factor": 1.0,
             }
             for i in range(5)
         ],
@@ -99,13 +99,18 @@ def test_full_reproduction_never_consumes_published_derived_intermediates():
         receipt["attendance_factor"] = index / 10
     second = reproduce_full_history([tampered], target_date="2026-09-01")
 
-    assert first == second
     assert len(first.checks) == 1
     check = first.checks[0]
     assert check.verdict == VERDICT_MATCH
     assert check.derived_value == 3.0
     assert check.derived_band == 1.1
     assert check.derived_weights == {f"s{i}": 0.2 for i in range(5)}
+    tampered_check = second.checks[0]
+    assert tampered_check.derived_value == check.derived_value
+    assert tampered_check.derived_band == check.derived_band
+    assert tampered_check.derived_weights == check.derived_weights
+    assert tampered_check.first_divergence.quantity == "attendance"
+    assert tampered_check.first_divergence.source_id == "s0"
 
 
 @pytest.mark.parametrize("carry_basis", ["no_price", None])
@@ -124,7 +129,7 @@ def test_full_reproduction_rebuilds_carried_votes_from_prior_raw_bytes(
             # them must not change a raw-only reconstruction.
             "price": 999.0,
             "sd": 999.0,
-            "weight": 999.0,
+            "weight": 0.2,
         }
     )
 
@@ -345,3 +350,11 @@ def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys):
     assert "MATCH" in output
     assert "weights: s0=0.2" in output
     assert "1 MATCH, 0 MISMATCH" in output
+
+    observation["receipts"][1]["weight"] = 999.0
+    assert cli.main() == 1
+    output = capsys.readouterr().out
+    assert (
+        "FIRST DIVERGENCE: 2026-09-01T00:00:00.000Z s1 weight "
+        "derived 0.2 published 999.0"
+    ) in output
