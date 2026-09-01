@@ -10,7 +10,8 @@
 #   ./reproduce --frozen <b300|b200>  <YYYY-MM-DD>
 #
 # Default: the PUBLISHED record (the public projection: observation day
-# files under observations/YYYY/MM/DD.json) -- a recompute-and-match run
+# files under <sku>/v<n>/observations/YYYY/MM/DD.json, the current
+# version named by latest.json) -- a recompute-and-match run
 # (scripts/verify_published_record.py): every file's envelope digest is
 # verified, and each observation's index value and stability band are
 # recomputed from the published receipts and matched exactly. The record

@@ -40,6 +40,14 @@ inputs, and every published value live in the open.
 - **MCP server**: `https://mcp.getcomputable.com/mcp`. The same index through
   three read-only tools, for Claude and other AI clients.
   [Connect with MCP](https://docs.getcomputable.com/mcp-server)
+- **Published record**: `https://data.getcomputable.com`. The record itself,
+  as plain JSON files. `latest.json` names each SKU's current methodology
+  version; that version's keyspace holds the day files, at
+  `<SKU>/v<n>/observations/YYYY/MM/DD.json`, and the rolling series, at
+  `<SKU>/v<n>/series/{24h,7d,30d,90d}.json`. Prior versions' keyspaces stay
+  frozen and readable. The root-level `observations/YYYY/MM/DD.json` files
+  are the legacy pre-succession record: complete through 2026-08-30, frozen,
+  never extended. This is the record `./reproduce` verifies.
 
 ## Reproduce a published value
 
