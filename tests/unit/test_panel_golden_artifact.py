@@ -127,8 +127,16 @@ def _frozen_v6_config(tmp_path: Path) -> Path:
         "iqm_alpha",
         "vote_sigma_source",
         "vote_sigma_floor_pct",
+        "carry_forward_window_hours",
+        "carry_forward_failure_kinds",
     ):
         calc.pop(key)
+    for key in (
+        "attendance_half_life_hours",
+        "attendance_eta",
+        "no_price_exclusion_hours",
+    ):
+        calc["dynamic_weights"].pop(key)
     calc["filter_sigma_floor"] = 0.05
     path = tmp_path / "index_panel_b200_calc_v6.json"
     path.write_text(json.dumps(config, indent=2) + "\n")
