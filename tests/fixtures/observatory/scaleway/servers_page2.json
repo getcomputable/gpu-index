@@ -1,0 +1,149 @@
+{
+ "servers": {
+  "POP2-HM-2C-16G": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 2,
+   "ram": 17179869184,
+   "gpu": 0,
+   "gpu_info": null,
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 75.19,
+   "hourly_price": 0.103,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 2
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 400000000,
+    "sum_internet_bandwidth": 400000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 400000000,
+      "internet_bandwidth": 400000000
+     }
+    ]
+   },
+   "block_bandwidth": 419430400,
+   "end_of_service": false
+  },
+  "POP2-HN-3": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 2,
+   "ram": 4294967296,
+   "gpu": 0,
+   "gpu_info": null,
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 0
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 0,
+     "max_size": 0
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 186.442,
+   "hourly_price": 0.2554,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": false,
+    "private_network": 8,
+    "max_file_systems": 1
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 3000000000,
+    "sum_internet_bandwidth": 3000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 3000000000,
+      "internet_bandwidth": 3000000000
+     }
+    ]
+   },
+   "block_bandwidth": 419430400,
+   "end_of_service": false
+  },
+  "RENDER-S": {
+   "alt_names": [],
+   "arch": "x86_64",
+   "ncpus": 10,
+   "ram": 45097156608,
+   "gpu": 1,
+   "gpu_info": {
+    "gpu_manufacturer": "NVIDIA",
+    "gpu_name": "P100",
+    "gpu_memory": 17179869184
+   },
+   "mig_profile": null,
+   "volumes_constraint": {
+    "min_size": 0,
+    "max_size": 400000000000
+   },
+   "per_volume_constraint": {
+    "l_ssd": {
+     "min_size": 1000000000,
+     "max_size": 800000000000
+    }
+   },
+   "scratch_storage_max_size": 0,
+   "scratch_storage_max_volumes_count": 0,
+   "monthly_price": 891.33,
+   "hourly_price": 1.221,
+   "capabilities": {
+    "boot_types": [
+     "local",
+     "rescue"
+    ],
+    "placement_groups": true,
+    "block_storage": true,
+    "hot_snapshots_local_volume": true,
+    "private_network": 8,
+    "max_file_systems": 0
+   },
+   "network": {
+    "ipv6_support": true,
+    "sum_internal_bandwidth": 2000000000,
+    "sum_internet_bandwidth": 2000000000,
+    "interfaces": [
+     {
+      "internal_bandwidth": 2000000000,
+      "internet_bandwidth": 2000000000
+     }
+    ]
+   },
+   "block_bandwidth": 2147483648,
+   "end_of_service": false
+  }
+ }
+}

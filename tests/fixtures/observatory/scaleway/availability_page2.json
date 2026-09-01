@@ -1,0 +1,16 @@
+{
+ "servers": {
+  "POP2-HM-2C-16G": {
+   "availability": "available"
+  },
+  "POP2-HM-64C-512G": {
+   "availability": "shortage"
+  },
+  "RENDER-S": {
+   "availability": "available"
+  },
+  "STANDARD3-X8C-32G": {
+   "availability": "available"
+  }
+ }
+}
