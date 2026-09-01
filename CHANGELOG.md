@@ -7,58 +7,12 @@ that produced it; any parameter change touching a published day mints a
 new methodology_id, and prior versions stay frozen and readable under
 their own keyspaces. Newest first.
 
-## 2026-08-30
+## 2026-09-01
 
-- Public v2 succession became effective at `2026-08-30T08:49:34.000Z`,
-  replaying the four public lanes under a 3% percentage sigma floor and
-  the central-vote IQM (`iqm_alpha = 0.16666`): B300
-  `annex_a_v0_2_calc_v10`, B200 `annex_a2_v0_3_calc_v9`, H100-SXM
-  `h100_sxm_v1_calc_v4`, and H200-SXM `h200_sxm_v1_calc_v4`.
-- Public v3 succession became effective at `2026-08-30T23:07:28.000Z`:
-  B300 `annex_a_v0_2_calc_v11`, B200 `annex_a2_v0_3_calc_v10`,
-  H100-SXM `h100_sxm_v1_calc_v5`, and H200-SXM
-  `h200_sxm_v1_calc_v5`. These mints replay the public series every 15
-  minutes from `2026-08-29T00:00Z`, source vote variability from the
-  90-day dynamic-weight history, and give the vote sigma its own 3% of
-  current-price floor. Versions 1 and 2 remain frozen and readable.
-
-## 2026-08-29
-
-- Disclosure-only adoption: selected panel rows now retain
-  `sku_identifier` and `region` beside the existing `gpu_count_basis` and
-  `currency` evidence for downstream receipt projection. No calculation
-  input or aggregation changed, no methodology ID was minted, and no
-  published index value changed.
-
-## 2026-08-26
-
-- Additive adoption: availability_verified_sources joined calc_params and
-  index.availability_verified_weight_share joined published observations
-  on all live lanes — a one-time additive adoption under the documented
-  grace; disclosure only, never a calculation input.
-
-## 2026-08-23
-
-- B300: hourly panel lane minted under `annex_a_v0_2_calc_v7`
-  (config/index_panel_b300.json). The hourly series replays from the
-  lane's 2026-08-10 genesis; the record stitches basket-era 4-slot
-  snapshots through 2026-08-23 and raw-observatory hourly snapshots from
-  2026-08-24T00Z. The daily series is frozen at its final version
-  `annex_a_v0_2_calc_v6` (config/index_basket.json) and no longer
-  extended; `annex_a_v0_2_calc_v1` through `_v5` are its earlier frozen
-  versions.
-- B200: hourly panel lane minted under `annex_a2_v0_3_calc_v6`
-  (config/index_panel_b200.json), same record stitching cutover, replaying
-  from the lane's 2026-08-16 genesis. The daily series is frozen at its
-  final version `annex_a2_v0_3_calc_v5` (config/index_basket_b200.json)
-  and no longer extended; `annex_a2_v0_3_calc_v1` through `_v4` are its
-  earlier frozen versions.
-- H100-SXM: panel lane genesis under `h100_sxm_v1_calc_v1`
-  (config/index_panel_h100_sxm.json), genesis date 2026-08-23. No
-  predecessor series exists for this instrument.
-- H200-SXM: panel lane genesis under `h200_sxm_v1_calc_v1`
-  (config/index_panel_h200_sxm.json), genesis date 2026-08-23. No
-  predecessor series exists for this instrument.
-- The broad lanes h100_broad (`h100_broad_v1_calc_v1`) and h200_broad
-  (`h200_broad_v1_calc_v1`) share the 2026-08-23 genesis date; they are
-  configured lanes, not public SKUs.
+- Change log restarted at the public launch of this repository. Earlier
+  internal iterations are superseded by the published record itself:
+  every published observation names its `methodology_id` and embeds the
+  complete calculation parameters that produced it, so any historical
+  print remains verifiable with `./reproduce` regardless of when its
+  methodology version was minted. Changes from this date onward are
+  recorded here.
