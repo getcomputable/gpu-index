@@ -1,0 +1,197 @@
+[
+ {
+  "base_model": "B300",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 0,
+    "hourly_rate": 5.1
+   },
+   "8": {
+    "max_cap": 32,
+    "unrented_count": 0,
+    "hourly_rate": 5.1
+   }
+  }
+ },
+ {
+  "base_model": "B200",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 5,
+    "hourly_rate": 4.25
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 8,
+    "hourly_rate": 4.25
+   }
+  }
+ },
+ {
+  "base_model": "H200",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 3,
+    "hourly_rate": 2.85
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 0,
+    "hourly_rate": 2.85
+   }
+  }
+ },
+ {
+  "base_model": "H100",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 1,
+    "hourly_rate": 1.494
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 8,
+    "hourly_rate": 1.494
+   }
+  }
+ },
+ {
+  "base_model": "RTX 5090",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 6,
+    "hourly_rate": 0.65
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 136,
+    "hourly_rate": 0.65
+   }
+  }
+ },
+ {
+  "base_model": "RTX 4090",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 0,
+    "hourly_rate": 0.3
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 0,
+    "hourly_rate": 0.3
+   }
+  }
+ },
+ {
+  "base_model": "RTX 6000 Ada Generation",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 5,
+    "hourly_rate": 0.69
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 16,
+    "hourly_rate": 0.69
+   }
+  }
+ },
+ {
+  "base_model": "RTX PRO 6000",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 6,
+    "hourly_rate": 0.86
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 32,
+    "hourly_rate": 0.86
+   }
+  }
+ },
+ {
+  "base_model": "L40S",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 0,
+    "hourly_rate": 0.35
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 0,
+    "hourly_rate": 0.35
+   }
+  }
+ },
+ {
+  "base_model": "L40",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 0,
+    "hourly_rate": 0.36
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 0,
+    "hourly_rate": 0.36
+   }
+  }
+ },
+ {
+  "base_model": "A100",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 0,
+    "hourly_rate": 0.36
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 0,
+    "hourly_rate": 0.36
+   }
+  }
+ },
+ {
+  "base_model": "RTX A6000",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 1,
+    "hourly_rate": 0.32
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 8,
+    "hourly_rate": 0.32
+   }
+  }
+ },
+ {
+  "base_model": "RTX 3090",
+  "buckets": {
+   "1": {
+    "max_cap": 10,
+    "unrented_count": 0,
+    "hourly_rate": 0.16
+   },
+   "8": {
+    "max_cap": 64,
+    "unrented_count": 48,
+    "hourly_rate": 0.16
+   }
+  }
+ }
+]

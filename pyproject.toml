@@ -1,0 +1,54 @@
+[project]
+name = "gpu-index"
+version = "0.1.0"
+description = "Computable GPU Index (CGI): open collection, calculation, and publication of GPU rental price indices"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+publish = ["boto3>=1.36"]
+dev = ["pytest>=8.0", "pyyaml>=6.0", "jsonschema>=4.26", "ruff>=0.9"]
+
+[project.urls]
+Homepage = "https://github.com/getcomputable/gpu-index"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# `live` is deselected by default: those tests read the real published
+# record over the network, and a default suite that fails when a host is
+# unreachable breaks offline work and forks. Run them with `pytest -m
+# live`; CI runs them daily in the `live-record` job.
+addopts = "-q -m 'not live'"
+markers = [
+    "live: reads the real published record over the network (deselected by default; run with `pytest -m live`)",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+# Correctness + pycodestyle. Deliberately NOT the full ruleset and NOT
+# `ruff format`: the tree predates ruff, and a wholesale reformat would
+# bury blame for zero behavior change. Widen rule by rule, with the fixes.
+select = ["E", "F", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# The frozen daily lane is retained byte-untouched for replay
+# (docs/architecture.md): never reflow it to please a linter.
+"src/gpu_index/index/sources.py" = ["E501"]
+"src/gpu_index/index/composite.py" = ["E501"]
+# The frozen lane's tests carry live-captured fixture strings.
+"tests/unit/test_index_basket.py" = ["E501"]
+"tests/unit/test_index_composite.py" = ["E501"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gpu_index"]

@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Computable
+#
+# Reproduce PUBLISHED index observations.
+#
+#   ./reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
+#   ./reproduce --producer <sku>      <YYYY-MM-DD[THH]>
+#   ./reproduce --lane <panel_id>     <YYYY-MM-DD[THH]>
+#   ./reproduce --frozen <b300|b200>  <YYYY-MM-DD>
+#
+# Default: the PUBLISHED record (the public projection: observation day
+# files under observations/YYYY/MM/DD.json) -- a recompute-and-match run
+# (scripts/verify_published_record.py): every file's envelope digest is
+# verified, and each observation's index value and stability band are
+# recomputed from the published receipts and matched exactly. The record
+# is read from a local downloaded copy under GPU_INDEX_DATA_DIR (default
+# ./data) when it holds the requested day; otherwise from the public
+# HTTPS front -- GPU_INDEX_PUBLIC_BASE_URL when set, defaulting to the
+# official record host https://data.getcomputable.com. Exit 0 all-match /
+# 1 any mismatch or digest FAIL / 2 could not verify (front unreachable,
+# or no published artifacts for the date) -- the default NEVER exits 0
+# without verifying something; withheld sources degrade an observation
+# to digest-only with a distinct message.
+#
+# Under --producer, the run replays a local collection record instead
+# (the panel engine, scripts/compute_panel_index.py;
+# h100 -> h100_sxm, h200 -> h200_sxm, b300, b200). There, an observation
+# already present in the local producer record auto-routes to
+# --verify-published (a byte-for-byte recompute against the stored
+# artifact) and anything unpublished derives dry-run; nothing is written
+# either way.
+#
+# --lane runs any configured panel lane by its panel_id, including the
+# broad lanes (h100_broad, h200_broad), which exist but are not public
+# SKUs. --frozen keeps the retired daily-series behavior for b300/b200.
+# Both are producer-record modes.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
+       reproduce --producer <sku> <YYYY-MM-DD[THH]>
+       reproduce --lane <panel_id> <YYYY-MM-DD[THH]>
+       reproduce --frozen <b300|b200> <YYYY-MM-DD>
+
+  <sku>             public SKU. Verifies the PUBLISHED record
+                    (recompute-and-match): a local copy under
+                    GPU_INDEX_DATA_DIR when it holds the requested day,
+                    else the public front (GPU_INDEX_PUBLIC_BASE_URL,
+                    default https://data.getcomputable.com). Exit 0
+                    all-match, 1 mismatch/digest FAIL, 2 could not verify
+  --producer        force the internal producer-record replay/verify
+  --lane <panel_id> run any configured panel lane, e.g. h100_broad or
+                    h200_broad (configured lanes that are not public SKUs)
+  --frozen          the retired daily series (b300/b200 only); frozen,
+                    no longer extended
+EOF
+  exit 2
+}
+
+MODE=sku
+PRODUCER=0
+case "${1:-}" in
+  --frozen) MODE=frozen; shift ;;
+  --lane) MODE=lane; shift ;;
+  --producer) PRODUCER=1; shift ;;
+  -h|--help) usage ;;
+esac
+
+[ $# -eq 2 ] || usage
+ARG=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+DATE=$2
+
+ROOT=$(cd "$(dirname "$0")" && pwd)
+PY=${PYTHON:-python3}
+DATA_DIR=${GPU_INDEX_DATA_DIR:-data}
+
+case "$DATE" in
+  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) HOUR="" ;;
+  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]) HOUR=${DATE#*T} ;;
+  *) echo "bad date '$DATE' (expected YYYY-MM-DD or YYYY-MM-DDTHH)" >&2; exit 2 ;;
+esac
+
+# ---------------------------------------------------------------- frozen
+# Legacy escape hatch: the retired daily-lane behavior, verbatim.
+if [ "$MODE" = frozen ]; then
+  case "$ARG" in
+    b300) CONFIG="config/index_basket.json" ;;
+    b200) CONFIG="config/index_basket_b200.json" ;;
+    *) echo "unknown frozen sku '$1' (only b300 and b200 have a frozen daily series)" >&2; exit 2 ;;
+  esac
+  if [ -n "$HOUR" ]; then
+    echo "the frozen daily series is day-keyed; drop the THH hour" >&2
+    exit 2
+  fi
+  META=$("$PY" -c "import json,sys; c=json.load(open(sys.argv[1])); print(c['bucket_prefix'], c['calc']['methodology_id'])" "$ROOT/$CONFIG")
+  PREFIX=${META% *}
+  METHODOLOGY=${META#* }
+  echo "NOTICE: the $ARG daily series ($METHODOLOGY) is frozen and no longer extended; the live hourly lane is './reproduce $ARG <date>[THH]'"
+
+  PUBLISHED="$DATA_DIR/$PREFIX/composites/$METHODOLOGY/$DATE.json"
+  if [ -f "$PUBLISHED" ]; then
+    echo "published record: $PUBLISHED — verifying a byte-for-byte recompute"
+    exec "$PY" "$ROOT/scripts/compute_index_composite.py" \
+      --config "$ROOT/$CONFIG" --verify-published "$DATE"
+  fi
+  exec "$PY" "$ROOT/scripts/compute_index_composite.py" \
+    --config "$ROOT/$CONFIG" --date "$DATE" --dry-run
+fi
+
+# ----------------------------------------------------------- panel lanes
+if [ "$MODE" = lane ]; then
+  LANE=$ARG
+else
+  case "$ARG" in
+    h100) LANE="h100_sxm" ;;
+    h200) LANE="h200_sxm" ;;
+    b300) LANE="b300" ;;
+    b200) LANE="b200" ;;
+    h100_broad|h200_broad)
+      echo "'$1' is a configured lane but not a public SKU; run it explicitly with: ./reproduce --lane $ARG $DATE" >&2
+      exit 2 ;;
+    *) echo "unknown sku '$1' (expected h100, h200, b300, or b200; other lanes run via --lane <panel_id>)" >&2; exit 2 ;;
+  esac
+
+  # Default: the PUBLISHED record (recompute-and-match), always. A local
+  # copy is probed by the requested day's file; a configured public front
+  # is intent; with neither, the official record host is the default, so
+  # a clean clone verifies the live record out of the box. The verifier
+  # exits 2 with an actionable message when nothing is verifiable -- the
+  # default never falls through to the producer replay silently (that
+  # replay verifies nothing published; it is reachable only via the
+  # explicit --producer flag, which forces the internal replay below).
+  if [ "$PRODUCER" -eq 0 ]; then
+    DAY=${DATE%%T*}
+    PUB_SKU=$(printf '%s' "$ARG" | tr '[:lower:]' '[:upper:]')
+    DAY_FILE="$DATA_DIR/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
+    VERSIONED_DAY_FILE=""
+    if [ -f "$DATA_DIR/latest.json" ]; then
+      CURRENT_VERSION=$("$PY" -c 'import json,sys; data=json.load(open(sys.argv[1])); print(next((entry["current_version"] for entry in data.get("data", {}).get("versions", []) if entry.get("sku") == sys.argv[2]), ""))' "$DATA_DIR/latest.json" "$PUB_SKU" 2>/dev/null || true)
+      if [ -n "$CURRENT_VERSION" ]; then
+        VERSIONED_DAY_FILE="$DATA_DIR/$PUB_SKU/v$CURRENT_VERSION/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
+      fi
+    fi
+    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ] && { [ -z "$VERSIONED_DAY_FILE" ] || [ ! -f "$VERSIONED_DAY_FILE" ]; }; then
+      export GPU_INDEX_PUBLIC_BASE_URL="https://data.getcomputable.com"
+    fi
+    exec "$PY" "$ROOT/scripts/verify_published_record.py" \
+      --sku "$PUB_SKU" --date "$DATE"
+  fi
+fi
+
+CONFIG="config/index_panel_${LANE}.json"
+if [ ! -f "$ROOT/$CONFIG" ]; then
+  echo "no panel lane '$LANE' ($CONFIG not found); configured lanes:" >&2
+  for f in "$ROOT"/config/index_panel_*.json; do
+    b=$(basename "$f" .json)
+    echo "  ${b#index_panel_}" >&2
+  done
+  exit 2
+fi
+
+META=$("$PY" -c "import json,sys; c=json.load(open(sys.argv[1])); print(c['bucket_prefix'], c['calc']['methodology_id'])" "$ROOT/$CONFIG")
+PREFIX=${META% *}
+METHODOLOGY=${META#* }
+COMPOSITES="$DATA_DIR/$PREFIX/composites/$METHODOLOGY"
+
+# Single observation: verify if published locally, else derive dry-run.
+if [ -n "$HOUR" ]; then
+  if [ -f "$COMPOSITES/$DATE.json" ]; then
+    exec "$PY" "$ROOT/scripts/compute_panel_index.py" \
+      --config "$ROOT/$CONFIG" --verify-published "$DATE"
+  fi
+  exec "$PY" "$ROOT/scripts/compute_panel_index.py" \
+    --config "$ROOT/$CONFIG" --observation "$DATE" --dry-run
+fi
+
+# Whole UTC day: verify every locally published observation of the day,
+# then derive the unpublished remainder in one replay (the panel CLI
+# prints only unpublished targets; published ones advance state and were
+# just verified above).
+FAIL=0
+shopt -s nullglob
+for f in "$COMPOSITES/${DATE}"T[0-9][0-9].json; do
+  STAMP=$(basename "$f" .json)
+  "$PY" "$ROOT/scripts/compute_panel_index.py" \
+    --config "$ROOT/$CONFIG" --verify-published "$STAMP" || FAIL=1
+done
+shopt -u nullglob
+
+TODAY=$(date -u +%Y-%m-%d)
+END=23
+if [[ "$DATE" > "$TODAY" ]]; then
+  echo "no observations for $DATE yet: the date is in the future (UTC)" >&2
+  exit 1
+fi
+if [ "$DATE" = "$TODAY" ]; then
+  END=$((10#$(date -u +%H) - 1))
+  if [ "$END" -lt 0 ]; then
+    echo "no closed observations for $DATE yet (an observation closes at the next scheduled mark)"
+    exit "$FAIL"
+  fi
+fi
+"$PY" "$ROOT/scripts/compute_panel_index.py" \
+  --config "$ROOT/$CONFIG" \
+  --from "${DATE}T00" --to "$(printf '%sT%02d' "$DATE" "$END")" --dry-run || FAIL=1
+exit "$FAIL"

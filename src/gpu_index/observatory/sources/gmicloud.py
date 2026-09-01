@@ -1,0 +1,304 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Computable
+"""GMI Cloud -- /en/pricing server-rendered GPU cards, list-floor prices.
+
+Page shape verified live 2026-08-22 (~101KB, single GET, no auth, no
+pagination; the collector sends the project User-Agent defined in
+gpu_index.common.http).
+Five 'NVIDIA <chip>' h3 cards each carry a 'from $X.XX'
+span immediately followed by a '/GPU-hour' unit span; that three-anchor
+adjacency (NVIDIA h3 + 'from $' figure + unit span) is the ONLY price pin
+because '$2.00' appears 9x in the bytes (meta description, og/twitter
+tags, RSC flight duplicates) -- free-grepping dollars would multiply-record
+H100.
+
+Fail-closed identity pins:
+  - every '/GPU-hour' span on the page must land inside exactly one
+    NVIDIA-h3 card segment, at most one per card -- a unit span the parse
+    cannot attribute to a chip heading means the card grid reshaped, so it
+    raises rather than misattributes a price;
+  - a card whose price slot is adjacent to the unit span but is not a
+    'from $X.XX' figure is the page's own unpriced encoding (the GB300
+    card prints 'Pre order' with a dangling '/GPU-hour' span) -> skipped
+    and counted in partial_errors, never guessed; a unit span with NO
+    adjacent price slot at all is a reshape -> raise.
+
+Semantics:
+  - prices are marketing 'from' floors, one per chip; the page's own FAQ
+    states on-demand and committed pricing differ, so tier is recorded as
+    'from_floor' (closest honest label), NEVER as on-demand;
+  - the unit is the page's own '/GPU-hour' span -> per-GPU basis 1; the
+    '$' figure on the en-US page of this US provider is USD;
+  - sku_identifier is the verbatim h3 heading text -- the ' GPU' suffix is
+    inconsistent ('NVIDIA H100 GPU' vs 'NVIDIA H200'), the catalog
+    normalizes. GB200/GB300 are Grace-Blackwell superchips, first-class
+    catalog skus, never B200/B300 (boundary-aware matching guarantees it);
+  - JSON-LD on the page carries NO per-GPU offers (Organization/WebPage/
+    Service/FAQPage only) -- the HTML cards are the only structured price
+    surface. Bare /pricing 30x-redirects to a locale path; the /en/ URL is
+    pinned so a default-locale change can never swap the page under us.
+    The per-card availability badge (the div immediately before the h3:
+    'AVAILABLE NOW' / 'Limited Availability') rides in extra.
+
+Region capacity metadata (added 2026-08-25): the console API's public IDC
+roster (IDC_URL, no auth, no params, ~3.1KB) rides in book_stats as
+counts + exceptions. Live 200
+JSON 2026-08-25: 27 entries -- one 'global' pseudo-entry plus 26 real
+datacenters (15x Iowa, 2x Denver, Ohio, Oregon, 3x TW, 2x SG, 1x JP), all
+"status":"available". GMI's own API docs (api-reference/idcs/
+list-all-idcs.md) document the status enum 'available | full |
+maintenance' as capacity vocabulary, but zero variance has ever been
+observed -- treat the first non-available print as a semantics-calibration
+event, not automatically a market signal. Semantics fences:
+  - the idcId=='global' pseudo-entry is EXCLUDED from every count and
+    flagged separately (global_pseudo_status, verbatim) so it can never
+    mask a real-DC 'full';
+  - statuses outside the documented enum are recorded verbatim in
+    unexpected_statuses, never coerced;
+  - docs note the roster excludes datacenters 'marked as hidden', so it
+    can shrink/grow with zero capacity meaning -- counts are recorded,
+    roster churn is never an error;
+  - region-level only: an IDC going 'full' does not say which GPU model
+    is exhausted (no chip x region state is published on this surface);
+    no join to price rows exists today (page prices are region='global');
+    idcId is the forward join key if a chip-level surface ever publishes.
+Fail-SOFT by ruling: any IDC fetch/parse failure appends ONE partial_error
+and drops book_stats -- the price rows are this collector's product and
+must never be darkened by metadata; parse fences below stay fail-closed
+WITHIN the availability parse. The pricing fail-closed pins above are
+untouched; badge and tier/price semantics unchanged.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from typing import Any, Dict, List, Optional, Tuple
+
+from gpu_index.common.http import fetch
+from gpu_index.observatory.observation import DEFAULT_TIMEOUT, observation, result
+
+SOURCE_ID = "gmicloud"
+
+URL = "https://www.gmicloud.ai/en/pricing"
+IDC_URL = "https://console.gmicloud.ai/api/v1/idcs"
+
+# GMI's documented IDC status enum (capacity vocabulary per their API
+# docs). Anything outside it is recorded verbatim, never coerced.
+_IDC_STATUSES = ("available", "full", "maintenance")
+# The roster's non-datacenter pseudo-entry -- excluded from counts and
+# flagged separately so it can never mask a real-DC 'full'.
+_IDC_GLOBAL_ID = "global"
+
+_UNIT_TOKEN = "/GPU-hour"
+_CARD_PREFIX = "NVIDIA "
+# Plain-text h3 headings only ([^<]+): a card heading that grows nested
+# tags stops matching, its unit span becomes unattributable, and the
+# global attribution check below raises -- never a silent drop.
+_H3_RE = re.compile(r"<h3[^>]*>([^<]+)</h3>")
+# The ONLY price pin: a 'from $X.XX' span immediately followed by the
+# '/GPU-hour' unit span. The 'from ' literal is load-bearing -- it is what
+# justifies the from_floor tier label; if the page drops it the row is
+# skipped (loose slot below), never relabeled.
+_PRICE_PAIR_RE = re.compile(
+    r"<span[^>]*>(from \$(\d[\d,]*\.\d{2}))</span>\s*"
+    r"<span[^>]*>/GPU-hour</span>"
+)
+# Loose adjacency (any text in the price slot) -- used only to tell an
+# unpriced card ('Pre order') from a reshaped one.
+_PRICE_SLOT_RE = re.compile(
+    r"<span[^>]*>([^<]*)</span>\s*<span[^>]*>/GPU-hour</span>"
+)
+# Availability badge: the absolutely-positioned div that sits INSIDE the
+# card immediately BEFORE its h3. Metadata only (extra), so a miss is a
+# missing badge, never a failed row.
+_BADGE_RE = re.compile(r'<div class="absolute[^"]*">([^<]*)</div>\s*$')
+
+
+def parse_gmicloud(html: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Pure parse: (observations, partial_errors) from the page body."""
+    h3s = list(_H3_RE.finditer(html))
+    cards = [
+        (i, m) for i, m in enumerate(h3s)
+        if m.group(1).strip().startswith(_CARD_PREFIX)
+    ]
+    if not cards:
+        raise RuntimeError(
+            "gmicloud: no 'NVIDIA <chip>' h3 card headings on the page -- "
+            "card grid reshaped or pulled; refusing to extract"
+        )
+
+    rows: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    attributed_units = 0
+    for i, m in cards:
+        label = m.group(1).strip()
+        seg_end = h3s[i + 1].start() if i + 1 < len(h3s) else len(html)
+        seg = html[m.end():seg_end]
+        units = seg.count(_UNIT_TOKEN)
+        attributed_units += units
+        if units == 0:
+            errors.append(
+                f"{label}: heading carries no '{_UNIT_TOKEN}' span -- not a "
+                "price card, skipped"
+            )
+            continue
+        if units > 1:
+            raise RuntimeError(
+                f"gmicloud: card {label!r} segment holds {units} "
+                f"'{_UNIT_TOKEN}' spans -- prices can no longer be "
+                "attributed to one chip heading; refusing to extract"
+            )
+        priced = _PRICE_PAIR_RE.findall(seg)
+        if not priced:
+            slot = _PRICE_SLOT_RE.findall(seg)
+            if len(slot) == 1:
+                errors.append(
+                    f"{label}: price slot {slot[0].strip()!r} is not a "
+                    "'from $X.XX' figure -- unpriced/pre-order card "
+                    "skipped, never guessed"
+                )
+                continue
+            raise RuntimeError(
+                f"gmicloud: card {label!r} has a '{_UNIT_TOKEN}' span with "
+                "no adjacent price slot -- card markup reshaped; refusing "
+                "to guess which figure belongs to it"
+            )
+        raw_text, figure = priced[0]
+        price = float(figure.replace(",", ""))
+        if price <= 0:
+            errors.append(
+                f"{label}: printed floor {raw_text!r} is not a positive "
+                "price -- skipped, not a $0 print"
+            )
+            continue
+
+        prefix_start = h3s[i - 1].end() if i > 0 else 0
+        badge = _BADGE_RE.search(html[prefix_start:m.start()])
+        badge_text = badge.group(1).strip() if badge else ""
+        extra: Dict[str, Any] = (
+            {"availability_badge": badge_text} if badge_text else {}
+        )
+        rows.append(
+            observation(
+                sku_identifier=label,
+                price_per_gpu_hr=price,
+                currency="USD",
+                raw_value=raw_text,
+                raw_unit="usd_per_gpu_hr",
+                gpu_count_basis=1,
+                tier="from_floor",
+                region="global",
+                notes=(
+                    f"{label} card {raw_text}{_UNIT_TOKEN} marketing list "
+                    "floor (page FAQ: on-demand and committed rates "
+                    "differ, so deliberately not labeled on-demand"
+                    + (f"; badge {badge_text!r}" if badge_text else "")
+                    + ")"
+                ),
+                extra=extra,
+            )
+        )
+
+    total_units = html.count(_UNIT_TOKEN)
+    if attributed_units != total_units:
+        raise RuntimeError(
+            f"gmicloud: {total_units - attributed_units} of {total_units} "
+            f"'{_UNIT_TOKEN}' price spans sit outside NVIDIA card segments "
+            "-- priced rows the parse cannot attribute to a chip; refusing "
+            "to extract"
+        )
+    if not rows:
+        raise RuntimeError(
+            f"gmicloud: {len(cards)} NVIDIA card headings but zero priced "
+            "observations -- "
+            + ("; ".join(errors) or "no card-level reasons recorded")
+        )
+    return rows, errors
+
+
+def parse_idcs(body: str) -> Dict[str, Any]:
+    """Pure parse: console /api/v1/idcs JSON -> book_stats dict.
+
+    Fail-closed WITHIN this parse -- every fence raises. collect() turns
+    any raise (or a fetch failure) into ONE partial_error and drops
+    book_stats entirely, so region metadata never darkens the price lane.
+    """
+    try:
+        doc = json.loads(body)
+    except ValueError as exc:
+        raise RuntimeError(f"idcs body is not JSON ({exc})")
+    if not isinstance(doc, dict) or not isinstance(doc.get("idcs"), list):
+        raise RuntimeError(
+            "idcs payload lacks a top-level 'idcs' list -- endpoint "
+            "reshaped; refusing to extract"
+        )
+    idcs = doc["idcs"]
+    if not idcs:
+        raise RuntimeError(
+            "idcs list is empty -- even the 'global' pseudo-entry is gone, "
+            "so the surface reshaped rather than the roster shrank"
+        )
+    for n, entry in enumerate(idcs):
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("idcId"), str)
+            or not isinstance(entry.get("status"), str)
+        ):
+            raise RuntimeError(
+                f"idcs entry #{n} lacks string idcId/status -- entry shape "
+                "changed; refusing to count capacity states"
+            )
+
+    # The 'global' pseudo-entry is not a datacenter: excluded from every
+    # count below, flagged verbatim so a real-DC 'full' is never averaged
+    # away behind it (and its own drift stays visible).
+    real = [e for e in idcs if e["idcId"] != _IDC_GLOBAL_ID]
+    pseudo = [e for e in idcs if e["idcId"] == _IDC_GLOBAL_ID]
+
+    counts: Dict[str, int] = {}
+    unexpected: List[str] = []
+    for entry in real:
+        status = entry["status"]
+        counts[status] = counts.get(status, 0) + 1
+        if status not in _IDC_STATUSES and status not in unexpected:
+            unexpected.append(status)
+    return {
+        # Counts + exceptions: small snapshots today (zero variance ever
+        # observed), full verbatim detail the day variance appears.
+        "idc_total": len(real),
+        "idc_status_counts": counts,
+        "idcs_not_available": [
+            e for e in real if e["status"] != "available"
+        ],
+        "unexpected_statuses": unexpected,
+        "global_pseudo_status": (
+            pseudo[0]["status"] if pseudo else None
+        ),
+    }
+
+
+def collect(
+    timeout: float = DEFAULT_TIMEOUT, options: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    html = fetch(URL, timeout=timeout)
+    observations, partial_errors = parse_gmicloud(html)
+    # Region capacity metadata, fetched only AFTER the pricing parse
+    # succeeded. Fail-SOFT by ruling: one partial_error, book_stats
+    # dropped -- never a darkened price lane.
+    book_stats: Optional[Dict[str, Any]] = None
+    try:
+        book_stats = parse_idcs(fetch(IDC_URL, timeout=timeout))
+    except Exception as exc:  # metadata-only surface -- fail-soft
+        partial_errors.append(
+            f"idcs: region capacity fetch/parse failed, book_stats "
+            f"dropped ({exc})"
+        )
+    return result(
+        SOURCE_ID,
+        method="html-regex",
+        url=URL,
+        observations=observations,
+        partial_errors=partial_errors or None,
+        book_stats=book_stats,
+    )

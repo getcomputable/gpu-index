@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "panel_id": "h100_sxm",
+  "description": "H100-SXM panel (METHODOLOGY.md), hourly from genesis and every 15 minutes from 2026-08-29. Underlying: the H100 SXM5 80GB module on an HGX baseboard -- form-factor pure. 16 members, weight floor 2.5%, claim floor 5. Selection over the raw-observatory record; captures nothing.",
+  "methodology_doc": "METHODOLOGY.md",
+  "design_doc": "METHODOLOGY.md",
+  "bucket_prefix": "index/h100_sxm",
+  "genesis_date": "2026-08-23",
+  "drift_scan_observations": 48,
+  "record_sources": [
+    {
+      "kind": "observatory",
+      "prefix": "index/raw_observatory",
+      "from_date": "2026-08-23"
+    }
+  ],
+  "slot_grids": [
+    {
+      "from_date": "2026-08-23",
+      "slot_hours_utc": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    },
+    {
+      "from_date": "2026-08-29",
+      "slot_minutes_utc": [
+        0, 15, 30, 45, 60, 75, 90, 105,
+        120, 135, 150, 165, 180, 195, 210, 225,
+        240, 255, 270, 285, 300, 315, 330, 345,
+        360, 375, 390, 405, 420, 435, 450, 465,
+        480, 495, 510, 525, 540, 555, 570, 585,
+        600, 615, 630, 645, 660, 675, 690, 705,
+        720, 735, 750, 765, 780, 795, 810, 825,
+        840, 855, 870, 885, 900, 915, 930, 945,
+        960, 975, 990, 1005, 1020, 1035, 1050, 1065,
+        1080, 1095, 1110, 1125, 1140, 1155, 1170, 1185,
+        1200, 1215, 1230, 1245, 1260, 1275, 1290, 1305,
+        1320, 1335, 1350, 1365, 1380, 1395, 1410, 1425
+      ]
+    }
+  ],
+  "reject_tokens": [
+    "PCIE",
+    "NVL",
+    "H800",
+    "H20",
+    "H100T",
+    "GH200"
+  ],
+  "calc": {
+    "methodology_id": "h100_sxm_v1_calc_v8",
+    "description": "calc_v8 attendance-weighted quarter-hour panel mint (h100_sxm_v1_calc_v8); METHODOLOGY.md is the binding methodology document",
+    "availability_verified_sources": ["lium", "vast"],
+    "min_sources_to_claim": 5,
+    "eligible_tiers": [
+      "on-demand"
+    ],
+    "filter_window": 20,
+    "filter_sigma": 3.0,
+    "filter_warmup": 10,
+    "filter_sigma_floor_pct": 3.0,
+    "filter_terms": "recorded_currency",
+    "composite_statistic": "median_ci_votes",
+    "iqm_alpha": 0.16666,
+    "vote_sigma_source": "dw_history",
+    "vote_sigma_floor_pct": 3.0,
+    "carry_forward_window_hours": 72,
+    "carry_forward_failure_kinds": ["fetch", "parse"],
+    "manual_verify_pct": 15,
+    "fx_lane": "ecb",
+    "fx_max_staleness_days": 7,
+    "manual_exclusions": [],
+    "jump_screen": {
+      "quarantine_pct": 25,
+      "corroborate_pct": 10,
+      "min_corroborators": 2,
+      "reference_max_lookback": 24
+    },
+    "statistic_params": {
+      "vast_vwm_verified_us_ca_floor": {
+        "min_population_machines": 5,
+        "min_population_hosts": 3
+      },
+      "lium_vwm_book_floor": {
+        "min_population_machines": 5,
+        "min_population_miners": 3
+      }
+    },
+    "dynamic_weights": {
+      "scheme": "predictive_v1",
+      "lookback_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "forward_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "history_days": 90,
+      "half_life_days": 30,
+      "ridge_lambda": 1.0,
+      "gamma": 4.0,
+      "weight_min": 0.025,
+      "weight_max": 0.3,
+      "min_train_samples": 10,
+      "target_variance_floor": 1e-12,
+      "switch_min_eligible": 5,
+      "max_abs_log_return": 0.5,
+      "attendance_floor": 0.5,
+      "attendance_half_life_hours": 6,
+      "attendance_eta": 0.5,
+      "no_price_exclusion_hours": 24
+    }
+  },
+  "members": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier '1x H100 SXM5 80GB on-demand' -- the provider's own offer label carries SXM5 (the normalizer splits alpha<->digit, so SXM5 matches token SXM)"
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "HGX"
+        ]
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA HGX H100' on-demand -- HGX is NVIDIA's SXM-baseboard platform (the product definition: 'SXM5 module on an HGX baseboard'), stated on the provider's own label"
+    },
+    {
+      "source_id": "coreweave",
+      "display_name": "CoreWeave",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "HGX"
+        ]
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA HGX H100' 8-GPU instance on-demand (NA and EU tables) -- HGX on the provider's own label"
+    },
+    {
+      "source_id": "lambda",
+      "display_name": "Lambda",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-23: sku_identifier 'NVIDIA H100 SXM' 8x on-demand; the PCIe part self-labels 'NVIDIA H100 PCIe' and the committed island labels bare 'NVIDIA H100' (reserved tier)"
+    },
+    {
+      "source_id": "together",
+      "display_name": "Together AI",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "HGX"
+        ]
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA HGX H100' on-demand (GPU Clusters caption; Dedicated Inference lookalike rejected at collection) -- HGX on the provider's own label. Reserved tenor rows are on the record but tier-ineligible (eligible_tiers is on-demand only -- the tier-screen reconciliation (methodology section 5), see calc.description)"
+    },
+    {
+      "source_id": "hyperstack",
+      "display_name": "Hyperstack (NexGen Cloud)",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA H100 SXM' on-demand; the unqualified 'NVIDIA H100' and 'NVIDIA H100 NVLink' rows are separate labels the require rule screens out (boundary matching keeps reject-token NVL from firing inside NVLINK; the require rule does the screening here)"
+    },
+    {
+      "source_id": "crusoe",
+      "display_name": "Crusoe",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "HGX"
+        ]
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA H100 80GB HGX' on-demand -- HGX on the provider's own label"
+    },
+    {
+      "source_id": "tensorpool",
+      "display_name": "TensorPool",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'H100 SXM' on-demand (TensorPool's own column of its /pricing grid; competitor columns are never recorded)"
+    },
+    {
+      "source_id": "scaleway",
+      "display_name": "Scaleway",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-23: API gpu_info.gpu_name 'H100-SXM' (instance H100-SXM-2-80G, EUR-billed) -- Scaleway's own API separates 'H100-SXM' from 'H100-PCIe' by name. Bills EUR; ECB lane converts at calc; this lane's fx/ store seeds fresh under index/h100_sxm"
+    },
+    {
+      "source_id": "civo",
+      "display_name": "Civo",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-23: sku_identifier 'NVIDIA H100 SXM' on-demand -- the token is Civo's own pricing-table caption"
+    },
+    {
+      "source_id": "voltagepark",
+      "display_name": "Voltage Park",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-23: API specs_per_node.gpu_model 'h100-sxm5-80gb' -- the provider's own API field embeds sxm5"
+    },
+    {
+      "source_id": "digitalocean",
+      "display_name": "DigitalOcean",
+      "weight": 0.07,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "declared",
+        "evidence": "DigitalOcean's marketing pricing page (www.digitalocean.com/pricing/gpu-droplets, probe 2026-08-23) names the product verbatim 'NVIDIA HGX H100' (80 GB, 1 or 8 GPUs per droplet) at on-demand -- exactly the collector's print from the docs pricing page, tying the two surfaces to one offer. The docs page the collector records prints bare 'NVIDIA H100', so the form factor cannot be screened from the stored label; the declaration lives here instead (second-wave 'seat on confirmation' met)."
+      },
+      "notes": "declared seat: the collector's structured label carries no form-factor token; re-verify the marketing page at panel review"
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod",
+      "weight": 0.05,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "HBM3"
+        ]
+      },
+      "extra_require": {
+        "cloud": "secure"
+      },
+      "notes": "live probe 2026-08-24T00Z: sku_identifier 'NVIDIA H100 80GB HBM3' (RunPod's own GraphQL id -- the SXM device string; HBM3 discriminates because the PCIe card is HBM2e, and RunPod's PCIe/NVL parts self-label 'NVIDIA H100 PCIe' / 'NVIDIA H100 NVL' in the same API). The record carries Secure AND Community rows under this one label, distinguished by the collector's structured extra.cloud field -- extra_require screens the seat to cloud 'secure'"
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "weight": 0.05,
+      "skus": [
+        "H100"
+      ],
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "live probe 2026-08-23: sku_identifier 'H100 SXM5 (80GB)' x8 row -- the provider's own /pricing row key; its bare 'H100 (80GB)' and 'H100 NVL (94GB)' rows are separate labels"
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "weight": 0.03,
+      "skus": [
+        "H100"
+      ],
+      "statistic": "vast_vwm_verified_us_ca_floor",
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "vast's own gpu_name taxonomy lists 'H100 SXM' as a distinct chip (the collector queries it by that name and sku_identifier IS the query name); statistic seat -- volume-weighted median over verified US/CA hosts with population floors (probe 2026-08-23: the book was 3 machines / 1 host, so the seat holds out thin_book until the book deepens; honest)"
+    },
+    {
+      "source_id": "lium",
+      "display_name": "Lium",
+      "weight": 0.03,
+      "skus": [
+        "H100"
+      ],
+      "statistic": "lium_vwm_book_floor",
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "HBM3"
+        ]
+      },
+      "notes": "live probe 2026-08-23: machine_name 'NVIDIA H100 80GB HBM3' (the SXM device string; the PCIe part self-labels 'NVIDIA H100 PCIe' in the same book). Statistic seat with book floors; probe found 2 machines (both RU, one operator), so the seat prints nothing until the book deepens. NO verified field exists on lium and no geo screen is applied -- recorded open methodology calls"
+    }
+  ]
+}

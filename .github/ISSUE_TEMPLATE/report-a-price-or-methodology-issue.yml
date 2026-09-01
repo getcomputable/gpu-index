@@ -1,0 +1,42 @@
+name: Report a price or methodology issue
+description: A published value looks wrong, a collector misreads a provider, or the methodology behaves unexpectedly.
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for checking the record. Published values are never revised —
+        a confirmed problem publishes forward under a new methodology
+        version — but every report is investigated. You can verify a value
+        yourself first with `./reproduce <sku> <date>` (see the README).
+  - type: input
+    id: sku
+    attributes:
+      label: SKU
+      description: Which index/lane (e.g. h100, h200, b200, b300).
+      placeholder: h100
+    validations:
+      required: true
+  - type: input
+    id: observed_at
+    attributes:
+      label: observed_at
+      description: The UTC observation stamp(s) affected, YYYY-MM-DD or YYYY-MM-DDTHH.
+      placeholder: 2026-08-25T14
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What the published value/behavior should have been, and why — the provider page you compared against, the reproduce output, the methodology section.
+    validations:
+      required: true
+  - type: input
+    id: source_url
+    attributes:
+      label: Source URL
+      description: The provider pricing page (or other evidence) supporting the report.
+      placeholder: https://...
+    validations:
+      required: false

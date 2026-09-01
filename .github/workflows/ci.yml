@@ -1,0 +1,109 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # For the live-record job below, which is the only job these two
+  # trigger (every other job is gated to push/pull_request).
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        # `ruff format --check` is deliberately absent: the tree predates
+        # ruff and a wholesale reformat belongs in its own PR, if ever.
+        run: ruff check src tests scripts
+      - name: Tests
+        run: pytest -q
+
+  # LIVE record gate (schedule + on demand, never a PR gate): re-verifies
+  # the REAL published record over the network from a fresh checkout with
+  # no local ./data -- the clean-clone path a stranger runs. The rest of
+  # the suite reads fixtures written to the contract, so only this job can
+  # catch the reader's contract drifting from what the publisher actually
+  # emits. Deliberately not on PRs: a required check that fails whenever a
+  # host is unreachable is one reviewers learn to click past.
+  live-record:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Verify the live published record
+        run: pytest -m live
+
+  # Signature-compatibility gate (PRs only): griffe compares the public API
+  # of gpu_index on this branch against the PR's base branch and fails on
+  # breaking changes (removed/renamed names, removed/reordered parameters,
+  # changed defaults). Names-only surface drift is covered separately by
+  # tests/unit/test_public_api.py in the test job.
+  #
+  # Run through .github/scripts/api_compat.py, not `griffe check` directly:
+  # griffe also reports a constant's VALUE changing, which is not a
+  # signature break and which `griffe check` gives no way to scope out.
+  # The wrapper drops that one breakage kind (still printing it) and keeps
+  # every signature check fatal. See the script's docstring.
+  api-compat:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # griffe loads the --against ref from git history
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Install griffe
+        run: pip install "griffe>=2,<3"  # the wrapper uses griffe's 2.x API
+      - name: Check API against the PR base
+        run: python .github/scripts/api_compat.py gpu_index --search src --against "origin/${{ github.base_ref }}" --format github
+
+  # DCO gate (PRs only): every commit in the PR range must carry a
+  # Signed-off-by trailer (CONTRIBUTING.md section 1). Stopgap until an
+  # org admin installs the GitHub DCO app; drop this job once it is on.
+  dco:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the PR range spans commits beyond the merge ref
+      - name: Every PR commit has a Signed-off-by trailer
+        run: |
+          set -euo pipefail
+          range="${{ github.event.pull_request.base.sha }}..HEAD"
+          echo "checking DCO sign-off over $range"
+          missing=""
+          for sha in $(git rev-list --no-merges "$range"); do
+            if ! git log -1 --format='%B' "$sha" | grep -Eqi '^Signed-off-by: .+'; then
+              missing="$missing $sha"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "commits missing a Signed-off-by trailer:"
+            for sha in $missing; do
+              git log -1 --format='  %h %s' "$sha"
+            done
+            echo
+            echo "Every commit must be signed off: commit with 'git commit -s'"
+            echo "(or amend/rebase with --signoff). See CONTRIBUTING.md,"
+            echo "section 1 (Developer Certificate of Origin)."
+            exit 1
+          fi
+          echo "all commits in the range carry a Signed-off-by trailer"
