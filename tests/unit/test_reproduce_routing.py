@@ -209,6 +209,42 @@ def test_receipts_flag_routes_to_the_receipts_only_verifier(shim, data_dir):
     assert _shim_env(result) == "https://data.getcomputable.com"
 
 
+@pytest.mark.parametrize("sku", ["h100", "h200", "b300", "b200"])
+def test_collect_flag_routes_only_the_sku_to_current_collection(
+    shim, data_dir, sku
+):
+    result = _run(shim, data_dir, "--collect", sku)
+
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert f"collect_latest_receipts.py --sku {sku}" in line
+    assert "verify_published_record.py" not in line
+    assert _shim_env(result) == ""
+
+
+def test_collect_flag_refuses_dates_and_unknown_skus(shim, data_dir):
+    with_date = _run(
+        shim, data_dir, "--collect", "h100", "2026-09-01"
+    )
+    assert with_date.returncode == 2
+    assert "usage: reproduce" in with_date.stderr
+    assert not _shim_lines(with_date)
+
+    unknown = _run(shim, data_dir, "--collect", "h300")
+    assert unknown.returncode == 2
+    assert "unknown sku 'h300'" in unknown.stderr
+    assert not _shim_lines(unknown)
+
+
+def test_usage_says_historical_source_inputs_cannot_be_observed(
+    shim, data_dir
+):
+    result = _run(shim, data_dir, "--help")
+    assert result.returncode == 2
+    assert "Past source" in result.stderr
+    assert "not retroactively observable" in result.stderr
+
+
 def test_producer_flag_forces_the_internal_replay(shim, data_dir):
     # Even with a published day file present, --producer keeps the
     # previous producer-record semantics verbatim.

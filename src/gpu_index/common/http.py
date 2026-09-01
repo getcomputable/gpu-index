@@ -12,13 +12,15 @@ integrity is part of the contract:
 
 from __future__ import annotations
 
+import contextvars
 import re
 import ssl
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Optional
+from contextlib import contextmanager
+from typing import Iterator, Optional
 
 # One identity across every repository that collects for this index. The
 # +URL is getcomputable.com and NOT this repository: a repo URL stops
@@ -28,6 +30,26 @@ UA = (
     "CGI-Collector/1.0 (+https://getcomputable.com; "
     "team@getcomputable.com)"
 )
+_USER_AGENT_OVERRIDE: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "gpu_index_user_agent_override", default=None
+)
+
+
+def current_user_agent() -> str:
+    """Return the request identity installed for the current execution context."""
+    return _USER_AGENT_OVERRIDE.get() or UA
+
+
+@contextmanager
+def user_agent_scope(value: str) -> Iterator[None]:
+    """Temporarily identify requests from this execution context as ``value``."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("user agent must be a non-empty string")
+    token = _USER_AGENT_OVERRIDE.set(value)
+    try:
+        yield
+    finally:
+        _USER_AGENT_OVERRIDE.reset(token)
 
 DEFAULT_TIMEOUT = 30.0
 # urllib's timeout bounds each socket OPERATION (connect / one recv), not the
@@ -115,7 +137,7 @@ def fetch(
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"User-Agent": UA, **(headers or {})},
+        headers={"User-Agent": current_user_agent(), **(headers or {})},
     )
     with _OPENER.open(req, timeout=timeout) as resp:
         return read_body_capped(resp, wall_clock_limit=wall_clock_limit).decode(
