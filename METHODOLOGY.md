@@ -482,15 +482,15 @@ Q_i     = mean of q_{i,h} over the three forwards
 
 ### 8.6 Attendance
 
-A provider's weight also reflects whether it shows up. Each scheduled observation marks every provider: 1 if it was read successfully and produced a usable price, 0 if it was read successfully and produced none (a price rejected by the outlier check of section 6.4 counts as none), and unchanged if our own collection or parsing failed, since a provider is never penalized for our failure.
+A provider's weight also reflects whether it shows up. Each scheduled observation marks every provider: 1 if it was read successfully and produced a price (a price held out by the outlier check of section 6.4 still counts as present, since the fence keeps a print out of the index, not out of the attendance record), 0 if it was read successfully and produced none, and unchanged if our own collection or parsing failed, since a provider is never penalized for our failure.
 
 The attendance factor `A_i` is the exponentially weighted average of this series over the 90-day regression window, with its own attendance half-life, normalized so a provider present throughout has `A_i` = 1. A newly seated provider's scheduled observations before it joined count as 0, so its first print starts near zero; at the 6-hour half-life, sustained printing reaches full attendance in about two days.
 
 The missing print itself is handled by cause:
 
-- Our own collection or parsing failure: the provider's last usable price is carried forward into the observation, and attendance is unchanged. A carried price never advances the provider's own price series, so it enters neither the liveness regression nor the vote sigma, and it never counts toward the minimum passing panel.
+- Our own collection or parsing failure: the provider's last accepted vote (price, vote sigma, and weight) is carried forward verbatim, and attendance is unchanged. The carried weight is the one recorded at the observation it came from, so it sits outside the weights newly allocated at the current observation, and the published weights of that observation sum to more than one by that amount. A carried price never advances the provider's own price series, so it enters neither the liveness regression nor the vote sigma, and it never counts toward the minimum passing panel.
 - Provider read, no usable price: attendance falls and the consecutive no-price count advances. The provider's last usable price is carried forward and fades as attendance falls.
-- Hard cutoff: past 96 consecutive observations without a usable price (24 hours), the provider is excluded entirely until it produces a new usable price. Our own failures never advance the count.
+- Hard cutoff: past 96 consecutive observations without a usable price (24 hours), the provider receives no weight and casts no vote until a fresh print advances its state. Exclusion is decided from the pre-observation history, so the first accepted recovery price remains visible as receipt evidence but still carries no weight or vote; it re-admits the provider at the next scheduled observation. Our own failures never advance the count.
 
 > **Why attendance?** A new provider should not receive full weight from its first print, and a provider that stops publishing should fade rather than vanish instantly or linger stale. The half-life sets the smooth fade during a temporary absence; the hard cutoff removes persistently absent sources. Entry, fade-out, and recovery all happen without per-provider judgment.
 
