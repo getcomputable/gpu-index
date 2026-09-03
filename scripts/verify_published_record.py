@@ -178,9 +178,11 @@ def _run_full(reader, *, sku: str, date: str, stamp: str | None) -> int:
                 f"{divergence.quantity} derived {divergence.derived!r} "
                 f"published {divergence.published!r}"
             )
+    # Same summary shape as the receipts path below: the full re-derivation
+    # has no digest-only verdict, so its degraded count is always 0.
     print(
         f"summary: {len(checks)} observation(s): {matched} MATCH, "
-        f"{mismatched} MISMATCH"
+        f"{mismatched} MISMATCH, 0 degraded"
     )
     return 1 if mismatched else 0
 
