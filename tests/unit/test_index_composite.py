@@ -1449,13 +1449,66 @@ def test_median_ci_composite_rejects_non_finite_votes():
         )
 
 
-def test_weighted_quantile_rejects_non_positive_weights():
+def test_weighted_quantile_rejects_negative_and_priceless_books():
     """The docstring promises a clean error, never an IndexError or a
-    silent average over a zero-weight book."""
-    with pytest.raises(ValueError, match="positive weights"):
+    silent average over a zero-weight book.
+
+    A NEGATIVE weight is a fault and still fails closed, while a
+    zero-weight vote is a seated-but-not-contributing member and is
+    dropped. A book of nothing but zeros therefore still refuses -- it has
+    no priceable vote left."""
+    with pytest.raises(ValueError, match="empty/zero-weight"):
         _weighted_quantile([(5.0, 0.0)], Fraction(1, 2))
-    with pytest.raises(ValueError, match="positive weights"):
+    with pytest.raises(ValueError, match="non-negative weights"):
         _weighted_quantile([(5.0, 1.0), (9.0, -0.1)], Fraction(1, 2))
+
+
+def test_zero_weight_votes_are_ignored_by_both_statistics():
+    """A seat with attendance 0 reaches the ballot at weight 0.
+
+    Ballot weight is allocation x attendance and weight_min floors the
+    ALLOCATION, before attendance -- so a brand-new seat arrives here at
+    exactly 0.0. That is seated-but-not-contributing, a real state, and
+    it must not change the number a panel prints.
+    """
+    live = [(10.0, 0.25), (11.0, 0.25), (12.0, 0.25), (13.0, 0.25)]
+    seated = live + [(999.0, 0.0)]
+    assert _weighted_quantile(seated, Fraction(1, 2)) == _weighted_quantile(
+        live, Fraction(1, 2)
+    )
+    assert _interquantile_mean(seated, Fraction(1, 6)) == _interquantile_mean(
+        live, Fraction(1, 6)
+    )
+
+
+def test_a_zero_weight_vote_cannot_move_a_boundary_tie():
+    """Why zero-weight votes are DROPPED rather than admitted.
+
+    The tie branch returns the mean of the boundary vote and its
+    neighbour. Admitting a zero-weight vote would let it sort into that
+    neighbour slot and move a published price it holds no weight in.
+    """
+    tie = [(10.0, 0.5), (20.0, 0.5)]
+    assert _weighted_quantile(tie, Fraction(1, 2)) == 15.0
+    wedged = [(10.0, 0.5), (11.0, 0.0), (20.0, 0.5)]
+    assert _weighted_quantile(wedged, Fraction(1, 2)) == 15.0
+
+
+def test_negative_weights_still_fail_closed():
+    """Zero is a state; negative is a fault, and stays refused."""
+    bad = [(10.0, 0.5), (11.0, -0.1)]
+    with pytest.raises(ValueError, match="non-negative"):
+        _weighted_quantile(bad, Fraction(1, 2))
+    with pytest.raises(ValueError, match="non-negative"):
+        _interquantile_mean(bad, Fraction(1, 6))
+
+
+def test_an_all_zero_ballot_still_refuses():
+    """Dropping zeros must not turn an empty book into a silent answer."""
+    with pytest.raises(ValueError):
+        _weighted_quantile([(10.0, 0.0), (11.0, 0.0)], Fraction(1, 2))
+    with pytest.raises(ValueError, match="empty/zero-weight"):
+        _interquantile_mean([(10.0, 0.0), (11.0, 0.0)], Fraction(1, 6))
 
 
 def test_config_rejects_median_votes_without_a_positive_floor(tmp_path):
@@ -1538,7 +1591,7 @@ def test_interquantile_mean_matches_its_integral_definition():
     for bad in (Fraction(0), Fraction(-1, 10), Fraction(51, 100)):
         with pytest.raises(ValueError, match="alpha"):
             _interquantile_mean(votes, bad)
-    with pytest.raises(ValueError, match="positive weights"):
+    with pytest.raises(ValueError, match="non-negative weights"):
         _interquantile_mean([(5.0, 1.0), (9.0, -0.1)], Fraction(1, 4))
     with pytest.raises(ValueError, match="empty"):
         _interquantile_mean([], Fraction(1, 4))
