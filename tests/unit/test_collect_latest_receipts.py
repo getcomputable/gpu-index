@@ -67,7 +67,7 @@ def _latest(receipts: list[dict]) -> dict:
                 {
                     "sku": "H100",
                     "current_version": 2,
-                    "methodology_id": "h100_sxm_v1_calc_v8",
+                    "methodology_id": "h100_sxm_v1_calc_v10",
                 }
             ],
             "observations": [
@@ -79,7 +79,7 @@ def _latest(receipts: list[dict]) -> dict:
                 },
                 {
                     "sku": "H100",
-                    "methodology_id": "h100_sxm_v1_calc_v8",
+                    "methodology_id": "h100_sxm_v1_calc_v10",
                     "observed_at": "2026-09-01T08:45:00.000Z",
                     "receipts": receipts,
                 },
@@ -271,7 +271,7 @@ def test_exit_codes_are_checked_directly_without_a_pipeline(
     report = collect_module.CollectionReport(
         sku="H100",
         observed_at="2026-09-01T08:45:00.000Z",
-        methodology_id="h100_sxm_v1_calc_v8",
+        methodology_id="h100_sxm_v1_calc_v10",
         checks=tuple(
             collect_module.SeatCheck("H100", f"source-{i}", state)
             for i, state in enumerate(checks)
@@ -285,7 +285,7 @@ def test_current_pointer_selects_the_latest_methodology(collect_module):
     current = collect_module._select_latest_observation(  # noqa: SLF001
         _latest([]), "H100"
     )
-    assert current["methodology_id"] == "h100_sxm_v1_calc_v8"
+    assert current["methodology_id"] == "h100_sxm_v1_calc_v10"
     assert current["observed_at"] == "2026-09-01T08:45:00.000Z"
 
 

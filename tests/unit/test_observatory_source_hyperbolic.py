@@ -58,7 +58,7 @@ def test_source_id_matches_module():
     assert SOURCE_ID == "hyperbolic"
 
 
-def test_config_classifies_hyperbolic_as_first_party_partnered_source():
+def test_config_classifies_hyperbolic_as_first_party_marketplace_source():
     config = json.loads(
         (REPO_ROOT / "config" / "raw_observatory.json").read_text()
     )
@@ -66,7 +66,7 @@ def test_config_classifies_hyperbolic_as_first_party_partnered_source():
         row for row in config["sources"] if row["source_id"] == SOURCE_ID
     )
     assert source["display_name"] == "Hyperbolic"
-    assert source["source_type"] == "direct_partnered"
+    assert source["source_type"] == "marketplace"
     assert source["first_party"] is True
 
 

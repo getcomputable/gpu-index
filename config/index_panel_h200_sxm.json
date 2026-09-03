@@ -68,8 +68,8 @@
     "H20"
   ],
   "calc": {
-    "methodology_id": "h200_sxm_v1_calc_v8",
-    "description": "calc_v8 attendance-weighted quarter-hour panel mint (h200_sxm_v1_calc_v8); METHODOLOGY.md is the binding methodology document",
+    "methodology_id": "h200_sxm_v1_calc_v10",
+    "description": "calc_v10 attendance-weighted quarter-hour panel mint (h200_sxm_v1_calc_v10); METHODOLOGY.md is the binding methodology document",
     "availability_verified_sources": [
       "lium",
       "vast"
@@ -141,7 +141,6 @@
     {
       "source_id": "verda",
       "display_name": "Verda (formerly DataCrunch)",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -156,7 +155,6 @@
     {
       "source_id": "nebius",
       "display_name": "Nebius",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -171,7 +169,6 @@
     {
       "source_id": "coreweave",
       "display_name": "CoreWeave",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -186,7 +183,6 @@
     {
       "source_id": "together",
       "display_name": "Together AI",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -201,7 +197,6 @@
     {
       "source_id": "hyperstack",
       "display_name": "Hyperstack (NexGen Cloud)",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -216,7 +211,6 @@
     {
       "source_id": "crusoe",
       "display_name": "Crusoe",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -231,7 +225,6 @@
     {
       "source_id": "tensorpool",
       "display_name": "TensorPool",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -246,7 +239,6 @@
     {
       "source_id": "civo",
       "display_name": "Civo",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -261,7 +253,6 @@
     {
       "source_id": "sesterce",
       "display_name": "Sesterce",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -274,7 +265,6 @@
     {
       "source_id": "runpod",
       "display_name": "RunPod",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -290,7 +280,6 @@
     {
       "source_id": "digitalocean",
       "display_name": "DigitalOcean",
-      "weight": 0.082,
       "skus": [
         "H200"
       ],
@@ -303,7 +292,6 @@
     {
       "source_id": "vast",
       "display_name": "Vast.ai",
-      "weight": 0.049,
       "skus": [
         "H200"
       ],
@@ -317,7 +305,6 @@
     {
       "source_id": "lium",
       "display_name": "Lium",
-      "weight": 0.049,
       "skus": [
         "H200"
       ],
@@ -327,6 +314,21 @@
         "evidence": "Lium's machine_name is a GPU device-string passthrough and the live book carries 'NVIDIA H200' (FI) and 'NVIDIA H200 NVL' (PT) as distinct labels (probe 2026-08-23); the H200 product line has exactly two forms and the NVL form self-labels, so the bare device string is the SXM module. The seat-evidence rule grants this seat 'declared' explicitly; caveat recorded: this is device-string disambiguation, not an explicit provider SXM utterance -- under a stricter provider-utterance bar, downgrade to label-gated."
       },
       "notes": "statistic seat with book floors (probe: 1 machine, so the seat prints nothing until the book deepens). NO verified field exists on lium and no geo screen is applied -- recorded open methodology calls"
+    },
+    {
+      "source_id": "hyperbolic",
+      "display_name": "Hyperbolic",
+      "skus": [
+        "H200"
+      ],
+      "statistic": "book_median",
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "Hyperbolic builds sku_identifier from its own gpuType + gpuFormFactor, so the SXM5 rows self-label ('H200 SXM5'). A label-mode screen admits the SXM module without a declaration."
     }
   ]
 }

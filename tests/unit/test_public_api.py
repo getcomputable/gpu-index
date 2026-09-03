@@ -138,8 +138,8 @@ PUBLIC_NAMES = {
     },
     "gpu_index.index.panel": {
         "FxUnavailableError", "advance_panel_weight_state",
-        "advance_window", "apply_panel_jump_screen", "boundary_pattern",
-        "compile_screens",
+        "advance_window", "apply_panel_jump_screen", "book_median",
+        "boundary_pattern", "compile_screens",
         "compute_observation", "compute_panel_weights",
         "embedded_calc_params", "eur_to_usd", "evaluate_filter",
         "exclusion_applies", "filter_observation",
