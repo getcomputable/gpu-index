@@ -49,13 +49,24 @@ Artifacts are immutable once published and are committed to by sha256.
 Republication must not alter values; corrections are issued as new dated
 artifacts under a new methodology version.
 
-## 4. No warranty; no advice
+## 4. No warranty; no advice; limitation of liability
 
-The Index Values are provided "as is", without warranty of any kind. Computable
-does not guarantee accuracy, completeness, or continuity of publication and has
-no liability for errors, omissions, or interruptions. Nothing here is
-investment advice. Products referencing the Index Values are not sponsored,
-endorsed, sold, or promoted by Computable unless separately agreed in writing.
+The Index Values are provided "as is", for informational purposes only,
+without warranty of any kind, express or implied, including any warranty of
+accuracy, completeness, or fitness for any particular use. Computable does not
+guarantee continuous or uninterrupted publication. The index is computed from
+publicly available provider prices whose continued availability is outside
+Computable's control; sources and panel membership may change over time as
+described in METHODOLOGY.md and GOVERNANCE.md.
+
+To the maximum extent permitted by law, Computable has no liability for
+errors, omissions, or interruptions in the Index Values, nor for any indirect,
+incidental, special, consequential, or punitive damages, or any loss of
+profits, revenue, data, or business opportunity, arising from use of or
+reliance on the Index Values, even if advised of the possibility of such
+damages. Nothing here is investment advice. Products referencing the Index
+Values are not sponsored, endorsed, sold, or promoted by Computable unless
+separately agreed in writing.
 
 ## 5. Machine-readable declaration
 
