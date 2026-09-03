@@ -51,22 +51,14 @@ artifacts under a new methodology version.
 
 ## 4. No warranty; no advice; limitation of liability
 
-The Index Values are provided "as is", for informational purposes only,
-without warranty of any kind, express or implied, including any warranty of
-accuracy, completeness, or fitness for any particular use. Computable does not
-guarantee continuous or uninterrupted publication. The index is computed from
-publicly available provider prices whose continued availability is outside
-Computable's control; sources and panel membership may change over time as
-described in METHODOLOGY.md and GOVERNANCE.md.
-
-To the maximum extent permitted by law, Computable has no liability for
-errors, omissions, or interruptions in the Index Values, nor for any indirect,
-incidental, special, consequential, or punitive damages, or any loss of
-profits, revenue, data, or business opportunity, arising from use of or
-reliance on the Index Values, even if advised of the possibility of such
-damages. Nothing here is investment advice. Products referencing the Index
-Values are not sponsored, endorsed, sold, or promoted by Computable unless
-separately agreed in writing.
+The index is provided "as is" for informational purposes only, is not
+investment advice, and Computable makes no warranty as to accuracy,
+completeness, or fitness for any particular use. Computable is not liable for
+any damages arising from use of the Index Values, including consequential
+damages, and does not guarantee uninterrupted publication. The index is based
+on publicly available data whose continued availability is outside
+Computable's control. Products referencing the Index Values are not sponsored,
+endorsed, sold, or promoted by Computable unless separately agreed in writing.
 
 ## 5. Machine-readable declaration
 
