@@ -40,11 +40,11 @@ What is panel-NEW, each a design-doc rule:
     held out of this observation (status ``uncorroborated_jump``) and its
     print enters neither the filter window nor the weight series (capture
     parity: a flagged row never became a print);
-  - three panel-scoped STATISTICS (section 4) with population-accounting
-    gates and thin-book floors, dispatched over the member's PRE-SCREENED
-    rows -- a deliberately different signature from the daily registry, so
-    the registry contract of the frozen ``vast_vwm_verified_us_ca`` id is
-    untouched (see PANEL_STATISTIC_FNS);
+  - four panel-scoped STATISTICS (section 4), including population-accounting
+    gates, thin-book floors, and the unfloored book median, dispatched over
+    the member's PRE-SCREENED rows -- a deliberately different signature from
+    the daily registry, so the registry contract of the frozen
+    ``vast_vwm_verified_us_ca`` id is untouched (see PANEL_STATISTIC_FNS);
   - weights come from the stage-2 OBSERVATION-mode engine
     (gpu_index.index.weights.compute_panel_weights: per-observation R-cutoff on the
     era grid, A2 attendance floor, hour-stamped vectors), advanced with
@@ -248,14 +248,16 @@ def _finite_number(value: Any) -> bool:
 # which is the NO-statistic default).
 #
 # Return contract: a print dict ({usd_per_gpu_hr, statistic, currency,
-# n_eligible_prints, gpu_volume, ...}), a hold-out dict ({"held_out":
-# {"reason": ..., counts...}}), or None (no book at all -- the member
-# simply has no print, same as the daily statistics' None).
+# n_eligible_prints, ...}; gpu_volume is present only for volume-weighted
+# statistics), a hold-out dict ({"held_out": {"reason": ..., counts...}}),
+# or None (no book at all -- the member simply has no print, same as the
+# daily statistics' None).
 
 # Chosen priors (METHODOLOGY.md section 6.2); config
 # calc.statistic_params overrides per statistic, and the RESOLVED values
 # ride calc_params so every artifact pins the floors it was priced under.
 PANEL_STATISTIC_PARAM_DEFAULTS: Dict[str, Dict[str, int]] = {
+    "book_median": {},
     "vast_vwm_verified_us_ca_v2": {},
     "vast_vwm_verified_us_ca_floor": {
         "min_population_machines": 5,
@@ -515,7 +517,59 @@ def lium_vwm_book_floor(
     }
 
 
+def book_median(
+    rows: Sequence[Dict[str, Any]],
+    *,
+    source_entry: Optional[Dict[str, Any]],
+    statistic: str,
+    params: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Plain median of every pre-screened USD row, weight 1 per row.
+
+    This id permanently has no population floor, no accounting gate, and no
+    volume weighting. The population includes every row passed by
+    ``member_eligible_rows``, including rows whose availability is zero or
+    unknown and rows whose ``extra.enabled`` is false; this statistic does no
+    additional screening. ``source_entry`` and ``params`` are accepted only
+    for the panel-registry call signature and do not affect the computation.
+
+    Small books deliberately print: N=1 is the one ask and N=2 is the midpoint
+    of the two asks. The ruling follows 421 Hyperbolic slots measured
+    2026-08-29..09-03: the minimum moved on 4% of transitions with mean moves
+    of 0.7% (H100) and 0.6% (H200), while the median moved on 9% / 1.6%
+    (H100) and 13% / 1.4% (H200); both had the same maximum moves, 52% / 23%.
+    A future floored or volume-weighted rule must use a new statistic id rather
+    than changing ``book_median``.
+    """
+    if not rows:
+        return None
+    prices: List[float] = []
+    rows_skipped_non_usd = 0
+    for row in rows:
+        usd = row.get("price_usd_gpu_hr")
+        if usd is None:
+            rows_skipped_non_usd += 1
+            continue
+        prices.append(float(usd))
+    if not prices:
+        return None
+    book = [(usd, 1) for usd in prices]
+    skip_counts = (
+        {"rows_skipped_non_usd": rows_skipped_non_usd}
+        if rows_skipped_non_usd
+        else {}
+    )
+    return {
+        "usd_per_gpu_hr": round(_weighted_median(book), 6),
+        "statistic": statistic,
+        "currency": "USD",
+        "n_eligible_prints": len(book),
+        **skip_counts,
+    }
+
+
 PANEL_STATISTIC_FNS = {
+    "book_median": book_median,
     "vast_vwm_verified_us_ca_v2": vast_vwm_verified_us_ca_v2,
     "vast_vwm_verified_us_ca_floor": vast_vwm_verified_us_ca_floor,
     "lium_vwm_book_floor": lium_vwm_book_floor,

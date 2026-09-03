@@ -285,7 +285,7 @@
     {
       "source_id": "hyperbolic",
       "display_name": "Hyperbolic",
-      "source_type": "direct_partnered",
+      "source_type": "marketplace",
       "first_party": true,
       "notes": "Public no-auth /v2/alpha/on-demand/rental-options JSON — every on-demand option; costPerHourCents is the whole-option total, divided by required gpuCount (never defaulted) for per-GPU USD; missing totalAvailable stays unknown and availability never gates price; providerCostPerHourCents is deliberately never republished; unknown *PerHourCents keys fail closed."
     }

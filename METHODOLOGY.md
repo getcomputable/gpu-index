@@ -99,9 +99,9 @@ This is the general methodology, chip-generic: panel membership, per-SKU paramet
 
 What CGI delivers: one reference price for GPU compute that no single provider can materially move, that both sides of a trade can settle against, and that anyone can recompute from the public record. Each claim below is checkable against that record. Using any Index Value to settle or construct a financial product requires a separate written license (LICENSE-DATA.md Section 2).
 
-- Prices are collected every 15 minutes from 28 providers, unfiltered.
+- Prices are collected every 15 minutes from 29 providers through 31 collector sources, unfiltered.
 - An index value, a stability band, and a liveness weight vector publish for every observation, every 15 minutes. There is no designated fixing time.
-- Each panel provider contributes one number per observation: its lowest eligible on-demand listing, except order books, which contribute a volume-weighted median.
+- Each panel provider contributes one number per observation: its lowest eligible on-demand listing, except order books, which contribute a median of their asks: volume-weighted where the venue discloses volume, plain where it does not.
 - The index is an interquantile mean over votes, not a weighted average: the weighted mean of the central third of the vote mass. Each provider votes at its price and its price plus and minus its own standard deviation.
 - Liveness weights are computed from measured behavior: whether a provider's recent moves anticipated the rest of the panel. No weight requires a per-provider human decision.
 - The index history is a pure function of the published record plus published parameters. Published observations are never revised.
@@ -153,7 +153,7 @@ Symbols: `p_i` is provider i's observed price, `sd_i` its standard deviation ove
 
 ### 3.1 Coverage
 
-Every 15 minutes, 28 providers, every chip model they price (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
+Every 15 minutes, 29 providers through 31 collector sources (Compute Pulse and Sesterce are each read on two surfaces), every chip model they price (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
 
 Every panel is a selection over this record, not a separate collection effort.
 
@@ -165,7 +165,7 @@ Each provider carries two disclosure fields: `source_type` and `first_party`.
 | --- | --- | --- |
 | `direct_principal` | Owns or operates the hardware | Verda, Nebius, CoreWeave, Lambda |
 | `direct_partnered` | Sells capacity under direct arrangement | RunPod (Secure), Latitude.sh |
-| `marketplace` | Third-party hosts; price includes host spread | Vast.ai, Lium |
+| `marketplace` | Third-party hosts; price includes host spread | Vast.ai, Lium, Hyperbolic |
 | `reseller` | Republishes another cloud's capacity | Shadeform |
 | `aggregator` | Publishes its observation of others' prices | Compute Pulse |
 | `hyperscaler` | Separate pricing regime | Oracle |
@@ -207,7 +207,7 @@ Aggregators and resellers are collected but never panel-eligible (section 4.1).
 | Visible holes | Every configured provider appears in every snapshot: success, error, or unimplemented. Never a silently shorter list. |
 | Transport | HTTPS-only including on redirect (a redirect to HTTP raises). Response bodies size-capped, with a wall-clock read limit bounding a slow-drip response a network timeout cannot see. Certificate verification never weakened. |
 | Extraction contract | Record the published figure alongside the normalization; state currency explicitly; fail loudly on reading nothing. A page that silently changed shape must error, not present as a healthy provider with no prices. No recipe aggregates across providers. |
-| Thin-observation gate | Fewer than 8 of the 28 collected providers read successfully: the observation is discarded and the interval left unclaimed so the next run retries. The gate counts collected providers, not panel members; panel sufficiency is the calculation's minimum-panel rule (section 7.5). Recording a thin snapshot would both stop retries and become the reading the calculation uses. |
+| Thin-observation gate | Fewer than 8 of the 31 collector sources read successfully: the observation is discarded and the interval left unclaimed so the next run retries. The gate counts collector sources, not panel members; panel sufficiency is the calculation's minimum-panel rule (section 7.5). Recording a thin snapshot would both stop retries and become the reading the calculation uses. |
 | Alarms | A missing previous day, or a previous day missing intervals, is reported on every run until resolved. |
 
 The provider roster: section 11. Per-provider extraction recipes live in the open source collector.
@@ -226,7 +226,7 @@ Excluded: aggregators, which publish no price of their own, and resellers, whose
 
 Exclusion is by panel construction, not by filter. The panel is an explicit enumerated list in the SKU document; nothing in the calculation branches on `source_type` or `first_party`, which are disclosure fields.
 
-> **Why marketplaces are in.** Vast.ai and Lium are the only venues on any live panel where the published price is a live transactable ask rather than a posted list rate, which makes them each panel's only direct read on clearing prices. Two disclosures follow: their prices embed a host and platform spread, and they are the only members where manipulation would be transactional rather than reputational, hence the specific prohibition in section 10 (Independence).
+> **Why marketplaces are in.** Vast.ai, Lium, and Hyperbolic are the only venues on any live panel where the published price comes from third-party asks rather than a posted list rate: Vast.ai and Lium publish live order books, and Hyperbolic lists its suppliers' rental options, including ones it marks disabled or without stated availability. That makes them each panel's only direct read on what hosts are asking. Two disclosures follow: their prices embed a host and platform spread, and they are the only members where manipulation would be transactional rather than reputational, hence the specific prohibition in section 10 (Independence).
 
 ### 4.2 Double counting
 
@@ -285,9 +285,11 @@ A provider publishing an order book needs a different statistic. The distinction
 | One list price | Lowest eligible | The minimum selects among that provider's own tiers and configurations |
 | A book of third-party asks | Median over the eligible host population | The lowest ask is one host's offer, frequently unverified, sometimes a single machine. It is not representative of the venue |
 
-Two order books are seated across the live panels: Vast.ai and Lium. Which statistic each seat uses is per-SKU configuration (SKU documents). Where the order-book statistic applies, it prices as the volume-weighted median of rentable on-demand per-GPU asks, weighted by each offer's GPU count, under two population conditions the SKU document binds. Population accounting: the stored book must prove the full eligible population was recorded, else the seat is held out rather than pricing a truncated, one-sided-low book; fail closed, deterministic on replay. Population floors, on the H-series panels: a book below the minimum distinct machines, hosts, or sellers holds the seat out with the counts recorded.
+Three order books are seated across the live panels: Vast.ai, Lium, and Hyperbolic. Which statistic each seat uses is per-SKU configuration (SKU documents). Four book statistics exist in the registry, three of which are volume-weighted (two Vast.ai variants and one Lium variant); the Vast.ai and Lium seats use them: they price as the volume-weighted median of rentable on-demand per-GPU asks, weighted by each offer's GPU count, under two population conditions the SKU document binds. Population accounting: the stored book must prove the full eligible population was recorded, else the seat is held out rather than pricing a truncated, one-sided-low book; fail closed, deterministic on replay. Population floors, on the H-series panels: a book below the minimum distinct machines, hosts, or sellers holds the seat out with the counts recorded. The third statistic, `book_median`, is the plain median of every screened USD ask with weight 1 per row: no volume weighting, because the venue discloses no usable volume, and no population floor or accounting gate, so the seat prints on every observation where its screened book is non-empty and the print passes the panel's jump screen (section 7). One ask prints as itself and two print as their midpoint. The population is every row the seat's screens admit, including options the venue lists as disabled or without availability. The Hyperbolic seats on the H100-SXM and H200-SXM panels use it.
 
 > **Why not the lowest ask?** On one real observation the lowest-price rule would have returned an unverified host 29% below the median.
+
+> **Why no floor on the plain median?** A floored median would have held the Hyperbolic seat out of 30% to 60% of the observations measured, and a seat that prints that rarely loses attendance (section 8.6) until it is excluded. Measured over the recorded observations from 2026-08-29 to 2026-09-03, the plain median moved on 9% (H100) and 13% (H200) of transitions with mean moves of 1.6% and 1.4%, against 4% of transitions with mean moves of 0.7% and 0.6% for the lowest ask, and the same largest moves. It follows the venue's typical ask rather than its single cheapest option.
 
 Every other panel member, including those classed `marketplace`, publishes a price list, so the lowest-eligible rule applies to them unchanged.
 
@@ -637,6 +639,7 @@ The roster is what the methodology needs from the code: who is collected, its so
 | GMI Cloud | see published records | none | active |
 | GPU.ai | see published records | none | active |
 | Hot Aisle | direct_principal | none | active |
+| Hyperbolic | marketplace | H100-SXM, H200-SXM | active |
 | Hyperstack | see published records | B300, B200, H100-SXM, H200-SXM | active |
 | Lambda | direct_principal | B200, H100-SXM | active |
 | Latitude.sh | direct_partnered | B300 | active |
@@ -661,6 +664,8 @@ Panel eligibility is by source class (section 4.1); membership is enumerated per
 
 **Lium** is the second seated order book: a Bittensor-subnet marketplace publishing its entire machine book in one response. It publishes no host-verification field, so no verification screen exists there and none is applied (geography likewise); both are recorded open decisions, and its full extraction record is being documented.
 
+**Hyperbolic** is the third seated order book: a marketplace whose public rental-options API answers without an account and lists every on-demand option currently offered. Each option carries a whole-option hourly total in cents and the GPU count it requires; the per-GPU price is that total divided by the required count, and an option without an integer count of at least one is refused rather than recorded as if it were a single GPU. Hyperbolic labels each option with its own GPU type and form factor, so SXM5 options self-label and the H100-SXM and H200-SXM seats admit them on that label alone, with the same screen excluding the PCIe options. Availability is recorded when published, may be missing, and never gates a price. The API also exposes Hyperbolic's supplier cost for each option; that field is never republished.
+
 ---
 
 ## 12. Parameters
@@ -675,8 +680,8 @@ Every value publishes inside each record. Changes require a new version. Paramet
 | --- | --- |
 | Collection interval | every 15 minutes |
 | Index / weight recomputation | every observation |
-| Providers collected | 28 |
-| Minimum providers to record an observation | 8 of 28 collected (panel-agnostic; section 3.5) |
+| Providers collected | 29 (31 collector sources) |
+| Minimum sources to record an observation | 8 of 31 collector sources (panel-agnostic; section 3.5) |
 | Retention | life of trade + 2 years |
 | Jump threshold | 25% |
 | Corroboration threshold | 10% |

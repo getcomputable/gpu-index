@@ -10,10 +10,11 @@ thresholds, the tier ALLOW-LIST eligible_tiers with the retired
 interruptible_tiers key refused, and the member extra_require screen);
 the identity/variant screens' boundary-token behavior over
 stored sku_identifier (pre-catalog-change history, SXM5/alpha-digit
-splits, NVL-vs-NVLink boundaries); the three panel statistics (the
-population-accounting gate, both thin-book floors, hand-computed
-volume-weighted medians incl. the straddle-average rule and lium's
-extra.gpu_count volume); the calc-lane jump screen (quarantine,
+splits, NVL-vs-NVLink boundaries); the four panel statistics (the
+population-accounting gate, both thin-book floors, the unfloored plain
+book median, hand-computed volume-weighted medians incl. the
+straddle-average rule, and lium's extra.gpu_count volume); the
+calc-lane jump screen (quarantine,
 corroborated pass, starvation stand-down, missing-reference report-only,
 same-machine delta) and its artifact-only verdict reach (no window entry,
 no weight-series print, out of the eligible set); FX rules (EUR converts,
@@ -40,8 +41,10 @@ from gpu_index.index.composite import (
     _interquantile_mean,
 )
 from gpu_index.index.panel import (
+    PANEL_STATISTIC_PARAM_DEFAULTS,
     PANEL_STATISTIC_FNS,
     apply_panel_jump_screen,
+    book_median,
     compile_screens,
     compute_observation,
     jump_reference_prints,
@@ -50,6 +53,7 @@ from gpu_index.index.panel import (
     member_eligible_rows,
     panel_calc_params,
     record_source_for,
+    resolve_member_print,
     vast_vwm_verified_us_ca_floor,
     vast_vwm_verified_us_ca_v2,
     _token_patterns,
@@ -410,6 +414,56 @@ def test_config_record_sources_rejections():
     cfg = _config()
     _two_eras(cfg, "2026-08-26")
     validate_panel_config(cfg)
+
+
+def test_omitting_every_member_weight_derives_a_uniform_fallback_vector():
+    """The fallback vector may be derived rather than authored.
+
+    `weight` is the FALLBACK vector only; the fallback -> dynamic latch is
+    permanent, so on a switched panel these numbers set nobody's published
+    weight. Omitting them on every seat derives uniform 1/n.
+    """
+    cfg = _config()
+    n = len(cfg["members"])
+    for member in cfg["members"]:
+        member.pop("weight")
+    validate_panel_config(cfg)
+    derived = [m["weight"] for m in cfg["members"]]
+    assert derived == [1.0 / n] * n
+    assert abs(sum(derived) - 1.0) <= 1e-9
+
+
+def test_derived_uniform_weights_work_where_an_authored_vector_cannot():
+    """17 seats: 1/17 has no 6dp-exact representation summing to 1.0, so
+    an authored vector cannot express it without an arbitrary residue
+    seat. Derived weights sidestep it -- this is the h100_sxm calc_v10 case."""
+    cfg = _config()
+    for index in range(17 - len(cfg["members"])):
+        cfg["members"].append(_member(f"extra{index}", 0.0))
+    for member in cfg["members"]:
+        member.pop("weight")
+    assert len(cfg["members"]) == 17
+    validate_panel_config(cfg)
+    assert abs(sum(m["weight"] for m in cfg["members"]) - 1.0) <= 1e-9
+    assert round(cfg["members"][0]["weight"], 6) != cfg["members"][0]["weight"]
+
+
+def test_partly_authored_member_weights_are_refused():
+    """All-or-nothing: a mixed vector blends an explicit judgement with a
+    derived one, with no non-arbitrary rule for the omitted seats."""
+    cfg = _config()
+    cfg["members"][0].pop("weight")
+    with pytest.raises(PanelConfigError, match="every seat or omitted"):
+        validate_panel_config(cfg)
+
+
+def test_authored_member_weights_are_unchanged_by_the_derived_path():
+    """Regression: every other live panel authors its weights, and
+    fallback-mode index math must stay byte-identical for them."""
+    cfg = _config()
+    authored = [m["weight"] for m in cfg["members"]]
+    validate_panel_config(cfg)
+    assert [m["weight"] for m in cfg["members"]] == authored
 
 
 def test_config_member_rejections():
@@ -1720,10 +1774,12 @@ def test_config_manual_exclusion_rejections():
 
 def test_panel_registry_is_disjoint_from_the_daily_registry():
     assert set(PANEL_STATISTIC_FNS) == {
+        "book_median",
         "vast_vwm_verified_us_ca_v2",
         "vast_vwm_verified_us_ca_floor",
         "lium_vwm_book_floor",
     }
+    assert PANEL_STATISTIC_PARAM_DEFAULTS["book_median"] == {}
     assert not set(PANEL_STATISTIC_FNS) & set(SOURCE_STATISTIC_FNS)
 
 
@@ -1925,6 +1981,98 @@ def test_record_quarantined_observation_artifact_and_guard():
 
 
 # --------------------------------------------------------------- statistics
+
+
+@pytest.mark.parametrize(
+    ("prices", "expected"),
+    [
+        pytest.param([1.0, 9.0, 3.0], 3.0, id="odd"),
+        pytest.param([1.0, 9.0, 3.0, 5.0], 4.0, id="even"),
+        pytest.param([3.99, 4.92], 4.455, id="two-row-midpoint"),
+        pytest.param([7.25], 7.25, id="single"),
+    ],
+)
+def test_book_median_hand_computed_small_books(prices, expected):
+    rows = [_obs("H100", "H100 SXM", price) for price in prices]
+    assert book_median(
+        rows,
+        source_entry=None,
+        statistic="book_median",
+        params={},
+    ) == {
+        "usd_per_gpu_hr": expected,
+        "statistic": "book_median",
+        "currency": "USD",
+        "n_eligible_prints": len(prices),
+    }
+
+
+def test_book_median_skips_non_usd_and_keeps_disabled_rows():
+    rows = [
+        _obs("H100", "H100 SXM", 1.0, extra={"enabled": False}),
+        _obs("H100", "H100 SXM", 5.0, extra={"enabled": True}),
+        _obs("H100", "H100 SXM", None, native=4.0, currency="EUR"),
+    ]
+    assert book_median(
+        rows,
+        source_entry={"this": "is intentionally unused"},
+        statistic="book_median",
+        params={},
+    ) == {
+        "usd_per_gpu_hr": 3.0,
+        "statistic": "book_median",
+        "currency": "USD",
+        "n_eligible_prints": 2,
+        "rows_skipped_non_usd": 1,
+    }
+
+
+def test_book_median_returns_none_without_a_usd_book():
+    assert book_median(
+        [], source_entry=None, statistic="book_median", params={}
+    ) is None
+    assert book_median(
+        [_obs("H100", "H100 SXM", None, native=4.0, currency="EUR")],
+        source_entry=None,
+        statistic="book_median",
+        params={},
+    ) is None
+
+
+def test_book_median_registry_dispatch():
+    assert resolve_member_print(
+        [
+            _obs("H200", "H200 SXM5", 3.99, basis=8),
+            _obs("H200", "H200 SXM5", 4.92, basis=1),
+        ],
+        source_entry=None,
+        statistic="book_median",
+        statistic_params={"book_median": {}},
+        obs_date=GENESIS,
+        fx_records={},
+    ) == {
+        "usd_per_gpu_hr": 4.455,
+        "statistic": "book_median",
+        "currency": "USD",
+        "n_eligible_prints": 2,
+    }
+
+
+def test_book_median_member_and_empty_params_validate():
+    cfg = _config()
+    cfg["members"][0] = _member(
+        "hyperbolic",
+        0.3,
+        statistic="book_median",
+        variant={"mode": "label", "require_tokens": ["SXM"]},
+    )
+    validate_panel_config(cfg)
+    cfg["calc"]["statistic_params"] = {"book_median": {}}
+    validate_panel_config(cfg)
+    assert panel_calc_params(cfg)["statistic_params"]["book_median"] == {}
+    cfg["calc"]["statistic_params"] = {"book_median": {"anything": 1}}
+    with pytest.raises(PanelConfigError, match="unknown param 'anything'"):
+        validate_panel_config(cfg)
 
 
 def _vast_rows():

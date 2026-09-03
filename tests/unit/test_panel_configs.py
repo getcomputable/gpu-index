@@ -75,25 +75,25 @@ LANES = {
     },
     "config/index_panel_h100_sxm.json": {
         "panel_id": "h100_sxm",
-        "methodology_id": "h100_sxm_v1_calc_v8",
+        "methodology_id": "h100_sxm_v1_calc_v10",
         "prefix": "index/h100_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
         "w_min": 0.025,
         "fx_lane": "ecb",  # scaleway bills EUR
-        "members": 16,
+        "members": 17,
         "stitched": False,
         "quarter_hour": True,
     },
     "config/index_panel_h200_sxm.json": {
         "panel_id": "h200_sxm",
-        "methodology_id": "h200_sxm_v1_calc_v8",
+        "methodology_id": "h200_sxm_v1_calc_v10",
         "prefix": "index/h200_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
         "w_min": 0.025,
         "fx_lane": "none",  # no EUR member seated
-        "members": 13,
+        "members": 14,
         "stitched": False,
         "quarter_hour": True,
     },
@@ -150,7 +150,9 @@ def test_all_six_load_and_match_the_lane_table(configs):
         assert calc["fx_lane"] == expected["fx_lane"], rel
         assert len(cfg["members"]) == expected["members"], rel
         # The loader enforced the 6dp-exact sum-to-1.0 rule; re-assert the
-        # arithmetic here so the invariant reads in THIS file too.
+        # arithmetic here so the invariant reads in THIS file too. A config
+        # that omits every weight has the uniform 1/n vector DERIVED by the
+        # loader (the upstream rule), which sums to 1.0 in float by construction.
         assert (
             abs(sum(m["weight"] for m in cfg["members"]) - 1.0) <= 1e-9
         ), rel
@@ -314,7 +316,7 @@ def test_sxm_panels_fail_closed_variant_posture(configs):
     """Design section 8: EVERY seat on a form-factor panel carries a
     variant rule (require_tokens or declared-with-evidence) -- a seat
     without one would print unscreened generic rows. Statistic seats are
-    exactly the two marketplaces."""
+    exactly the three marketplaces."""
     for rel in (
         "config/index_panel_h100_sxm.json",
         "config/index_panel_h200_sxm.json",
@@ -332,6 +334,7 @@ def test_sxm_panels_fail_closed_variant_posture(configs):
         assert stats == {
             "vast": "vast_vwm_verified_us_ca_floor",
             "lium": "lium_vwm_book_floor",
+            "hyperbolic": "book_median",
         }, rel
 
 

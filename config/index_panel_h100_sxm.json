@@ -71,8 +71,8 @@
     "GH200"
   ],
   "calc": {
-    "methodology_id": "h100_sxm_v1_calc_v8",
-    "description": "calc_v8 attendance-weighted quarter-hour panel mint (h100_sxm_v1_calc_v8); METHODOLOGY.md is the binding methodology document",
+    "methodology_id": "h100_sxm_v1_calc_v10",
+    "description": "calc_v10 attendance-weighted quarter-hour panel mint (h100_sxm_v1_calc_v10); METHODOLOGY.md is the binding methodology document",
     "availability_verified_sources": ["lium", "vast"],
     "min_sources_to_claim": 5,
     "eligible_tiers": [
@@ -141,7 +141,6 @@
     {
       "source_id": "verda",
       "display_name": "Verda (formerly DataCrunch)",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -156,7 +155,6 @@
     {
       "source_id": "nebius",
       "display_name": "Nebius",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -171,7 +169,6 @@
     {
       "source_id": "coreweave",
       "display_name": "CoreWeave",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -186,7 +183,6 @@
     {
       "source_id": "lambda",
       "display_name": "Lambda",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -201,7 +197,6 @@
     {
       "source_id": "together",
       "display_name": "Together AI",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -216,7 +211,6 @@
     {
       "source_id": "hyperstack",
       "display_name": "Hyperstack (NexGen Cloud)",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -231,7 +225,6 @@
     {
       "source_id": "crusoe",
       "display_name": "Crusoe",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -246,7 +239,6 @@
     {
       "source_id": "tensorpool",
       "display_name": "TensorPool",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -261,7 +253,6 @@
     {
       "source_id": "scaleway",
       "display_name": "Scaleway",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -276,7 +267,6 @@
     {
       "source_id": "civo",
       "display_name": "Civo",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -291,7 +281,6 @@
     {
       "source_id": "voltagepark",
       "display_name": "Voltage Park",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -306,7 +295,6 @@
     {
       "source_id": "digitalocean",
       "display_name": "DigitalOcean",
-      "weight": 0.07,
       "skus": [
         "H100"
       ],
@@ -319,7 +307,6 @@
     {
       "source_id": "runpod",
       "display_name": "RunPod",
-      "weight": 0.05,
       "skus": [
         "H100"
       ],
@@ -337,7 +324,6 @@
     {
       "source_id": "massedcompute",
       "display_name": "Massed Compute",
-      "weight": 0.05,
       "skus": [
         "H100"
       ],
@@ -352,7 +338,6 @@
     {
       "source_id": "vast",
       "display_name": "Vast.ai",
-      "weight": 0.03,
       "skus": [
         "H100"
       ],
@@ -368,7 +353,6 @@
     {
       "source_id": "lium",
       "display_name": "Lium",
-      "weight": 0.03,
       "skus": [
         "H100"
       ],
@@ -380,6 +364,21 @@
         ]
       },
       "notes": "live probe 2026-08-23: machine_name 'NVIDIA H100 80GB HBM3' (the SXM device string; the PCIe part self-labels 'NVIDIA H100 PCIe' in the same book). Statistic seat with book floors; probe found 2 machines (both RU, one operator), so the seat prints nothing until the book deepens. NO verified field exists on lium and no geo screen is applied -- recorded open methodology calls"
+    },
+    {
+      "source_id": "hyperbolic",
+      "display_name": "Hyperbolic",
+      "skus": [
+        "H100"
+      ],
+      "statistic": "book_median",
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SXM"
+        ]
+      },
+      "notes": "Hyperbolic builds sku_identifier from its own gpuType + gpuFormFactor, so the SXM5 rows self-label ('H100 SXM5') and the PCIe rows say PCIE. A label-mode screen admits the SXM module and excludes PCIe without a declaration."
     }
   ]
 }

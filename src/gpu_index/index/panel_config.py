@@ -729,6 +729,32 @@ def _validate_members(members: Any) -> List[str]:
     # registry (the SOURCE_STATISTIC_FNS rule).
     from gpu_index.index.panel import PANEL_STATISTIC_FNS
 
+    # Derived-uniform fallback vector (mirrors the upstream collector's loader).
+    # `weight` is the FALLBACK vector only: consumed in fallback mode, and
+    # the fallback -> dynamic latch is permanent for the series, so after
+    # the switch these numbers set nobody's published weight (before it,
+    # they price the panel, and a replay from genesis re-prices that
+    # window with whatever vector the config carries). Hand-
+    # authoring the vector forces a judgement that no longer expresses
+    # anything, and for many panel sizes it is not even expressible: 1/17
+    # has no 6dp-exact representation summing to 1.0. Omitting `weight` on
+    # EVERY member derives uniform 1/n in full float precision instead.
+    # All-or-nothing: a partly authored vector blends an explicit judgement
+    # with a derived one with no non-arbitrary rule for the omitted seats.
+    entries = [m for m in members if isinstance(m, dict)]
+    authored = [m for m in entries if "weight" in m]
+    uniform: Optional[float] = None
+    if entries and not authored:
+        uniform = 1.0 / len(entries)
+    elif authored and len(authored) != len(entries):
+        missing = sorted(
+            str(m.get("source_id")) for m in entries if "weight" not in m
+        )
+        raise PanelConfigError(
+            f"member weights must be authored for every seat or omitted "
+            f"for every seat; {missing} omit weight while others set it"
+        )
+
     seen: set = set()
     weights: List[float] = []
     for member in members:
@@ -741,16 +767,24 @@ def _validate_members(members: Any) -> List[str]:
         if sid in seen:
             raise PanelConfigError(f"duplicate member source_id {sid!r}")
         seen.add(sid)
-        weight = member.get("weight")
-        _require_number(weight, f"member {sid!r} weight", lo=0)
-        if round(float(weight), 6) != float(weight):
-            # The pinned-vector precision (gpu_index.index.config's dynamic_weights
-            # rule): a >6dp weight forks the fallback vector at rounding.
-            raise PanelConfigError(
-                f"member {sid!r} weight must be exact at 6 decimal places, "
-                f"got {weight!r}"
-            )
-        weights.append(float(weight))
+        if uniform is None:
+            weight = member.get("weight")
+            _require_number(weight, f"member {sid!r} weight", lo=0)
+            if round(float(weight), 6) != float(weight):
+                # The pinned-vector precision (gpu_index.index.config's
+                # dynamic_weights rule): a >6dp weight forks the fallback
+                # vector at rounding. Only an AUTHORED weight can fork it.
+                raise PanelConfigError(
+                    f"member {sid!r} weight must be exact at 6 decimal "
+                    f"places, got {weight!r}"
+                )
+            weights.append(float(weight))
+        else:
+            # Derived, not authored: exempt from the 6dp pin (a value that
+            # alone defines the vector cannot fork it). Written back so
+            # every downstream consumer still reads a full vector.
+            member["weight"] = uniform
+            weights.append(uniform)
         skus = member.get("skus")
         if (
             not isinstance(skus, list)
