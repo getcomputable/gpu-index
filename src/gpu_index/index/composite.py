@@ -924,9 +924,21 @@ def _weighted_quantile(
     must never touch its bytes."""
     if not 0 < q < 1:
         raise ValueError(f"quantile q must be in (0, 1), got {q}")
-    if any(w <= 0 for _, w in pairs):
-        raise ValueError("weighted quantile requires positive weights")
-    ordered = sorted(pairs)
+    # A zero-weight vote is SEATED BUT NOT CONTRIBUTING, which is a real
+    # state, not a fault: ballot weight is allocation x attendance, and a
+    # seat with no history has attendance 0. Weight_min floors the
+    # ALLOCATION, before attendance, so it never floors what arrives here
+    # (live 2026-09-02: vast and lium allocate at weight_max 0.30000 and
+    # reach the ballot at ~0.0058). Refusing zero therefore killed the
+    # lane on the first observation after any new seat was added.
+    #
+    # Dropped rather than admitted, because the tie branch below returns
+    # the mean of the boundary vote and its NEIGHBOUR: a zero-weight vote
+    # sitting at i+1 would move a published price it has no weight in.
+    # Negative weights still fail closed -- those are a real fault.
+    if any(w < 0 for _, w in pairs):
+        raise ValueError("weighted quantile requires non-negative weights")
+    ordered = sorted((value, w) for value, w in pairs if w > 0)
     target = q * sum(
         (Fraction(str(w)) for _, w in ordered), start=Fraction(0)
     )
@@ -962,9 +974,13 @@ def _interquantile_mean(
     last digit. Returns the exact Fraction; the caller quantizes once."""
     if not 0 < alpha <= Fraction(1, 2):
         raise ValueError(f"iqm alpha must be in (0, 1/2], got {alpha}")
-    if any(w <= 0 for _, w in pairs):
-        raise ValueError("interquantile mean requires positive weights")
-    ordered = sorted(pairs)
+    # Same seated-but-not-contributing case as _weighted_quantile above.
+    # A zero-weight vote already contributes nothing here (its overlap
+    # span is empty), so dropping it changes no arithmetic; it is dropped
+    # for one rule across both statistics rather than two.
+    if any(w < 0 for _, w in pairs):
+        raise ValueError("interquantile mean requires non-negative weights")
+    ordered = sorted((value, w) for value, w in pairs if w > 0)
     total = sum(
         (Fraction(str(w)) for _, w in ordered), start=Fraction(0)
     )
