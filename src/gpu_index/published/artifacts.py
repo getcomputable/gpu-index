@@ -454,14 +454,25 @@ def _validate_data(data: Any) -> List[Any]:
         raise PublishedRecordError("envelope data must be an object")
     kind = data.get("kind")
     if kind == "gpu_index_latest":
+        # ``activation`` is the publisher's replay-from-anchor bundle (the
+        # activation ledger's hash chain, checkpoints and projections). The
+        # reader contract admits it present, absent, or null; this verifier
+        # recomputes values from receipts and calc_params and does not
+        # consume the bundle, so it is admitted as an opaque object and
+        # nothing inside it is interpreted here.
         _require_keys(
             data,
             frozenset({"kind", "observations"}),
             "latest data",
-            frozenset({"versions"}),
+            frozenset({"versions", "activation"}),
         )
         if "versions" in data:
             _validate_versions(data["versions"])
+        if "activation" in data and data["activation"] is not None:
+            if not isinstance(data["activation"], dict):
+                raise PublishedRecordError(
+                    "latest data.activation must be an object or null"
+                )
     elif kind == "gpu_index_observation_day":
         _require_keys(
             data, frozenset({"kind", "date", "observations"}), "day data"

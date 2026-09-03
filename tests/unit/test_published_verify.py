@@ -174,6 +174,50 @@ def test_latest_pointer_observations_match_too():
     assert all(c.verdict == VERDICT_MATCH for c in checks)
 
 
+def test_latest_pointer_admits_the_activation_bundle():
+    """The publisher's replay-from-anchor bundle rides ``latest.json`` as
+    ``data.activation``; the reader contract admits it present, absent, or
+    null. The verifier recomputes values from receipts and does not read
+    the bundle, so it is admitted as an opaque object: the pointer that
+    went live on 2026-09-03 must still verify and reproduce."""
+    def with_bundle(document):
+        document["data"]["activation"] = {
+            "schema_version": "1",
+            "anchor": {"sequence": 3, "record_sha256": "a" * 64},
+            "current": {"sequence": 6, "record_sha256": "b" * 64},
+            "chain": [],
+            "checkpoints": [],
+            "projections": [],
+            "changelog_tail": [],
+        }
+
+    def with_null(document):
+        document["data"]["activation"] = None
+
+    for mutate in (with_bundle, with_null):
+        envelope = _tampered("latest.json", mutate)
+        checks = [
+            recompute_observation(obs)
+            for obs in select_observations(envelope)
+        ]
+        assert all(c.verdict == VERDICT_MATCH for c in checks)
+
+
+def test_latest_pointer_refuses_a_malformed_bundle_and_unknown_keys():
+    """Admitting one named key does not open the contract: a non-object
+    bundle and any other unexpected key still refuse."""
+    def bad_bundle(document):
+        document["data"]["activation"] = "not-a-bundle"
+
+    def unknown_key(document):
+        document["data"]["extra"] = {}
+
+    with pytest.raises(PublishedRecordError, match="activation"):
+        _tampered("latest.json", bad_bundle)
+    with pytest.raises(PublishedRecordError, match="unexpected"):
+        _tampered("latest.json", unknown_key)
+
+
 # ------------------------------------------------------------------- tampers
 
 
