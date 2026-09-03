@@ -4,13 +4,18 @@
 
 `./reproduce` recomputes each observation's index from its own receipts,
 consuming the published weights AS PUBLISHED -- so it verifies the
-aggregation and says nothing at all about how those weights were
+aggregation and says nothing at all about how current weights were
 allocated. This file closes that gap from the other side: every input to
-the allocation is itself disclosed (`liveness_score` = Q_i,
+the current allocation is itself disclosed (`liveness_score` = Q_i,
 `attendance_factor` = A_i, and `calc_params.liveness` = gamma / eta /
-w_min / w_max), so the published weight vector can be RE-DERIVED from
-the public record and matched exactly against
-`gpu_index.index.weights.allocate_weights`.
+w_min / w_max), so that allocation can be RE-DERIVED from the public
+record and matched exactly against `gpu_index.index.weights.allocate_weights`.
+
+A collection-failure carry is deliberately outside that current vector:
+it re-casts its prior accepted vote, including the booked historical
+weight. The raw-history reproduction checks those rows. A provider-side
+no-price carry is inside the current vector and receives a current,
+attendance-faded weight; `carry_basis` distinguishes the two.
 
 That makes this the acceptance check for the attendance port: it fails
 if the ported allocator and the producer disagree by one part in 1e-6 on
@@ -33,6 +38,7 @@ import os
 import httpx
 import pytest
 
+from gpu_index.index.panel import CARRIED_STATUS, CARRY_BASIS_NO_PRICE
 from gpu_index.index.weights import allocate_weights
 from gpu_index.published.artifacts import day_key
 
@@ -129,10 +135,11 @@ def test_published_weights_re_derive_from_the_published_inputs(sku, live_days):
     published Q and A under the published liveness params, must
     reproduce every published weight EXACTLY at the published 6dp.
 
-    The domain is the seats carrying a weight row -- the producer's own
-    voting set, which is exactly what a hard-cutoff exclusion removes
-    (an excluded seat publishes weight null, and re-deriving it into the
-    softmax would be the wrong answer for the right-looking reason)."""
+    The domain is the producer's CURRENT allocation set: ordinary rows
+    plus provider-side no-price carries. A collection-failure carry
+    instead re-casts its booked historical weight; the full-history live
+    test re-derives that row from the prior accepted observation. A hard
+    cutoff removes the seat from both sets."""
     observations = _attendance_observations(live_days[sku])
     if not observations:
         pytest.skip(f"{sku}: the serving generation is not attendance-minted")
@@ -143,6 +150,10 @@ def test_published_weights_re_derive_from_the_published_inputs(sku, live_days):
             receipt["source_id"]: receipt
             for receipt in observation["receipts"]
             if receipt.get("weight") is not None
+            and not (
+                receipt.get("upstream_status") == CARRIED_STATUS
+                and receipt.get("carry_basis") != CARRY_BASIS_NO_PRICE
+            )
         }
         if not domain:
             continue  # a dark observation carries no vector to re-derive
@@ -175,10 +186,11 @@ def test_published_weights_re_derive_from_the_published_inputs(sku, live_days):
 
 
 @pytest.mark.parametrize("sku", PUBLIC_SKUS)
-def test_an_excluded_seat_carries_no_weight_and_no_price(sku, live_days):
-    """The hard cutoff as the methodology states it: past the limit the
-    provider is out of the observation entirely -- no weight row, no
-    vote -- until it produces a usable price again."""
+def test_an_excluded_seat_carries_no_weight_or_vote(sku, live_days):
+    """The hard cutoff is a pre-advance verdict: the seat has no weight
+    or vote while excluded. Its first fresh accepted recovery price may
+    remain visible as receipt evidence; that print advances state and
+    re-admits the seat at the next observation."""
     observations = _attendance_observations(live_days[sku])
     if not observations:
         pytest.skip(f"{sku}: the serving generation is not attendance-minted")
@@ -191,6 +203,19 @@ def test_an_excluded_seat_carries_no_weight_and_no_price(sku, live_days):
                 f"{where}: excluded but published a weight row "
                 f"{receipt.get('weight')}"
             )
-            assert receipt.get("price") is None, (
-                f"{where}: excluded but published a price {receipt.get('price')}"
+            assert receipt.get("sd") is None, (
+                f"{where}: excluded but published a vote dispersion "
+                f"{receipt.get('sd')}"
+            )
+            if receipt.get("price") is None:
+                continue
+            assert receipt.get("upstream_status") == "ok", (
+                f"{where}: excluded price is not a fresh upstream print"
+            )
+            assert receipt.get("filter_verdict") == "accepted", (
+                f"{where}: excluded recovery price was not accepted"
+            )
+            assert receipt.get("last_seen") == observation["observed_at"], (
+                f"{where}: excluded price is stale receipt evidence from "
+                f"{receipt.get('last_seen')}"
             )
