@@ -153,7 +153,7 @@ Symbols: `p_i` is provider i's observed price, `sd_i` its standard deviation ove
 
 ### 3.1 Coverage
 
-Every 15 minutes, 29 providers through 31 collector sources (Compute Pulse and Sesterce are each read on two surfaces), every chip model they price (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
+Every 15 minutes, 29 providers through 31 collector sources, every chip model they price (NVIDIA, AMD, Intel; datacenter and consumer parts). Collection is not filtered to current panels, chips, or eligible tiers. A page listing eleven chips across four tiers is recorded in full.
 
 Every panel is a selection over this record, not a separate collection effort.
 
@@ -167,7 +167,7 @@ Each provider carries two disclosure fields: `source_type` and `first_party`.
 | `direct_partnered` | Sells capacity under direct arrangement | RunPod (Secure), Latitude.sh |
 | `marketplace` | Third-party hosts; price includes host spread | Vast.ai, Lium, Hyperbolic |
 | `reseller` | Republishes another cloud's capacity | Shadeform |
-| `aggregator` | Publishes its observation of others' prices | Compute Pulse |
+| `aggregator` | Publishes its observation of others' prices | none collected |
 | `hyperscaler` | Separate pricing regime | Oracle |
 
 Aggregators and resellers are collected but never panel-eligible (section 4.1).
@@ -288,8 +288,6 @@ A provider publishing an order book needs a different statistic. The distinction
 Three order books are seated across the live panels: Vast.ai, Lium, and Hyperbolic. Which statistic each seat uses is per-SKU configuration (SKU documents). Four book statistics exist in the registry, three of which are volume-weighted (two Vast.ai variants and one Lium variant); the Vast.ai and Lium seats use them: they price as the volume-weighted median of rentable on-demand per-GPU asks, weighted by each offer's GPU count, under two population conditions the SKU document binds. Population accounting: the stored book must prove the full eligible population was recorded, else the seat is held out rather than pricing a truncated, one-sided-low book; fail closed, deterministic on replay. Population floors, on the H-series panels: a book below the minimum distinct machines, hosts, or sellers holds the seat out with the counts recorded. The third statistic, `book_median`, is the plain median of every screened USD ask with weight 1 per row: no volume weighting, because the venue discloses no usable volume, and no population floor or accounting gate, so the seat prints on every observation where its screened book is non-empty and the print passes the panel's jump screen (section 7). One ask prints as itself and two print as their midpoint. The population is every row the seat's screens admit, including options the venue lists as disabled or without availability. The Hyperbolic seats on the H100-SXM and H200-SXM panels use it.
 
 > **Why not the lowest ask?** On one real observation the lowest-price rule would have returned an unverified host 29% below the median.
-
-> **Why no floor on the plain median?** A floored median would have held the Hyperbolic seat out of 30% to 60% of the observations measured, and a seat that prints that rarely loses attendance (section 8.6) until it is excluded. Measured over the recorded observations from 2026-08-29 to 2026-09-03, the plain median moved on 9% (H100) and 13% (H200) of transitions with mean moves of 1.6% and 1.4%, against 4% of transitions with mean moves of 0.7% and 0.6% for the lowest ask, and the same largest moves. It follows the venue's typical ask rather than its single cheapest option.
 
 Every other panel member, including those classed `marketplace`, publishes a price list, so the lowest-eligible rule applies to them unchanged.
 
@@ -629,7 +627,6 @@ The roster is what the methodology needs from the code: who is collected, its so
 | Provider | Source class | Panels | Status |
 | --- | --- | --- | --- |
 | Civo | see published records | H100-SXM, H200-SXM | active |
-| Compute Pulse | aggregator | none | active |
 | CoreWeave | direct_principal | B200, H100-SXM, H200-SXM | active |
 | Crusoe | see published records | H100-SXM, H200-SXM | active |
 | Deep Infra | see published records | none | active |

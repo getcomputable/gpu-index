@@ -170,7 +170,7 @@ def _validate(cfg: Dict[str, Any]) -> None:
             # Hourly cadence: the fence widened from the original 1-8 to
             # the full 24 — the vendor-politeness math was re-done at
             # hourly (each capture sends 1-2 requests per vendor;
-            # vast/computepulse keep per-call spacing; ~0.5 req/min
+            # vast keeps per-call spacing; ~0.5 req/min
             # worst-case average per vendor). Duplicate hours are still a
             # typo, and the fence still exists so a sub-hourly ambition
             # has to move to the MINUTE vocabulary deliberately, not just

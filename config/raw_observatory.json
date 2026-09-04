@@ -137,35 +137,6 @@
       "notes": "GPU Clusters combined table — every hardware row: ON-Demand column plus the reserved tenor columns (tier reserved, tenor in extra); em-dash cells skipped silently, 'Contact us' cells counted in partial_errors; Dedicated Inference section excluded by slice."
     },
     {
-      "source_id": "computepulse",
-      "display_name": "Compute Pulse (aggregator)",
-      "source_type": "aggregator",
-      "first_party": false,
-      "options": {
-        "gpus": [
-          "nvidia-b300",
-          "nvidia-b200",
-          "nvidia-h200",
-          "nvidia-h100",
-          "nvidia-a100",
-          "nvidia-l40s",
-          "nvidia-rtx-4090",
-          "nvidia-rtx-5090",
-          "amd-mi300x",
-          "amd-mi325x"
-        ],
-        "limit_per_gpu": 200
-      },
-      "notes": "Public no-auth /api/listings, per-chip queries from options.gpus (2-page cap per slug; the h100/a100 books exceed it — the cheapest ~400 are recorded with a loud partial note). LEADS, NOT PRINTS: rows are mostly verification_level 0 / human_verified false — recorded with that metadata intact in extra so consumers can screen; first_party false. amd-mi325x is a genuinely empty book today, kept as a watch slot."
-    },
-    {
-      "source_id": "computepulse_supply",
-      "display_name": "Compute Pulse supply (capacity-offer marketplace)",
-      "source_type": "aggregator",
-      "first_party": false,
-      "notes": "Public no-auth /api/supply?intent=selling&include_ended=false -- seller-declared capacity-offer classifieds republished by the aggregator (meta.notice verbatim: discovery records, not guaranteed quotes; sellers can be Anonymous). The availability window IS the payload: available_now / availability_state / available_from / available_until plus min_bookable_gpus / min_duration_hours / interconnect ride verbatim in extra. No billing_type on this surface -- tier is DERIVED by ruling (min_duration_hours >= 720 -> monthly-commit, else on-demand) with the derivation recorded per row. Unpriced offers (price null = not stated; a real Anonymous 8x H100 row exists) are counted in book_stats (offers_unpriced / offers_available_now), never $0 rows. Whole selling book fits one page today (25 offers live 2026-08-25); no sort param -- supply 400s on the listings sort enum."
-    },
-    {
       "source_id": "deepinfra",
       "display_name": "Deep Infra",
       "source_type": "direct_principal",

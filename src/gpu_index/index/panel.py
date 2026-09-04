@@ -534,12 +534,8 @@ def book_median(
     for the panel-registry call signature and do not affect the computation.
 
     Small books deliberately print: N=1 is the one ask and N=2 is the midpoint
-    of the two asks. The ruling follows 421 Hyperbolic slots measured
-    2026-08-29..09-03: the minimum moved on 4% of transitions with mean moves
-    of 0.7% (H100) and 0.6% (H200), while the median moved on 9% / 1.6%
-    (H100) and 13% / 1.4% (H200); both had the same maximum moves, 52% / 23%.
-    A future floored or volume-weighted rule must use a new statistic id rather
-    than changing ``book_median``.
+    of the two asks. A future floored or volume-weighted rule must use a new
+    statistic id rather than changing ``book_median``.
     """
     if not rows:
         return None

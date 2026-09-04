@@ -264,7 +264,7 @@ def test_real_config_loads_and_validates(real_config):
     assert len(sids) == len(set(sids))
     # Aggregator/reseller rows must be labeled as not-first-party — the
     # who-is-speaking disclosure the lane exists to preserve.
-    for sid in ("shadeform", "computepulse"):
+    for sid in ("shadeform",):
         src = next(s for s in real_config["sources"] if s["source_id"] == sid)
         assert src["first_party"] is False
 
