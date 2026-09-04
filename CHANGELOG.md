@@ -64,6 +64,30 @@ their own keyspaces. Newest first.
   do: a statistic over several rows has no single row to project them
   from. Its price and weight are complete.
 
+- Added 2026-09-04, record of the decision. The seat was approved by
+  Computable on 2026-08-31; the source class (`marketplace`) and the seat
+  statistic (`book_median`) were ruled on 2026-09-03. Eligibility rests on
+  section 4.1: Hyperbolic is a marketplace over third-party suppliers,
+  which is a panel-eligible class. On double counting (section 4.2):
+  Hyperbolic does not name the suppliers behind its options, so no overlap
+  with an existing member could be established, and none could be ruled
+  out; the seat was admitted on the same footing as the other two
+  marketplaces, whose hosts are likewise unnamed. Open: the per-seat
+  statistic is disclosed only in `config/index_panel_h100_sxm.json` and
+  `config/index_panel_h200_sxm.json`, not inside the published
+  `calc_params`; whether it moves into the record at a later mint is
+  undecided.
+- Added 2026-09-04, effective time made explicit. Both lanes took effect
+  at 2026-09-03T18:59:44Z (`versions.succession` version 6 on H100 and
+  H200 in `latest.json`; publication activation sequence 6).
+- Correction, 2026-09-04. The sentence above about `provider_class` is
+  out of date. The publisher build deployed at 2026-09-03T21:27Z projects
+  the seat's disclosure table, and because the corpus is republished from
+  the record store, every Hyperbolic receipt under the calc_v10 keyspaces
+  now carries `provider_class: "marketplace"`, including stamps first
+  published between 18:59Z and 21:27Z. `gpu_variant` and `vram_gb` remain
+  null as described.
+
 ## 2026-09-01
 
 - Change log restarted at the public launch of this repository. Earlier
@@ -73,3 +97,17 @@ their own keyspaces. Newest first.
   print remains verifiable with `./reproduce` regardless of when its
   methodology version was minted. Changes from this date onward are
   recorded here.
+
+- Added 2026-09-04, back-entry. Attendance weighting was armed on every
+  live lane by a versioned change effective 2026-09-01T00:13:39Z:
+  `h100_sxm_v1_calc_v8`, `h200_sxm_v1_calc_v8`, `annex_a_v0_2_calc_v14`
+  (B300) and `annex_a2_v0_3_calc_v14` (B200), each succeeding the version
+  that had been serving since 2026-08-31T04:58:34Z. The published
+  `calc_params` gained `liveness.attendance_eta` (0.5, was 0 and unlisted),
+  `liveness.attendance_half_life_hours` (6) and
+  `liveness.no_price_exclusion_hours` (24); the B300 lane also gained
+  `carry_forward_window_hours` (72). Membership, screens and the composite
+  statistic did not change. The parameters are described in METHODOLOGY.md
+  sections 8.6 and 12.4. This entry was written after the fact, on
+  2026-09-04, from the published succession and parameter sets; the mint
+  itself had no change-log entry when it took effect.
