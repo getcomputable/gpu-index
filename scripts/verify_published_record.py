@@ -58,6 +58,7 @@ from gpu_index.published.full import (  # noqa: E402
     FullReproductionRefusal,
     read_full_history,
     reproduce_full_history,
+    reproduce_published_history,
 )
 from gpu_index.published.reader import PublishedRecordReader  # noqa: E402
 from gpu_index.published.verify import (  # noqa: E402
@@ -148,8 +149,11 @@ def _run_full(
         "calc_params are inputs; published derived intermediates are not"
     )
     try:
-        history = read_full_history(reader, sku=sku, target_date=date, version=version)
-        run = reproduce_full_history(history, target_date=date)
+        if version is None and pointer and "history_path" in pointer:
+            run = reproduce_published_history(reader, sku=sku, target_date=date)
+        else:
+            history = read_full_history(reader, sku=sku, target_date=date, version=version)
+            run = reproduce_full_history(history, target_date=date)
     except FullReproductionRefusal as exc:
         print(f"FULL REFUSAL [{exc.code}]: {exc}", file=sys.stderr)
         return 2
@@ -180,7 +184,6 @@ def _run_full(
         )
         return 2
 
-    identities = {row["observed_at"]: row for row in history if row["sku"] == sku}
     matched = mismatched = 0
     for check in checks:
         if check.verdict == VERDICT_MATCH:
@@ -189,8 +192,8 @@ def _run_full(
             mismatched += 1
         verdict = "MATCH" if check.verdict == VERDICT_MATCH else "MISMATCH"
         identity = _identity_label(
-            identities[check.observed_at], pointer,
-            explicit_version=version if explicit else None,
+            {"observed_at": check.observed_at, "methodology_id": check.methodology_id},
+            pointer, explicit_version=check.version or (version if explicit else None),
         )
         print(
             f"{check.sku} {_stamp_label(check.observed_at)} "
@@ -250,7 +253,7 @@ def main(argv=None) -> int:
     )
     parser.add_argument(
         "--version", type=_positive_version,
-        help="verify this integer version's re-derivation (required for --full)",
+        help="verify this integer version's re-derivation",
     )
     args = parser.parse_args(argv)
 
@@ -276,9 +279,6 @@ def main(argv=None) -> int:
     try:
         pointer = reader.version_pointer(sku)
         version = args.version
-        if args.full and version is None and pointer and "history_path" in pointer:
-            print("--full re-derives one version; pass --version <n>", file=sys.stderr)
-            return 2
         if version is None and (pointer is None or "history_path" not in pointer):
             version = pointer["current_version"] if pointer else None
             target = f"current_version {version}" if pointer else "legacy flat keyspace"

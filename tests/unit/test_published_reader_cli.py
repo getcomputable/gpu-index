@@ -668,15 +668,6 @@ def test_missing_advertised_history_does_not_fall_back(tmp_path, monkeypatch, cl
     assert "falling back" not in out.out
 
 
-def test_full_requires_explicit_version_when_history_advertised(
-    tmp_path, monkeypatch, cli, capsys
-):
-    root = _published_record(tmp_path)
-    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
-    assert cli.main(["--sku", "H100", "--date", "2026-08-25", "--full"]) == 2
-    assert "pass --version <n>" in capsys.readouterr().err
-
-
 @pytest.mark.parametrize("version", ["0", "-1", "abc", "1.5"])
 def test_cli_rejects_invalid_version(cli, version):
     with pytest.raises(SystemExit) as exc:

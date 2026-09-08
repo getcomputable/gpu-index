@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from gpu_index.common.jsondiff import field_diffs
 from gpu_index.index.panel import median_stddev_composite
@@ -87,7 +87,13 @@ class UnsupportedStatisticError(PublishedRecordError):
 # consumes only each observation's own receipts, which embed the
 # liveness weights as published. What a shorter window costs is the
 # ability to re-derive the weight vector itself from the public record.
-MIN_DISCLOSURE_WINDOW_DAYS = 100  # 90d lookback + 2d forward + slack
+def _history_bound_days(
+    *, history_days: int = 90, forward_horizons_hours: Iterable[float] = (6, 24, 48),
+) -> int:
+    return int(history_days) + math.ceil(max(forward_horizons_hours) / 24) + 8
+
+
+MIN_DISCLOSURE_WINDOW_DAYS = _history_bound_days()
 
 
 def disclosure_window_warning(

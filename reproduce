@@ -15,18 +15,19 @@
 # files under observations/YYYY/MM/DD.json) -- a recompute-and-match run
 # (scripts/verify_published_record.py): every file's envelope digest is
 # verified, and each observation's index value and stability band are
-# recomputed from the published receipts and matched exactly. The record
+# re-derived from raw history and matched exactly. The record
 # is read from a local downloaded copy under GPU_INDEX_DATA_DIR (default
 # ./data) when it holds the requested day; otherwise from the public
 # HTTPS front -- GPU_INDEX_PUBLIC_BASE_URL when set, defaulting to the
 # official record host https://data.getcomputable.com. Exit 0 all-match /
 # 1 any mismatch or digest FAIL / 2 could not verify (front unreachable,
 # or no published artifacts for the date) -- the default NEVER exits 0
-# without verifying something; withheld sources degrade an observation
-# to digest-only with a distinct message.
+# without verifying something. --receipts is the fast opt-in; withheld
+# contributing sources degrade that mode to digest-only with a message.
 #
-# --full --version <n> replays one version's full public
-# calculation from raw disclosed inputs:
+# --full (default) replays each stamp under its effective version, using
+# that version's own history. --version <n> selects one version throughout.
+# The calculation uses raw disclosed inputs:
 # per-source prices and dispersions, status/timing facts, filter verdicts,
 # carried basis, and published calculation parameters. It derives the
 # attendance events and factors, liveness scores, weight vector, votes,
@@ -57,7 +58,7 @@ usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
        reproduce --frozen <b300|b200> <YYYY-MM-DD>
 
   <sku>             public SKU. Verifies the as-published record from
-                    its receipts when latest.json advertises history_path;
+                    raw history when latest.json advertises history_path;
                     otherwise prints a notice and uses current_version.
                     Reads a local copy under GPU_INDEX_DATA_DIR when it
                     holds the requested day, else the public front
@@ -66,9 +67,9 @@ usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
                     verifiable value matched; 1 mismatch/digest FAIL;
                     2 could not verify
   --version <n>     verify this version's full re-derivation keyspace
-  --full            derive weights and values from raw history; pass
-                    --version <n> (a day takes a few minutes)
-  --receipts        the default fast check: recompute each value from its own
+  --full            default: derive weights and values from raw history
+                    under the version live at each stamp (takes a few minutes)
+  --receipts        fast opt-in: recompute each value from its own
                     published receipts only (no weight re-derivation)
   --collect         collect current source prices for the latest print
                     and compare them with its receipts. Past source
@@ -85,9 +86,8 @@ EOF
 
 MODE=sku
 PRODUCER=0
-# Receipt verification can follow a mixed-methodology as-published day.
-# Raw full re-derivation remains an explicit per-version operation.
-FULL=0
+# Re-derive the as-published series with each stamp's effective version.
+FULL=1
 FULL_EXPLICIT=0
 COLLECT=0
 VERSION=""
