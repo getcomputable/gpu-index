@@ -25,7 +25,7 @@
 # without verifying something; withheld sources degrade an observation
 # to digest-only with a distinct message.
 #
-# The default (and its explicit alias --full) replays the full public
+# --full --version <n> replays one version's full public
 # calculation from raw disclosed inputs:
 # per-source prices and dispersions, status/timing facts, filter verdicts,
 # carried basis, and published calculation parameters. It derives the
@@ -56,17 +56,19 @@ usage: reproduce <h100|h200|b300|b200> <YYYY-MM-DD[THH]>
        reproduce --lane <panel_id> <YYYY-MM-DD[THH]>
        reproduce --frozen <b300|b200> <YYYY-MM-DD>
 
-  <sku>             public SKU. Re-derives the PUBLISHED record end to
-                    end from raw public history (attendance, liveness,
-                    weights, votes, IQM, and the index; --full is the
-                    same, kept as an alias) and matches every value.
+  <sku>             public SKU. Verifies the as-published record from
+                    its receipts when latest.json advertises history_path;
+                    otherwise prints a notice and uses current_version.
                     Reads a local copy under GPU_INDEX_DATA_DIR when it
                     holds the requested day, else the public front
                     (GPU_INDEX_PUBLIC_BASE_URL, default
-                    https://data.getcomputable.com). Fetches trailing
-                    history, so a day takes a few minutes. Exit 0
-                    all-match, 1 mismatch/digest FAIL, 2 could not verify
-  --receipts        the fast check: recompute each value from its own
+                    https://data.getcomputable.com). Exit 0: every
+                    verifiable value matched; 1 mismatch/digest FAIL;
+                    2 could not verify
+  --version <n>     verify this version's full re-derivation keyspace
+  --full            derive weights and values from raw history; pass
+                    --version <n> (a day takes a few minutes)
+  --receipts        the default fast check: recompute each value from its own
                     published receipts only (no weight re-derivation)
   --collect         collect current source prices for the latest print
                     and compare them with its receipts. Past source
@@ -83,21 +85,40 @@ EOF
 
 MODE=sku
 PRODUCER=0
-# Full re-derivation is the default for the sku mode; --receipts opts out
-# and --full stays as an explicit alias. FULL_EXPLICIT keeps the
-# cannot-combine guard for the other modes on explicit flags only.
-FULL=1
+# Receipt verification can follow a mixed-methodology as-published day.
+# Raw full re-derivation remains an explicit per-version operation.
+FULL=0
 FULL_EXPLICIT=0
 COLLECT=0
-case "${1:-}" in
-  --frozen) MODE=frozen; shift ;;
-  --lane) MODE=lane; shift ;;
-  --producer) PRODUCER=1; shift ;;
-  --full) FULL=1; FULL_EXPLICIT=1; shift ;;
-  --receipts) FULL=0; shift ;;
-  --collect) COLLECT=1; shift ;;
-  -h|--help) usage ;;
-esac
+VERSION=""
+SELECTED_MODE=""
+while [[ "${1:-}" == --* || "${1:-}" == -h ]]; do
+  case "$1" in
+    --version)
+      [ $# -ge 2 ] || usage
+      [[ "$2" =~ ^[1-9][0-9]*$ ]] || usage
+      [ -z "$VERSION" ] || usage
+      VERSION=$2; shift 2; continue ;;
+    --frozen|--lane|--producer|--full|--receipts|--collect)
+      [ -z "$SELECTED_MODE" ] || usage
+      SELECTED_MODE=$1 ;;
+    -h|--help) usage ;;
+    *) usage ;;
+  esac
+  case "$1" in
+    --frozen) MODE=frozen ;;
+    --lane) MODE=lane ;;
+    --producer) PRODUCER=1 ;;
+    --full) FULL=1; FULL_EXPLICIT=1 ;;
+    --receipts) FULL=0 ;;
+    --collect) COLLECT=1 ;;
+  esac
+  shift
+done
+if [ -n "$VERSION" ] && { [ "$MODE" != sku ] || [ "$PRODUCER" -eq 1 ] || [ "$COLLECT" -eq 1 ]; }; then
+  echo "--version reads the PUBLISHED record; use it with --receipts or --full" >&2
+  exit 2
+fi
 
 if [ "$COLLECT" -eq 1 ]; then
   [ $# -eq 1 ] || usage
@@ -183,23 +204,28 @@ else
   if [ "$PRODUCER" -eq 0 ]; then
     DAY=${DATE%%T*}
     PUB_SKU=$(printf '%s' "$ARG" | tr '[:lower:]' '[:upper:]')
-    DAY_FILE="$DATA_DIR/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
-    VERSIONED_DAY_FILE=""
-    if [ -f "$DATA_DIR/latest.json" ]; then
-      CURRENT_VERSION=$("$PY" -c 'import json,sys; data=json.load(open(sys.argv[1])); print(next((entry["current_version"] for entry in data.get("data", {}).get("versions", []) if entry.get("sku") == sys.argv[2]), ""))' "$DATA_DIR/latest.json" "$PUB_SKU" 2>/dev/null || true)
-      if [ -n "$CURRENT_VERSION" ]; then
-        VERSIONED_DAY_FILE="$DATA_DIR/$PUB_SKU/v$CURRENT_VERSION/observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
-      fi
+    SUFFIX="observations/${DAY:0:4}/${DAY:5:2}/${DAY:8:2}.json"
+    DAY_FILE="$DATA_DIR/$SUFFIX"
+    if [ -n "$VERSION" ]; then
+      DAY_FILE="$DATA_DIR/$PUB_SKU/v$VERSION/$SUFFIX"
+    elif [ -f "$DATA_DIR/latest.json" ]; then
+      # Presence probe only; the reader verifies the pointer before using it.
+      PREFIX=$("$PY" -c '
+import json, sys
+entries = json.load(open(sys.argv[1])).get("data", {}).get("versions", [])
+entry = next((e for e in entries if e.get("sku") == sys.argv[2]), None)
+if entry:
+    print(entry.get("history_path", sys.argv[2] + "/v" + str(entry["current_version"])))
+' "$DATA_DIR/latest.json" "$PUB_SKU" 2>/dev/null || true)
+      if [ -n "$PREFIX" ]; then DAY_FILE="$DATA_DIR/$PREFIX/$SUFFIX"; fi
     fi
-    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ] && { [ -z "$VERSIONED_DAY_FILE" ] || [ ! -f "$VERSIONED_DAY_FILE" ]; }; then
+    if [ -z "${GPU_INDEX_PUBLIC_BASE_URL:-}" ] && [ ! -f "$DAY_FILE" ]; then
       export GPU_INDEX_PUBLIC_BASE_URL="https://data.getcomputable.com"
     fi
-    if [ "$FULL" -eq 1 ]; then
-      exec "$PY" "$ROOT/scripts/verify_published_record.py" \
-        --sku "$PUB_SKU" --date "$DATE" --full
-    fi
-    exec "$PY" "$ROOT/scripts/verify_published_record.py" \
-      --sku "$PUB_SKU" --date "$DATE"
+    set -- --sku "$PUB_SKU" --date "$DATE"
+    if [ "$FULL" -eq 1 ]; then set -- "$@" --full; fi
+    if [ -n "$VERSION" ]; then set -- "$@" --version "$VERSION"; fi
+    exec "$PY" "$ROOT/scripts/verify_published_record.py" "$@"
   fi
 fi
 

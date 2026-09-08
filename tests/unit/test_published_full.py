@@ -229,11 +229,13 @@ def test_full_reproduction_typed_refusal_names_missing_status_history():
     assert "s2" in str(caught.value)
 
 
-def test_history_loader_uses_the_public_series_origin_and_verified_days():
+@pytest.mark.parametrize("version", [None, 5, 6])
+def test_history_loader_uses_the_public_series_origin_and_verified_days(version):
     observation = _observation()
 
     class Reader:
-        def read_series(self, _range, *, sku):
+        def read_series(self, _range, *, sku, **kwargs):
+            assert kwargs == ({"version": version} if version is not None else {})
             assert (_range, sku) == ("90d", "H100")
             return {
                 "meta": {"from_observed_at": observation["observed_at"]},
@@ -244,7 +246,8 @@ def test_history_loader_uses_the_public_series_origin_and_verified_days():
                 },
             }
 
-        def read_day(self, date, *, sku):
+        def read_day(self, date, *, sku, **kwargs):
+            assert kwargs == ({"version": version} if version is not None else {})
             assert sku == "H100"
             if date == "2026-08-31":
                 return None
@@ -252,7 +255,9 @@ def test_history_loader_uses_the_public_series_origin_and_verified_days():
                 return {"data": {"observations": [observation]}}
             raise AssertionError(f"unexpected day read {date}")
 
-    history = read_full_history(Reader(), sku="H100", target_date="2026-09-01")
+    history = read_full_history(
+        Reader(), sku="H100", target_date="2026-09-01", version=version
+    )
 
     assert history == [observation]
 
@@ -300,14 +305,24 @@ def test_history_loader_refuses_when_series_and_day_lattices_disagree():
     assert "series/day observation lattice differs" in str(caught.value)
 
 
-def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys):
+@pytest.mark.parametrize("version", [None, 5])
+def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys, version):
     observation = _observation()
 
     class Reader:
+        def version_pointer(self, sku):
+            if version is None:
+                return None
+            return {"history_path": "H100/published", "succession": [{
+                "version": version, "methodology_id": observation["methodology_id"],
+                "effective_from": "2026-09-01T00:13:39Z",
+            }]}
+
         def describe(self):
             return "test public record"
 
-        def read_series(self, _range, *, sku):
+        def read_series(self, _range, *, sku, **kwargs):
+            assert kwargs == ({"version": version} if version is not None else {})
             return {
                 "meta": {"from_observed_at": observation["observed_at"]},
                 "data": {
@@ -317,7 +332,8 @@ def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys):
                 },
             }
 
-        def read_day(self, date, *, sku):
+        def read_day(self, date, *, sku, **kwargs):
+            assert kwargs == ({"version": version} if version is not None else {})
             if date == "2026-08-31":
                 return None
             return {"data": {"observations": [observation]}}
@@ -339,6 +355,7 @@ def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys):
             "--date",
             "2026-09-01",
             "--full",
+            *(["--version", str(version)] if version is not None else []),
         ],
     )
 
@@ -350,6 +367,8 @@ def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys):
     assert "MATCH" in output
     assert "weights: s0=0.2" in output
     assert "1 MATCH, 0 MISMATCH" in output
+    if version is not None:
+        assert "version 5 methodology_id h100_sxm_v1_calc_v8 back-calculated" in output
 
     observation["receipts"][1]["weight"] = 999.0
     assert cli.main() == 1

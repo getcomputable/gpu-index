@@ -7,6 +7,13 @@ that produced it; any parameter change touching a published day mints a
 new methodology_id, and prior versions stay frozen and readable under
 their own keyspaces. Newest first.
 
+## 2026-09-08
+
+Published history now serves the version that was live at each observation. A
+methodology version's keyspace holds that version's full re-derivation from its
+first observation, including rows before its effective time, for verification;
+`./reproduce --version` labels those rows back-calculated.
+
 ## 2026-09-03
 
 Hyperbolic seated on the H100-SXM and H200-SXM panels, effective

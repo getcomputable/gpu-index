@@ -151,9 +151,8 @@ def test_default_with_no_env_verifies_against_the_official_front(
     (line,) = _shim_lines(result)
     assert "verify_published_record.py" in line
     assert "--sku H100 --date 2026-08-24" in line
-    # The default is the raw-only full re-derivation; --receipts is the
-    # opt-out for the fast receipts-only recompute.
-    assert "--full" in line
+    # Mixed-methodology as-published days use receipt verification.
+    assert "--full" not in line
     assert _shim_env(result) == "https://data.getcomputable.com"
 
 
@@ -446,3 +445,56 @@ def test_frozen_refuses_non_daily_skus_and_hour_stamps(shim, data_dir):
     result = _run(shim, data_dir, "--frozen", "b300", "2026-08-22T05")
     assert result.returncode == 2
     assert "day-keyed" in result.stderr
+
+
+@pytest.mark.parametrize("mode", [[], ["--receipts"], ["--full"]])
+@pytest.mark.parametrize("version_first", [True, False])
+def test_version_routes_in_both_public_modes(shim, data_dir, mode, version_first):
+    flags = ["--version", "5", *mode] if version_first else [*mode, "--version", "5"]
+    result = _run(shim, data_dir, *flags, "h100", "2026-09-01")
+    assert result.returncode == 0, result.stderr
+    (line,) = _shim_lines(result)
+    assert "--version 5" in line
+    assert ("--full" in line) == (mode == ["--full"])
+
+
+@pytest.mark.parametrize("mode", ["--collect", "--producer", "--lane", "--frozen"])
+def test_version_rejects_non_public_modes(shim, data_dir, mode):
+    result = _run(shim, data_dir, mode, "--version", "5", "h100", "2026-09-01")
+    assert result.returncode == 2
+    assert "--version reads the PUBLISHED record" in result.stderr
+    assert not _shim_lines(result)
+
+
+@pytest.mark.parametrize("flags", [["--version"], ["--version", "0"],
+                                    ["--version", "x"], ["--version", "-1"],
+                                    ["--version", "1", "--version", "2"],
+                                    ["--full", "--receipts"]])
+def test_invalid_flags_refuse_without_invoking_python(shim, data_dir, flags):
+    result = _run(shim, data_dir, *flags, "h100", "2026-09-01")
+    assert result.returncode == 2
+    assert not _shim_lines(result)
+
+
+def test_explicit_version_probes_requested_local_version(shim, data_dir):
+    _publish_versioned_public_day(data_dir, "H100", "2026-08-25", version=1)
+    (data_dir / "latest.json").write_text(json.dumps({"data": {"versions": [
+        {"sku": "H100", "current_version": 2, "history_path": "H100/published"}
+    ]}}))
+    result = _run(shim, data_dir, "--version", "1", "h100", "2026-08-25")
+    assert result.returncode == 0, result.stderr
+    assert _shim_env(result) == ""
+    result = _run(shim, data_dir, "--version", "2", "h100", "2026-08-25")
+    assert result.returncode == 0, result.stderr
+    assert _shim_env(result) == "https://data.getcomputable.com"
+
+
+def test_default_probes_local_published_keyspace(shim, data_dir):
+    _publish_versioned_public_day(data_dir, "H100", "2026-08-25")
+    (data_dir / "latest.json").write_text(json.dumps({"data": {"versions": [
+        {"sku": "H100", "current_version": 2, "history_path": "H100/published"}
+    ]}}))
+    (data_dir / "H100/v2").rename(data_dir / "H100/published")
+    result = _run(shim, data_dir, "h100", "2026-08-25")
+    assert result.returncode == 0, result.stderr
+    assert _shim_env(result) == ""

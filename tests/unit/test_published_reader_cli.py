@@ -447,7 +447,10 @@ def test_cli_unreachable_front_exits_two_with_one_actionable_line(
         def describe(self):
             return "public HTTPS front https://data.getcomputable.com"
 
-        def resolve_day_key(self, date, *, sku):
+        def version_pointer(self, sku):
+            return None
+
+        def resolve_day_key(self, date, *, sku, version=None):
             return f"observations/{date.replace('-', '/')}.json"
 
         def read_day(self, date, *, sku=None, resolved_key=None):
@@ -474,7 +477,10 @@ def test_cli_broken_front_non_200_exits_two_not_a_traceback(
         def describe(self):
             return "public HTTPS front https://data.getcomputable.com"
 
-        def resolve_day_key(self, date, *, sku):
+        def version_pointer(self, sku):
+            return None
+
+        def resolve_day_key(self, date, *, sku, version=None):
             return f"observations/{date.replace('-', '/')}.json"
 
         def read_day(self, date, *, sku=None, resolved_key=None):
@@ -523,3 +529,195 @@ def test_cli_unknown_sku_in_day_exits_two(
 def test_cli_bad_date_exits_two(record_env, monkeypatch, cli, capsys):
     assert _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-8-25") == 2
     assert "bad date" in capsys.readouterr().err
+
+
+def _rewrite(path, mutate):
+    document = json.loads(path.read_text())
+    mutate(document)
+    document["artifact_sha256"] = payload_digest(
+        {key: document[key] for key in ("data", "meta", "license")}
+    )
+    path.write_text(json.dumps(document) + "\n")
+
+
+def _published_record(tmp_path):
+    root = _versioned_record(tmp_path)
+    _rewrite(root / "latest.json", lambda doc: doc["data"]["versions"][0].update(
+        history_path="H100/published"
+    ))
+    for suffix in ("observations/2026/08/25.json", "series/24h.json"):
+        target = root / "H100/published" / suffix
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / "H100/v2" / suffix, target)
+
+        def mix(document):
+            row = document["data"]["observations"][0]
+            row["methodology_id"] = "annex_h100_v1"
+            if "calc_params" in row:
+                row["calc_params"]["methodology_id"] = "annex_h100_v1"
+
+        _rewrite(target, mix)
+    return root
+
+
+def test_default_published_day_verifies_two_methodologies(tmp_path, monkeypatch, cli, capsys):
+    root = _published_record(tmp_path)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25"]) == 0
+    out = capsys.readouterr().out
+    assert "H100/published/observations/2026/08/25.json" in out
+    assert "2 MATCH, 0 MISMATCH, 0 degraded" in out
+    assert "version 1 methodology_id annex_h100_v1" in out
+    assert "version 2 methodology_id" in out
+    assert "falling back" not in out
+    assert "back-calculated" not in out
+
+
+def test_published_series_resolves_and_accepts_two_methodologies(tmp_path):
+    reader = _local_reader(_published_record(tmp_path))
+    assert reader.resolve_series_key("24h", sku="H100") == "H100/published/series/24h.json"
+    rows = reader.read_series("24h", sku="H100")["data"]["observations"]
+    assert len({row["methodology_id"] for row in rows}) == 2
+    rows = reader.read_series("24h", sku="H100", version=2)["data"]["observations"]
+    assert len({row["methodology_id"] for row in rows}) == 1
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_cli_explicit_version_bypasses_published_history(
+    tmp_path, monkeypatch, cli, capsys, version
+):
+    root = _published_record(tmp_path)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25",
+                     "--version", str(version)]) == 0
+    out = capsys.readouterr().out
+    assert f"H100/v{version}/observations/2026/08/25.json" in out
+    assert out.count(f"version {version} methodology_id") == 2
+    assert "falling back" not in out
+    assert ("back-calculated" in out) == (version == 2)
+
+
+@pytest.mark.parametrize("stamp,back_calculated", [
+    ("2026-08-25T13:59:59.999Z", True),
+    ("2026-08-25T14:00:00.000Z", False),
+    ("2026-08-25T14:00:00.001Z", False),
+])
+def test_back_calculated_uses_exact_effective_time(cli, stamp, back_calculated):
+    pointer = {"succession": [{"version": 6, "methodology_id": "method",
+                               "effective_from": "2026-08-25T14:00:00Z"}]}
+    label = cli._identity_label(
+        {"methodology_id": "method", "observed_at": stamp}, pointer, explicit_version=6
+    )
+    assert ("back-calculated" in label) == back_calculated
+
+
+@pytest.mark.parametrize("path", [None, "", "H200/published", "../published",
+                                   "H100/published/", "H100/v2", 123])
+def test_pointer_rejects_invalid_history_path(tmp_path, path):
+    root = _versioned_record(tmp_path)
+    _rewrite(root / "latest.json", lambda doc: doc["data"]["versions"][0].update(
+        history_path=path
+    ))
+    with pytest.raises(ValueError, match="history_path"):
+        _local_reader(root).read_day("2026-08-25", sku="H100")
+
+
+@pytest.mark.parametrize("suffix", ["observations/2026/08/25.json", "series/24h.json"])
+@pytest.mark.parametrize("field,value", [("methodology_id", "unknown"), ("sku", "H200")])
+def test_published_identity_still_rejects_foreign_rows(tmp_path, suffix, field, value):
+    root = _published_record(tmp_path)
+
+    def mutate(doc):
+        row = doc["data"]["observations"][0]
+        row[field] = value
+        if field == "methodology_id" and "calc_params" in row:
+            row["calc_params"][field] = value
+
+    _rewrite(root / "H100/published" / suffix, mutate)
+    reader = _local_reader(root)
+    with pytest.raises(ValueError, match="version identity"):
+        if suffix.startswith("observations"):
+            reader.read_day("2026-08-25", sku="H100")
+        else:
+            reader.read_series("24h", sku="H100")
+
+
+def test_mixed_methods_remain_forbidden_in_version_keyspace(tmp_path):
+    root = _published_record(tmp_path)
+    shutil.copyfile(root / "H100/published/observations/2026/08/25.json",
+                    root / "H100/v2/observations/2026/08/25.json")
+    with pytest.raises(ValueError, match="version identity"):
+        _local_reader(root).read_day("2026-08-25", sku="H100", version=2)
+
+
+def test_default_fallback_notice_names_current_version(tmp_path, monkeypatch, cli, capsys):
+    root = _versioned_record(tmp_path)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25"]) == 0
+    out = capsys.readouterr().out
+    assert "falling back to current_version 2 (not as-published history)" in out
+
+
+def test_missing_advertised_history_does_not_fall_back(tmp_path, monkeypatch, cli, capsys):
+    root = _published_record(tmp_path)
+    (root / "H100/published/observations/2026/08/25.json").unlink()
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25"]) == 2
+    out = capsys.readouterr()
+    assert "no published day file" in out.err
+    assert "falling back" not in out.out
+
+
+def test_full_requires_explicit_version_when_history_advertised(
+    tmp_path, monkeypatch, cli, capsys
+):
+    root = _published_record(tmp_path)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25", "--full"]) == 2
+    assert "pass --version <n>" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("version", ["0", "-1", "abc", "1.5"])
+def test_cli_rejects_invalid_version(cli, version):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--sku", "H100", "--date", "2026-08-25", "--version", version])
+    assert exc.value.code == 2
+
+
+def test_cli_unadvertised_version_fails(tmp_path, monkeypatch, cli, capsys):
+    root = _published_record(tmp_path)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25", "--version", "99"]) == 1
+    assert "does not advertise H100 version 99" in capsys.readouterr().err
+
+
+def test_published_digest_is_still_verified(tmp_path, monkeypatch, cli, capsys):
+    root = _published_record(tmp_path)
+    path = root / "H100/published/observations/2026/08/25.json"
+    doc = json.loads(path.read_text())
+    doc["data"]["observations"][0]["value_usd_gpu_hr"] += 1
+    path.write_text(json.dumps(doc))
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25"]) == 1
+    assert "digest FAIL" in capsys.readouterr().err
+
+
+def test_reader_pins_pointer_for_path_and_identity(tmp_path):
+    root = _published_record(tmp_path)
+    reader = _local_reader(root)
+    key = reader.resolve_day_key("2026-08-25", sku="H100")
+    # A pointer update between display and read cannot alter this run's contract.
+    _rewrite(root / "latest.json", lambda doc: doc["data"]["versions"][0].pop("history_path"))
+    assert reader.read_day("2026-08-25", sku="H100", resolved_key=key) is not None
+    with pytest.raises(ValueError, match="not advertised"):
+        _local_reader(root).read_day("2026-08-25", sku="H100", resolved_key=key)
+
+
+def test_staged_explicit_version_names_version_without_pointer(
+    tmp_path, monkeypatch, cli, capsys
+):
+    root = _versioned_record(tmp_path)
+    (root / "latest.json").unlink()
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: _local_reader(root))
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25", "--version", "1"]) == 0
+    assert "version 1 methodology_id annex_h100_v1" in capsys.readouterr().out
