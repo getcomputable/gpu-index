@@ -64,54 +64,64 @@ pip install -e .
 install local; on systems that allow bare `pip install`, the venv lines are
 optional.)
 
-That verifies the current UTC day's published receipts and artifact digests.
-By default it reads the as-published keyspace advertised by `latest.json` as
-`data.versions[].history_path`. Until that field is available, it prints a
-notice and falls back to `current_version`. Each result names the version
-and `methodology_id` verified.
+That re-derives the current UTC day's as-published index end to end, including
+attendance events and factors, liveness scores, weights, votes, IQM, value, and
+stability band. It reads the history advertised by `latest.json` as
+`data.versions[].history_path`, selects the version live at each stamp by its
+succession `effective_from`, and uses that version's own `v<n>/` lookback history.
+Before public launch, it selects the launch version. Each result reports the
+version and `methodology_id`; observations before that version's effective time
+are labeled `back-calculated`.
 
-Exit 0: every verifiable value matched; withheld receipts degrade to digest-only
-verification with a notice. Exit 1 means a mismatch, invalid artifact, or digest
-failure; exit 2 means verification could not run or the arguments were invalid.
-To check another accelerator or time, run
+The raw inputs are disclosed prices and dispersions, recorded currency and FX,
+upstream status, carry basis, filter verdicts, timing, top-level flags, and
+`calc_params`. Published attendance factors, liveness scores, and weights are
+comparison outputs, never derivation inputs. Every artifact read is digest
+verified. Missing required history or withheld raw inputs cause a full-reproduction
+refusal. If `history_path` is absent, the command prints a notice and uses
+`current_version` (or the legacy flat record when no version pointer exists).
+
+Exit 0: every verifiable value matched. Exit 1 means a mismatch, invalid artifact,
+or digest failure; exit 2 means verification could not run or the arguments were
+invalid. To check another accelerator or time, run
 `./reproduce <h100|h200|b300|b200> YYYY-MM-DD`; add `THH` to check one UTC
-hour. `--receipts` explicitly selects this default receipts check.
+hour. A full day takes a few minutes.
 
-To verify a particular version's re-derivation, pass `--version <n>`:
+`--full` explicitly selects the default. `--receipts` is the fast opt-in: it
+recomputes each value and band from that observation's own published receipts,
+without re-deriving attendance or weights. In receipts mode only, withheld
+contributing receipts degrade to digest-only verification with a notice.
+
+To verify one version's re-derivation throughout, pass `--version <n>`:
 
 ```
+./reproduce --version 5 h100 2026-09-01
+./reproduce --version 6 h100 2026-09-01
 ./reproduce --receipts --version 5 h100 2026-09-01
-./reproduce --receipts --version 6 h100 2026-09-01
-./reproduce --full --version 5 h100 2026-09-01
 ```
 
-Explicit-version observations before that version's `effective_from` are labeled
-`back-calculated`. `--full` derives attendance events and factors, liveness
-scores, weights, votes, and values from raw disclosed history without consuming
-published derived intermediates. It stays within one version and takes a few
-minutes; pass `--version <n>`. During the cutover, `--full` without a version
-retains the current-version fallback only when `history_path` is absent.
+Rows before the selected version's `effective_from` are labeled
+`back-calculated` in both modes.
 
-Recorded 2026-09-01 under version 5; reproduce it with
-`./reproduce --full --version 5 h100 2026-09-01`. Taken live against
-https://data.getcomputable.com at 07:29 UTC and left exactly as recorded; the
-repeated middle lines and each observation's derived 16-source weight vector
-are elided.
+Recorded 2026-09-08 against https://data.getcomputable.com from a checkout with
+no `./data`. This day spans two versions: 76 observations under version 5 and
+20 under version 6. Repeated lines and derived source weight vectors are elided.
 
 ```
-$ ./reproduce h100 "$(date -u +%F)"
+$ ./reproduce h100 2026-09-03
 published record: full history via public HTTPS front https://data.getcomputable.com
 raw-only full reproduction: prices, dispersions, upstream status, carry basis, filter verdicts, timing, top-level flags, and calc_params are inputs; published derived intermediates are not
-H100 2026-09-01T00 derived 3.456577 (band 0.556277) published 3.456577 (band 0.556277) MATCH public digests OK
-H100 2026-09-01T00:15 derived 3.457619 (band 0.557319) published 3.457619 (band 0.557319) MATCH public digests OK
-[... 26 more MATCH lines, each followed by its derived weight vector ...]
-H100 2026-09-01T07 derived 3.465561 (band 0.565261) published 3.465561 (band 0.565261) MATCH public digests OK
-H100 2026-09-01T07:15 derived 3.465393 (band 0.565093) published 3.465393 (band 0.565093) MATCH public digests OK
-summary: 30 observation(s): 30 MATCH, 0 MISMATCH
+H100 2026-09-03T00 derived 3.519725 (band 0.520902) published 3.519725 (band 0.520902) MATCH public digests OK version 5 methodology_id h100_sxm_v1_calc_v8
+H100 2026-09-03T00:15 derived 3.519749 (band 0.520978) published 3.519749 (band 0.520978) MATCH public digests OK version 5 methodology_id h100_sxm_v1_calc_v8
+[... 73 more MATCH lines under version 5 ...]
+H100 2026-09-03T18:45 derived 3.505789 (band 0.605489) published 3.505789 (band 0.605489) MATCH public digests OK version 5 methodology_id h100_sxm_v1_calc_v8
+H100 2026-09-03T19 derived 3.508224 (band 0.518224) published 3.508224 (band 0.518224) MATCH public digests OK version 6 methodology_id h100_sxm_v1_calc_v10
+[... 18 more MATCH lines under version 6 ...]
+H100 2026-09-03T23:45 derived 3.547149 (band 0.646849) published 3.547149 (band 0.646849) MATCH public digests OK version 6 methodology_id h100_sxm_v1_calc_v10
+summary: 96 observation(s): 96 MATCH, 0 MISMATCH, 0 degraded
 ```
 
-Run `./reproduce --receipts` for the receipts-only value check; `--producer`
-and `--lane` replay a local collection record rather than the published one.
+`--producer` and `--lane` replay a local collection record.
 
 To compare the latest print with prices visible at its sources now, run
 `./reproduce --collect <h100|h200|b300|b200>`. It reports `SAME`, `MOVED`,

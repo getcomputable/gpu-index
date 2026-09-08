@@ -151,8 +151,8 @@ def test_default_with_no_env_verifies_against_the_official_front(
     (line,) = _shim_lines(result)
     assert "verify_published_record.py" in line
     assert "--sku H100 --date 2026-08-24" in line
-    # Mixed-methodology as-published days use receipt verification.
-    assert "--full" not in line
+    # Default follows the effective methodology for each stamp.
+    assert "--full" in line
     assert _shim_env(result) == "https://data.getcomputable.com"
 
 
@@ -455,7 +455,7 @@ def test_version_routes_in_both_public_modes(shim, data_dir, mode, version_first
     assert result.returncode == 0, result.stderr
     (line,) = _shim_lines(result)
     assert "--version 5" in line
-    assert ("--full" in line) == (mode == ["--full"])
+    assert ("--full" in line) == (mode != ["--receipts"])
 
 
 @pytest.mark.parametrize("mode", ["--collect", "--producer", "--lane", "--frozen"])

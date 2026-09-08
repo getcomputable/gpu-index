@@ -9,6 +9,10 @@ their own keyspaces. Newest first.
 
 ## 2026-09-08
 
+`./reproduce` now re-derives the as-published history end to end under the version
+live at each stamp, using each version's own lookback history. `--receipts` offers
+the fast per-observation check, and `--version` selects a single version.
+
 Published history now serves the version that was live at each observation. A
 methodology version's keyspace holds that version's full re-derivation from its
 first observation, including rows before its effective time, for verification;

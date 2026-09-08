@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left
-from dataclasses import dataclass
-from datetime import date, timedelta
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from gpu_index.index.panel import (
@@ -22,10 +22,13 @@ from gpu_index.index.weights import (
     new_weight_state,
 )
 from gpu_index.published.artifacts import PublishedRecordError
+from gpu_index.published.verify import MIN_DISCLOSURE_WINDOW_DAYS, _history_bound_days
 
 VERDICT_MATCH = "match"
 VERDICT_MISMATCH = "mismatch"
-FULL_HISTORY_BOUND_DAYS = 100
+FULL_HISTORY_BOUND_DAYS = MIN_DISCLOSURE_WINDOW_DAYS
+# The launch-era methodology also covers observations before public launch.
+_PUBLIC_LAUNCH = datetime.fromisoformat("2026-09-01T00:13:39Z")
 
 
 class FullReproductionRefusal(PublishedRecordError):
@@ -55,6 +58,8 @@ class FullObservationCheck:
     published_band: Optional[float]
     derived_weights: Dict[str, float]
     first_divergence: Optional[FullDivergence] = None
+    methodology_id: str = ""
+    version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -270,10 +275,9 @@ def read_full_history(
     """Read the contiguous public history required by the weighting engine.
 
     The public 90-day series identifies the observable record origin. If a
-    day exists immediately before that rolling window, the lane is older and
-    the full 100-day disclosure bound is required. If it does not, the series
-    begins at the lane's public corpus origin and replay starts from the
-    engine's empty genesis state.
+    day exists immediately before that rolling window, walk backward until
+    the disclosure bound or the first unavailable day. A younger version
+    starts at its public corpus origin, from the engine's empty genesis state.
     """
     # One version for the series, origin probe and every history day.
     version_args = {"version": version} if version is not None else {}
@@ -299,24 +303,38 @@ def read_full_history(
             f"the public 90d series begins at {series_start}, after {target}",
         )
 
-    previous = reader.read_day(
-        (series_start - timedelta(days=1)).isoformat(), sku=sku, **version_args
+    target_day = reader.read_day(target_date, sku=sku, **version_args)
+    target_rows = (target_day or {}).get("data", {}).get("observations", [])
+    bound_days = max(
+        (_history_bound_days(
+            history_days=row["calc_params"]["liveness"]["history_days"],
+            forward_horizons_hours=row["calc_params"]["liveness"]["forward_horizons_hours"],
+        ) for row in target_rows if row.get("calc_params", {}).get("liveness")),
+        default=FULL_HISTORY_BOUND_DAYS,
     )
-    if previous is None:
-        start = series_start
-        bound_label = f"public corpus origin {series_start.isoformat()}"
-    else:
-        start = target - timedelta(days=FULL_HISTORY_BOUND_DAYS - 1)
-        bound_label = (
-            f"{FULL_HISTORY_BOUND_DAYS}-day history bound beginning "
-            f"{start.isoformat()}"
-        )
+    bound_start = target - timedelta(days=bound_days - 1)
+    start = max(series_start, bound_start)
+    cached_days = {target: target_day}
+    # Walk back from an observable day: a young series may contain 91-99
+    # days even though the full disclosure-bound day does not exist yet.
+    while start > bound_start:
+        previous_date = start - timedelta(days=1)
+        previous = reader.read_day(previous_date.isoformat(), sku=sku, **version_args)
+        if previous is None:
+            break
+        cached_days[previous_date] = previous
+        start = previous_date
+    bound_label = (
+        f"{bound_days}-day history bound beginning {start.isoformat()}"
+        if start == bound_start
+        else f"public corpus origin {start.isoformat()}"
+    )
 
     observations = []
     cursor = start
     while cursor <= target:
         day = cursor.isoformat()
-        envelope = previous if cursor == series_start - timedelta(days=1) else None
+        envelope = cached_days.get(cursor)
         if envelope is None:
             envelope = reader.read_day(day, sku=sku, **version_args)
         if envelope is None:
@@ -340,7 +358,7 @@ def read_full_history(
             "insufficient_observable_history",
             "the public 90d series does not expose its observation lattice",
         )
-    lower = series_start.isoformat()
+    lower = max(series_start, start).isoformat()
     upper = target.isoformat()
     expected = sorted(
         str(row.get("observed_at"))
@@ -373,9 +391,14 @@ def read_full_history(
 
 
 def reproduce_full_history(
-    observations: Iterable[dict], *, target_date: str
+    observations: Iterable[dict], *, target_date: str,
+    comparison_rows: dict[str, dict] | None = None,
 ) -> FullReproduction:
-    """Derive target-day weights, votes, IQM, and index from raw public rows."""
+    """Derive target-day weights, votes, IQM, and index from raw public rows.
+
+    Optional comparison rows supply published outputs only; every derivation
+    input and state transition still comes from the version history.
+    """
     history = sorted(list(observations), key=_stamp)
     schedule = _ObservedSchedule(history)
     state = new_weight_state()
@@ -495,10 +518,14 @@ def reproduce_full_history(
             None if composite is None else composite["confidence_usd_gpu_hr"]
         )
         if observation_date == target_date:
-            published_value = observation.get("value_usd_gpu_hr")
-            published_band = observation.get("stability_band_usd_gpu_hr")
+            comparison = (
+                observation if comparison_rows is None
+                else comparison_rows.get(observation["observed_at"], observation)
+            )
+            published_value = comparison.get("value_usd_gpu_hr")
+            published_band = comparison.get("stability_band_usd_gpu_hr")
             divergence = _first_divergence(
-                receipts,
+                comparison["receipts"],
                 block,
                 derived_weights,
                 derived_value=derived_value,
@@ -521,6 +548,7 @@ def reproduce_full_history(
                     published_band=published_band,
                     derived_weights=derived_weights,
                     first_divergence=divergence,
+                    methodology_id=str(observation.get("methodology_id", "")),
                 )
             )
 
@@ -560,3 +588,57 @@ def reproduce_full_history(
             f"the public history contains no observation for {target_date}",
         )
     return FullReproduction(checks=tuple(checks))
+
+
+def reproduce_published_history(
+    reader: Any, *, sku: str, target_date: str,
+) -> FullReproduction:
+    """Re-derive each as-published stamp within its effective version's history."""
+    pointer = reader.version_pointer(sku)
+    if pointer is None or "history_path" not in pointer:
+        raise FullReproductionRefusal(
+            "history_path_unavailable",
+            f"latest.json does not advertise as-published history for {sku}",
+        )
+    envelope = reader.read_day(target_date, sku=sku)
+    rows = (envelope or {}).get("data", {}).get("observations", [])
+    if not rows:
+        raise FullReproductionRefusal(
+            "target_not_observable", f"no {sku} observations for {target_date}"
+        )
+    succession = sorted(
+        pointer["succession"], key=lambda entry: datetime.fromisoformat(entry["effective_from"])
+    )
+    groups: dict[int, dict[str, dict]] = {}
+    for row in rows:
+        stamp = row["observed_at"]
+        at = max(datetime.fromisoformat(stamp), _PUBLIC_LAUNCH)
+        live = [entry for entry in succession
+                if datetime.fromisoformat(entry["effective_from"]) <= at]
+        if not live:
+            raise FullReproductionRefusal(
+                "version_unavailable", f"{stamp}: no effective version is advertised"
+            )
+        selected = live[-1]
+        if row["sku"] != sku or row["methodology_id"] != selected["methodology_id"]:
+            raise PublishedRecordError(
+                f"{stamp}: as-published row disagrees with effective version "
+                f"{selected['version']} methodology_id {selected['methodology_id']}"
+            )
+        targets = groups.setdefault(selected["version"], {})
+        if stamp in targets:
+            raise PublishedRecordError(f"{stamp}: repeated as-published observation")
+        targets[stamp] = row
+
+    checks = []
+    for version, targets in groups.items():
+        history = read_full_history(reader, sku=sku, target_date=target_date, version=version)
+        run = reproduce_full_history(history, target_date=target_date, comparison_rows=targets)
+        selected_checks = [check for check in run.checks if check.observed_at in targets]
+        if sorted(check.observed_at for check in selected_checks) != sorted(targets):
+            raise FullReproductionRefusal(
+                "target_not_observable",
+                f"version {version}: history does not contain every as-published stamp",
+            )
+        checks.extend(replace(check, version=version) for check in selected_checks)
+    return FullReproduction(checks=tuple(sorted(checks, key=lambda check: check.observed_at)))

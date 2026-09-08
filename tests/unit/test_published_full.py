@@ -6,7 +6,11 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
+import os
+import subprocess
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -19,6 +23,7 @@ from gpu_index.published.full import (
     public_weight_print,
     read_full_history,
     reproduce_full_history,
+    reproduce_published_history,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -71,6 +76,7 @@ def _observation():
             {
                 "source_id": f"s{i}",
                 "upstream_status": "ok",
+                "status": "ok",
                 "carry_basis": None,
                 "filter_verdict": "accepted",
                 "price_disclosure": "published",
@@ -377,3 +383,297 @@ def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys, ver
         "FIRST DIVERGENCE: 2026-09-01T00:00:00.000Z s1 weight "
         "derived 0.2 published 999.0"
     ) in output
+
+
+@pytest.mark.parametrize("age", [91, 99, 100, 110])
+@pytest.mark.parametrize("history_days", [90, 120])
+def test_history_loader_reaches_available_origin_or_full_bound(age, history_days):
+    from gpu_index.published.verify import _history_bound_days
+
+    bound = _history_bound_days(history_days=history_days, forward_horizons_hours=[48])
+
+    target = date(2026, 9, 1)
+    origin = target - timedelta(days=age - 1)
+    series_start = target - timedelta(days=89)
+    days = {
+        (origin + timedelta(days=i)).isoformat(): {
+            "observed_at": f"{origin + timedelta(days=i)}T00:00:00.000Z",
+            "calc_params": {"liveness": {"history_days": history_days,
+                                          "forward_horizons_hours": [48]}},
+        }
+        for i in range(age)
+    }
+    reads = []
+
+    class Reader:
+        def read_series(self, _range, *, sku, version):
+            assert (sku, version) == ("H100", 5)
+            return {
+                "meta": {"from_observed_at": days[series_start.isoformat()]["observed_at"]},
+                "data": {"observations": [row for day, row in days.items()
+                                          if day >= series_start.isoformat()]},
+            }
+
+        def read_day(self, day, *, sku, version):
+            assert (sku, version) == ("H100", 5)
+            reads.append(day)
+            return {"data": {"observations": [days[day]]}} if day in days else None
+
+    history = read_full_history(Reader(), sku="H100", target_date=str(target), version=5)
+    assert len(history) == min(age, bound)
+    assert history[0]["observed_at"] == (
+        f"{max(origin, target - timedelta(days=bound - 1))}T00:00:00.000Z"
+    )
+    assert len(reads) == len(set(reads))
+
+
+def _two_version_reader():
+    # Version 2's own earlier raw price is needed for its carried target.
+    # Mixing the as-published lookback would produce 3.0 instead of 6.0.
+    early = _observation()
+    early["observed_at"] = "2026-09-03T18:45:00.000Z"
+    later = copy.deepcopy(early)
+    later["methodology_id"] = "h100_sxm_v1_calc_v10"
+    later["value_usd_gpu_hr"] = 6.0
+    later["stability_band_usd_gpu_hr"] = 2.2
+    for receipt in later["receipts"]:
+        receipt["price"] *= 2
+        receipt["sd"] *= 2
+    carried = copy.deepcopy(later)
+    carried["observed_at"] = "2026-09-03T19:00:00.000Z"
+    for receipt in carried["receipts"]:
+        receipt["upstream_status"] = "carried"
+    earlier_end = copy.deepcopy(early)
+    earlier_end["observed_at"] = carried["observed_at"]
+
+    class Reader:
+        def __init__(self):
+            self.published = [early, carried]
+            self.histories = {1: [early, earlier_end], 2: [later, carried]}
+            self.read_versions = []
+            self.pointer = {
+                "current_version": 2, "history_path": "H100/published",
+                "succession": [
+                    {"version": 1, "methodology_id": early["methodology_id"],
+                     "effective_from": "2026-09-01T00:13:39Z"},
+                    {"version": 2, "methodology_id": later["methodology_id"],
+                     "effective_from": "2026-09-03T18:59:44Z"},
+                ],
+            }
+
+        def describe(self):
+            return "synthetic public record"
+
+        def version_pointer(self, sku):
+            return self.pointer
+
+        def read_series(self, _range, *, sku, version):
+            self.read_versions.append(version)
+            rows = self.histories[version]
+            return {"meta": {"from_observed_at": rows[0]["observed_at"]},
+                    "data": {"observations": rows}}
+
+        def read_day(self, day, *, sku, version=None):
+            rows = self.published if version is None else self.histories[version]
+            matching = [row for row in rows if row["observed_at"][:10] == day]
+            return {"data": {"observations": matching}} if matching else None
+
+    return Reader()
+
+
+def test_as_published_full_uses_each_versions_own_raw_history():
+    reader = _two_version_reader()
+    result = reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
+    assert [(check.verdict, check.derived_value, check.version, check.methodology_id)
+            for check in result.checks] == [
+        (VERDICT_MATCH, 3.0, 1, "h100_sxm_v1_calc_v8"),
+        (VERDICT_MATCH, 6.0, 2, "h100_sxm_v1_calc_v10"),
+    ]
+    assert reader.read_versions == [1, 2]
+
+
+def test_as_published_full_cli_reports_both_versions(monkeypatch, capsys):
+    reader = _two_version_reader()
+    spec = importlib.util.spec_from_file_location(
+        "as_published_cli", REPO_ROOT / "scripts" / "verify_published_record.py"
+    )
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: reader)
+    assert cli.main(["--sku", "H100", "--date", "2026-09-03", "--full"]) == 0
+    output = capsys.readouterr().out
+    assert "version 1 methodology_id h100_sxm_v1_calc_v8" in output
+    assert "version 2 methodology_id h100_sxm_v1_calc_v10" in output
+    assert "2 MATCH, 0 MISMATCH, 0 degraded" in output
+    assert "NOTICE" not in output
+
+
+def test_pre_launch_history_selects_launch_version_and_labels_rows(monkeypatch, capsys):
+    reader = _two_version_reader()
+    # Advertise an earlier version as well: pre-launch means launch version,
+    # not the oldest advertised version or the version effective on that date.
+    reader.histories = {version + 1: rows for version, rows in reader.histories.items()}
+    reader.pointer["current_version"] += 1
+    for entry in reader.pointer["succession"]:
+        entry["version"] += 1
+    reader.pointer["succession"].insert(0, {
+        "version": 1, "methodology_id": "earlier_method",
+        "effective_from": "2026-08-01T00:00:00Z",
+    })
+    before = copy.deepcopy(reader.histories[2][0])
+    before["observed_at"] = "2026-08-25T00:00:00.000Z"
+    reader.published = [before]
+    reader.histories[2] = [before]
+    spec = importlib.util.spec_from_file_location(
+        "pre_launch_cli", REPO_ROOT / "scripts" / "verify_published_record.py"
+    )
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: reader)
+    assert cli.main(["--sku", "H100", "--date", "2026-08-25", "--full"]) == 0
+    assert reader.read_versions == [2]
+    assert ("version 2 methodology_id h100_sxm_v1_calc_v8 back-calculated"
+            in capsys.readouterr().out)
+
+
+@pytest.mark.parametrize("field", ["value_usd_gpu_hr", "stability_band_usd_gpu_hr",
+                                   "weight", "liveness_score", "attendance_factor"])
+def test_full_compares_against_as_published_outputs(field):
+    reader = _two_version_reader()
+    reader.published = copy.deepcopy(reader.published)
+    if field in reader.published[1]:
+        reader.published[1][field] = 999.0
+    else:
+        reader.published[1]["receipts"][0][field] = 999.0
+    result = reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
+    assert result.checks[0].verdict == VERDICT_MATCH
+    assert result.checks[1].verdict == "mismatch"
+    assert result.checks[1].derived_value == 6.0
+
+
+def test_as_published_methodology_must_be_effective_at_stamp():
+    reader = _two_version_reader()
+    reader.published = copy.deepcopy(reader.published)
+    reader.published[1]["methodology_id"] = reader.published[0]["methodology_id"]
+    with pytest.raises(ValueError, match="disagrees with effective version 2"):
+        reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
+
+
+def test_as_published_target_must_exist_in_version_history():
+    reader = _two_version_reader()
+    reader.histories[2] = reader.histories[2][:1]
+    with pytest.raises(FullReproductionRefusal, match="every as-published stamp"):
+        reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
+
+
+@pytest.mark.parametrize("stamp,version", [
+    ("2026-09-03T18:59:43.999Z", 1),
+    ("2026-09-03T18:59:44.000Z", 2),
+    ("2026-09-03T11:59:44-07:00", 2),
+])
+def test_effective_time_selection_is_inclusive_and_timezone_aware(stamp, version):
+    reader = _two_version_reader()
+    target = copy.deepcopy(reader.histories[version][0])
+    target["observed_at"] = stamp
+    reader.published = [target]
+    reader.histories[version] = [target]
+    result = reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
+    assert result.checks[0].version == version
+    assert result.checks[0].verdict == VERDICT_MATCH
+
+
+@pytest.mark.parametrize("pointer", [None, {"current_version": 2}])
+def test_as_published_full_requires_advertised_history(pointer):
+    reader = _two_version_reader()
+    reader.pointer = pointer
+    with pytest.raises(FullReproductionRefusal, match="does not advertise as-published history"):
+        reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
+
+
+def test_disclosure_bound_uses_history_and_longest_forward_horizon():
+    from gpu_index.published.full import FULL_HISTORY_BOUND_DAYS
+    from gpu_index.published.verify import MIN_DISCLOSURE_WINDOW_DAYS, _history_bound_days
+
+    assert FULL_HISTORY_BOUND_DAYS == MIN_DISCLOSURE_WINDOW_DAYS == 100
+    assert _history_bound_days(history_days=90, forward_horizons_hours=[6, 49]) == 101
+    assert _history_bound_days(history_days=120, forward_horizons_hours=[72]) == 131
+
+
+@pytest.mark.parametrize("pre_launch", [False, True])
+def test_default_command_reproduces_a_digest_verified_two_version_corpus(tmp_path, pre_launch):
+    from gpu_index.published.artifacts import payload_digest
+
+    corpus = _two_version_reader()
+    target_date = "2026-09-03"
+    if pre_launch:
+        target_date = "2026-08-25"
+        row = copy.deepcopy(corpus.histories[1][0])
+        row["observed_at"] = f"{target_date}T00:00:00.000Z"
+        corpus.published = [row]
+        corpus.histories[1] = [row]
+    template = json.loads((REPO_ROOT / "tests/fixtures/published/latest.json").read_text())
+    root = tmp_path / "record"
+
+    def write(key, data):
+        doc = copy.deepcopy(template)
+        doc["data"] = data
+        rows = data["observations"]
+        doc["meta"].update(
+            observation_count=len(rows),
+            from_observed_at=min(row["observed_at"] for row in rows),
+            to_observed_at=max(row["observed_at"] for row in rows),
+        )
+        doc["artifact_sha256"] = payload_digest(
+            {key: doc[key] for key in ("data", "meta", "license")}
+        )
+        path = root / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(doc))
+
+    pointer = corpus.pointer
+    pointer.update(sku="H100", **{key: pointer["succession"][-1][key]
+                                  for key in ("methodology_id", "effective_from")})
+    write("latest.json", {"kind": "gpu_index_latest", "observations": corpus.published,
+                          "versions": [pointer]})
+    day_key = f"observations/{target_date.replace('-', '/')}.json"
+    write(f"H100/published/{day_key}", {
+        "kind": "gpu_index_observation_day", "date": target_date,
+        "observations": corpus.published,
+    })
+    for version, rows in corpus.histories.items():
+        if pre_launch and version == 2:
+            continue
+        write(f"H100/v{version}/{day_key}", {
+            "kind": "gpu_index_observation_day", "date": target_date, "observations": rows,
+        })
+        write(f"H100/v{version}/series/90d.json", {
+            "kind": "gpu_index_series", "range": "90d", "observations": rows,
+        })
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GPU_INDEX_")}
+    env.update(PYTHON=sys.executable, GPU_INDEX_DATA_DIR=str(root))
+
+    def run(*flags):
+        return subprocess.run(
+            [str(REPO_ROOT / "reproduce"), *flags, "h100", target_date],
+            env=env, capture_output=True, text=True, timeout=30,
+        )
+
+    full = run()
+    assert full.returncode == 0, full.stderr
+    assert "raw-only full reproduction" in full.stdout
+    assert "NOTICE" not in full.stdout
+    count = 1 if pre_launch else 2
+    assert f"{count} MATCH, 0 MISMATCH, 0 degraded" in full.stdout
+    assert "version 1 methodology_id h100_sxm_v1_calc_v8" in full.stdout
+    assert ("back-calculated" in full.stdout) == pre_launch
+    if not pre_launch:
+        assert "version 2 methodology_id h100_sxm_v1_calc_v10" in full.stdout
+        assert "derived 6.0" in full.stdout
+    receipts = run("--receipts")
+    assert receipts.returncode == 0, receipts.stderr
+    assert "raw-only full reproduction" not in receipts.stdout
+    assert f"{count} MATCH, 0 MISMATCH, 0 degraded" in receipts.stdout
+    # The fast check remains independent of version-history availability.
+    (root / f"H100/v1/{day_key}").unlink()
+    assert run().returncode == 2
+    assert run("--receipts").stdout == receipts.stdout

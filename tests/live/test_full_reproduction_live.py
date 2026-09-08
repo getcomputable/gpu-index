@@ -12,8 +12,7 @@ import pytest
 from gpu_index.common.bucket import BucketConfig
 from gpu_index.published.full import (
     VERDICT_MATCH,
-    read_full_history,
-    reproduce_full_history,
+    reproduce_published_history,
 )
 from gpu_index.published.reader import PublishedRecordReader
 
@@ -22,7 +21,8 @@ pytestmark = pytest.mark.live
 DEFAULT_PUBLIC_BASE_URL = "https://data.getcomputable.com"
 
 
-def test_current_h100_reproduces_from_raw_public_history_only():
+@pytest.mark.parametrize("sku", ["H100", "H200", "B200", "B300"])
+def test_current_as_published_history_reproduces_from_raw_inputs(sku):
     public_url = (
         os.environ.get("GPU_INDEX_PUBLIC_BASE_URL") or DEFAULT_PUBLIC_BASE_URL
     )
@@ -31,10 +31,7 @@ def test_current_h100_reproduces_from_raw_public_history_only():
     )
     today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
 
-    pointer = reader.version_pointer("H100")
-    version = pointer["current_version"] if pointer else None
-    history = read_full_history(reader, sku="H100", target_date=today, version=version)
-    run = reproduce_full_history(history, target_date=today)
+    run = reproduce_published_history(reader, sku=sku, target_date=today)
 
-    assert run.checks, f"the public record has no H100 observations for {today}"
+    assert run.checks, f"the public record has no {sku} observations for {today}"
     assert all(check.verdict == VERDICT_MATCH for check in run.checks)
