@@ -39,6 +39,9 @@ inputs, and every published value live in the open.
   [Price history](https://docs.getcomputable.com/api-reference/index/price-history)
 - **Flat-file corpus**: `https://data.getcomputable.com/`. The published
   record as flat files: `latest.json` and the dated day archives.
+  A version keyspace holds that version's full re-derivation from its first
+  observation, including rows before its effective time; the as-published
+  history is the record of what was live.
 - **MCP server**: `https://mcp.getcomputable.com/mcp`. The same index through
   three read-only tools, for Claude and other AI clients.
   [Connect with MCP](https://docs.getcomputable.com/mcp-server)
@@ -61,21 +64,39 @@ pip install -e .
 install local; on systems that allow bare `pip install`, the venv lines are
 optional.)
 
-That re-derives the current UTC day from raw public history: attendance
-events and factors, liveness scores, the weight vector, the votes, and each
-observation's value, all computed from disclosed inputs and matched against
-the published record, with every artifact digest verified. It fetches the
-trailing history it needs, so a full day takes a few minutes. Exit 0 means
-every value and digest matched, 1 means a mismatch, and 2 means nothing could
-be verified. To check another accelerator or time, run
-`./reproduce <h100|h200|b300|b200> YYYY-MM-DD`; add `THH` to check one UTC
-hour. For the fast check that recomputes each value from its own published
-receipts only, run `./reproduce --receipts <sku> <date>`.
+That verifies the current UTC day's published receipts and artifact digests.
+By default it reads the as-published keyspace advertised by `latest.json` as
+`data.versions[].history_path`. Until that field is available, it prints a
+notice and falls back to `current_version`. Each result names the version
+and `methodology_id` verified.
 
-A successful run looks like this, recorded live against
-https://data.getcomputable.com on 2026-09-01 at 07:29 UTC. The transcript is
-left exactly as recorded; the repeated middle lines and each observation's
-derived 16-source weight vector are elided.
+Exit 0: every verifiable value matched; withheld receipts degrade to digest-only
+verification with a notice. Exit 1 means a mismatch, invalid artifact, or digest
+failure; exit 2 means verification could not run or the arguments were invalid.
+To check another accelerator or time, run
+`./reproduce <h100|h200|b300|b200> YYYY-MM-DD`; add `THH` to check one UTC
+hour. `--receipts` explicitly selects this default receipts check.
+
+To verify a particular version's re-derivation, pass `--version <n>`:
+
+```
+./reproduce --receipts --version 5 h100 2026-09-01
+./reproduce --receipts --version 6 h100 2026-09-01
+./reproduce --full --version 5 h100 2026-09-01
+```
+
+Explicit-version observations before that version's `effective_from` are labeled
+`back-calculated`. `--full` derives attendance events and factors, liveness
+scores, weights, votes, and values from raw disclosed history without consuming
+published derived intermediates. It stays within one version and takes a few
+minutes; pass `--version <n>`. During the cutover, `--full` without a version
+retains the current-version fallback only when `history_path` is absent.
+
+Recorded 2026-09-01 under version 5; reproduce it with
+`./reproduce --full --version 5 h100 2026-09-01`. Taken live against
+https://data.getcomputable.com at 07:29 UTC and left exactly as recorded; the
+repeated middle lines and each observation's derived 16-source weight vector
+are elided.
 
 ```
 $ ./reproduce h100 "$(date -u +%F)"

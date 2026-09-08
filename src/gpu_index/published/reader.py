@@ -9,9 +9,11 @@ default ``./data``), the anonymous public HTTPS front
 returns a digest-verified envelope (``decode_and_verify_artifact``) —
 there is no unverified read path.
 
-``latest.json`` selects the current per-SKU integer version. Day and series
-reads resolve through that pointer, while an explicit version can address a
-prior frozen keyspace. During the pointer-last migration, a legacy pointer
+``latest.json`` advertises the per-SKU as-published history prefix. Default
+SKU day and series reads use it when present, otherwise the current version;
+an explicit version always addresses that version's re-derivation keyspace.
+Version metadata is snapshotted on first resolution for this reader instance.
+During the pointer-last migration, a legacy pointer
 keeps resolving the former flat paths; explicit versions can verify staged
 objects before the pointer moves. A missing day remains an ordinary state —
 not yet published, or absent from whichever copy of the record this reader is
@@ -42,6 +44,7 @@ class PublishedRecordReader:
     def __init__(self, config: Optional[BucketConfig] = None) -> None:
         self.config = BucketConfig.from_env() if config is None else config
         self._client = make_client(self.config)
+        self._version_latest: tuple[dict | None] | None = None
 
     def describe(self) -> str:
         """Human-readable source label for CLI banners."""
@@ -61,14 +64,33 @@ class PublishedRecordReader:
         """``latest.json``: the newest observation per lane."""
         return self._read(latest_key())
 
+    def version_pointer(self, sku: str) -> dict | None:
+        """Return SKU metadata from one verified pointer snapshot per reader."""
+        if self._version_latest is None:
+            self._version_latest = (self.read_latest(),)
+        latest = self._version_latest[0]
+        versions = (latest or {}).get("data", {}).get("versions")
+        if versions is None:
+            return None
+        match = next((entry for entry in versions if entry["sku"] == sku), None)
+        if match is None:
+            raise _PublishedRecordError(
+                f"latest.json has no version pointer for SKU {sku}"
+            )
+        return match
+
+    @staticmethod
+    def _day_key(date: str, sku: str, resolved: int | str | None) -> str:
+        if isinstance(resolved, str):
+            return f"{resolved}/{day_key(date)}"
+        return day_key(date) if resolved is None else day_key(date, sku=sku, version=resolved)
+
     def resolve_day_key(
         self, date: str, *, sku: str, version: int | None = None
     ) -> str:
         """Resolve a SKU day through the pointer, or retain the flat key."""
         resolved, _methodology = self._resolve_target(sku, version)
-        if resolved is None:
-            return day_key(date)
-        return day_key(date, sku=sku, version=resolved)
+        return self._day_key(date, sku, resolved)
 
     def read_day(
         self,
@@ -96,16 +118,18 @@ class PublishedRecordReader:
             )
         if resolved_key is None:
             resolved, methodology = self._resolve_target(sku, version)
-            key = (
-                day_key(date)
-                if resolved is None
-                else day_key(date, sku=sku, version=resolved)
-            )
+            key = self._day_key(date, sku, resolved)
         else:
             key = resolved_key
             flat_key = day_key(date)
             if key == flat_key:
                 methodology = None
+            elif key == f"{sku}/published/{flat_key}":
+                resolved, methodology = self._resolve_target(sku, None)
+                if resolved != f"{sku}/published":
+                    raise _PublishedRecordError(
+                        f"resolved day key {key!r} is not advertised by latest.json"
+                    )
             else:
                 parts = key.split("/")
                 suffix_parts = flat_key.split("/")
@@ -144,6 +168,8 @@ class PublishedRecordReader:
     ) -> str:
         """Resolve a SKU series through the pointer, or retain the flat key."""
         resolved, _methodology = self._resolve_target(sku, version)
+        if isinstance(resolved, str):
+            return f"{resolved}/{series_key(series_range)}"
         if resolved is None:
             return series_key(series_range)
         return series_key(series_range, sku=sku, version=resolved)
@@ -163,11 +189,14 @@ class PublishedRecordReader:
                 )
             return self._read(series_key(series_range))
         resolved, methodology = self._resolve_target(sku, version)
-        key = (
-            series_key(series_range)
-            if resolved is None
-            else series_key(series_range, sku=sku, version=resolved)
-        )
+        if isinstance(resolved, str):
+            key = f"{resolved}/{series_key(series_range)}"
+        else:
+            key = (
+                series_key(series_range)
+                if resolved is None
+                else series_key(series_range, sku=sku, version=resolved)
+            )
         envelope = self._read(key)
         if envelope is not None:
             data = envelope["data"]
@@ -183,23 +212,18 @@ class PublishedRecordReader:
 
     def _resolve_target(
         self, sku: str, explicit: int | None
-    ) -> tuple[int | None, str | None]:
+    ) -> tuple[int | str | None, str | frozenset[str] | None]:
         # An explicit version is useful during pointer-last migration: the
         # immutable versioned objects can be verified while latest.json still
         # advertises the legacy layout.
         if explicit is not None:
             day_key("2000-01-01", sku=sku, version=explicit)
-        latest = self.read_latest()
-        if latest is None:
-            return explicit, None
-        data = latest["data"]
-        versions = data.get("versions")
-        if versions is None:
-            return explicit, None
-        match = next((entry for entry in versions if entry["sku"] == sku), None)
+        match = self.version_pointer(sku)
         if match is None:
-            raise _PublishedRecordError(
-                f"latest.json has no version pointer for SKU {sku}"
+            return explicit, None
+        if explicit is None and "history_path" in match:
+            return match["history_path"], frozenset(
+                entry["methodology_id"] for entry in match["succession"]
             )
         if explicit is None:
             return match["current_version"], match["methodology_id"]
@@ -217,15 +241,16 @@ class PublishedRecordReader:
     def _require_version_identity(
         data: dict,
         sku: str,
-        methodology: str | None,
+        methodology: str | frozenset[str] | None,
         key: str,
     ) -> None:
         if methodology is None:
             return
+        methods = methodology if isinstance(methodology, frozenset) else {methodology}
         for observation in data["observations"]:
             if (
                 observation.get("sku") != sku
-                or observation.get("methodology_id") != methodology
+                or observation.get("methodology_id") not in methods
             ):
                 raise _PublishedRecordError(
                     f"published artifact {key} disagrees with its version identity"

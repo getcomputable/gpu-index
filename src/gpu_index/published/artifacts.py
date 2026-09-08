@@ -379,10 +379,15 @@ def _validate_versions(versions: Any) -> None:
                 }
             ),
             where,
+            frozenset({"history_path"}),
         )
         sku = entry["sku"]
         if not isinstance(sku, str) or not _SKU_RE.fullmatch(sku):
             raise PublishedRecordError(f"{where}.sku must be one clean segment")
+        if "history_path" in entry and entry["history_path"] != f"{sku}/published":
+            raise PublishedRecordError(
+                f"{where}.history_path must be {sku}/published"
+            )
         if sku in seen_skus:
             raise PublishedRecordError(f"latest data.versions repeats SKU {sku}")
         seen_skus.add(sku)

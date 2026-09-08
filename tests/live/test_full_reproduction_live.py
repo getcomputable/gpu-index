@@ -31,7 +31,9 @@ def test_current_h100_reproduces_from_raw_public_history_only():
     )
     today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
 
-    history = read_full_history(reader, sku="H100", target_date=today)
+    pointer = reader.version_pointer("H100")
+    version = pointer["current_version"] if pointer else None
+    history = read_full_history(reader, sku="H100", target_date=today, version=version)
     run = reproduce_full_history(history, target_date=today)
 
     assert run.checks, f"the public record has no H100 observations for {today}"

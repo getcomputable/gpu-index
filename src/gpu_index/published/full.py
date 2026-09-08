@@ -264,7 +264,9 @@ def _first_divergence(
     return None
 
 
-def read_full_history(reader: Any, *, sku: str, target_date: str) -> list[dict]:
+def read_full_history(
+    reader: Any, *, sku: str, target_date: str, version: int | None = None
+) -> list[dict]:
     """Read the contiguous public history required by the weighting engine.
 
     The public 90-day series identifies the observable record origin. If a
@@ -273,7 +275,9 @@ def read_full_history(reader: Any, *, sku: str, target_date: str) -> list[dict]:
     begins at the lane's public corpus origin and replay starts from the
     engine's empty genesis state.
     """
-    series = reader.read_series("90d", sku=sku)
+    # One version for the series, origin probe and every history day.
+    version_args = {"version": version} if version is not None else {}
+    series = reader.read_series("90d", sku=sku, **version_args)
     from_observed_at = (series or {}).get("meta", {}).get("from_observed_at")
     if not isinstance(from_observed_at, str) or len(from_observed_at) < 10:
         raise FullReproductionRefusal(
@@ -295,7 +299,9 @@ def read_full_history(reader: Any, *, sku: str, target_date: str) -> list[dict]:
             f"the public 90d series begins at {series_start}, after {target}",
         )
 
-    previous = reader.read_day((series_start - timedelta(days=1)).isoformat(), sku=sku)
+    previous = reader.read_day(
+        (series_start - timedelta(days=1)).isoformat(), sku=sku, **version_args
+    )
     if previous is None:
         start = series_start
         bound_label = f"public corpus origin {series_start.isoformat()}"
@@ -312,7 +318,7 @@ def read_full_history(reader: Any, *, sku: str, target_date: str) -> list[dict]:
         day = cursor.isoformat()
         envelope = previous if cursor == series_start - timedelta(days=1) else None
         if envelope is None:
-            envelope = reader.read_day(day, sku=sku)
+            envelope = reader.read_day(day, sku=sku, **version_args)
         if envelope is None:
             raise FullReproductionRefusal(
                 "insufficient_observable_history",

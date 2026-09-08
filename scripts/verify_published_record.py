@@ -79,7 +79,7 @@ def _value_label(value, band) -> str:
     return f"{value} (band {band})"
 
 
-def _window_warning(reader, sku: str, date: str):
+def _window_warning(reader, sku: str, date: str, version: int | None = None):
     """One probe read at the disclosure-window bound; never fatal.
 
     A whole-day run is the CLI's full-history check, so it also reports
@@ -93,7 +93,7 @@ def _window_warning(reader, sku: str, date: str):
         - datetime.timedelta(days=MIN_DISCLOSURE_WINDOW_DAYS - 1)
     ).isoformat()
     try:
-        if reader.read_day(probe_date, sku=sku) is not None:
+        if reader.read_day(probe_date, sku=sku, version=version) is not None:
             return None
     except Exception:
         return None  # probe unreadable: claim nothing either way
@@ -109,14 +109,46 @@ def _stamp_label(observed_at: str) -> str:
     return label[:13] if label.endswith(":00") else label
 
 
-def _run_full(reader, *, sku: str, date: str, stamp: str | None) -> int:
+def _positive_version(value: str) -> int:
+    try:
+        version = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("version must be a positive integer") from None
+    if version < 1:
+        raise argparse.ArgumentTypeError("version must be a positive integer")
+    return version
+
+
+def _identity_label(
+    observation: dict, pointer: dict | None, *, explicit_version: int | None
+) -> str:
+    methodology = observation["methodology_id"]
+    metadata = next(
+        (entry for entry in (pointer or {}).get("succession", [])
+         if entry["methodology_id"] == methodology),
+        None,
+    )
+    version = metadata["version"] if metadata else explicit_version or "unadvertised"
+    label = f"version {version} methodology_id {methodology}"
+    if explicit_version is not None and metadata:
+        observed = datetime.datetime.fromisoformat(observation["observed_at"])
+        effective = datetime.datetime.fromisoformat(metadata["effective_from"])
+        if observed < effective:
+            label += f" back-calculated (before effective_from {metadata['effective_from']})"
+    return label
+
+
+def _run_full(
+    reader, *, sku: str, date: str, stamp: str | None,
+    version: int | None = None, pointer: dict | None = None, explicit: bool = False,
+) -> int:
     print(
         "raw-only full reproduction: prices, dispersions, upstream status, "
         "carry basis, filter verdicts, timing, top-level flags, and "
         "calc_params are inputs; published derived intermediates are not"
     )
     try:
-        history = read_full_history(reader, sku=sku, target_date=date)
+        history = read_full_history(reader, sku=sku, target_date=date, version=version)
         run = reproduce_full_history(history, target_date=date)
     except FullReproductionRefusal as exc:
         print(f"FULL REFUSAL [{exc.code}]: {exc}", file=sys.stderr)
@@ -148,6 +180,7 @@ def _run_full(reader, *, sku: str, date: str, stamp: str | None) -> int:
         )
         return 2
 
+    identities = {row["observed_at"]: row for row in history if row["sku"] == sku}
     matched = mismatched = 0
     for check in checks:
         if check.verdict == VERDICT_MATCH:
@@ -155,11 +188,16 @@ def _run_full(reader, *, sku: str, date: str, stamp: str | None) -> int:
         else:
             mismatched += 1
         verdict = "MATCH" if check.verdict == VERDICT_MATCH else "MISMATCH"
+        identity = _identity_label(
+            identities[check.observed_at], pointer,
+            explicit_version=version if explicit else None,
+        )
         print(
             f"{check.sku} {_stamp_label(check.observed_at)} "
             f"derived {_value_label(check.derived_value, check.derived_band)} "
             f"published {_value_label(check.published_value, check.published_band)} "
-            f"{verdict} public digests OK"
+            f"{verdict} public digests OK "
+            f"{identity}"
         )
         weights = " ".join(
             f"{source_id}={weight}"
@@ -210,6 +248,10 @@ def main(argv=None) -> int:
             "values from raw public history only"
         ),
     )
+    parser.add_argument(
+        "--version", type=_positive_version,
+        help="verify this integer version's re-derivation (required for --full)",
+    )
     args = parser.parse_args(argv)
 
     sku = args.sku.upper()
@@ -231,11 +273,24 @@ def main(argv=None) -> int:
     except (PublishedRecordError, BucketPublishError) as exc:
         print(f"published record: {exc}", file=sys.stderr)
         return 2
-    if args.full:
-        print(f"published record: full history via {reader.describe()}")
-        return _run_full(reader, sku=sku, date=date, stamp=stamp)
     try:
-        key = reader.resolve_day_key(date, sku=sku)
+        pointer = reader.version_pointer(sku)
+        version = args.version
+        if args.full and version is None and pointer and "history_path" in pointer:
+            print("--full re-derives one version; pass --version <n>", file=sys.stderr)
+            return 2
+        if version is None and (pointer is None or "history_path" not in pointer):
+            version = pointer["current_version"] if pointer else None
+            target = f"current_version {version}" if pointer else "legacy flat keyspace"
+            print(f"NOTICE: latest.json does not advertise history_path for {sku}; "
+                  f"falling back to {target} (not as-published history)")
+        if args.full:
+            print(f"published record: full history via {reader.describe()}")
+            return _run_full(
+                reader, sku=sku, date=date, stamp=stamp, version=version,
+                pointer=pointer, explicit=args.version is not None,
+            )
+        key = reader.resolve_day_key(date, sku=sku, version=version)
         print(f"published record: {key} via {reader.describe()}")
         envelope = reader.read_day(date, sku=sku, resolved_key=key)
     except (httpx.HTTPError, BucketPublishError, OSError) as exc:
@@ -294,11 +349,12 @@ def main(argv=None) -> int:
             print(f"invalid published observation: {exc}", file=sys.stderr)
             return 1
         stamp_label = _stamp_label(check.observed_at)
+        identity = _identity_label(observation, pointer, explicit_version=args.version)
         if check.verdict == VERDICT_DEGRADED:
             degraded += 1
             print(
                 f"{check.sku} {stamp_label} DEGRADED digest-only "
-                f"(withheld: {', '.join(check.withheld_sources)}) digest OK"
+                f"(withheld: {', '.join(check.withheld_sources)}) digest OK {identity}"
             )
         else:
             verdict = (
@@ -325,7 +381,7 @@ def main(argv=None) -> int:
                 )
             print(
                 f"{check.sku} {stamp_label} recomputed {recomputed} "
-                f"published {published} {verdict} digest OK"
+                f"published {published} {verdict} digest OK {identity}"
             )
         for message in check.messages:
             print(f"  {message}")
@@ -336,7 +392,7 @@ def main(argv=None) -> int:
         f"{mismatched} MISMATCH, {degraded} degraded"
     )
     if stamp is None:
-        window_note = _window_warning(reader, sku, date)
+        window_note = _window_warning(reader, sku, date, version)
         if window_note is not None:
             print(f"WARNING: {window_note}")
     if mismatched:
