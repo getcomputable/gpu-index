@@ -22,14 +22,11 @@ import urllib.request
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-# One identity across every repository that collects for this index. The
-# +URL is getcomputable.com and NOT this repository: a repo URL stops
-# resolving if the repo is renamed or made private, and a 404 is no better
-# than no contact at all.
-UA = (
-    "CGI-Collector/1.0 (+https://getcomputable.com; "
-    "team@getcomputable.com)"
-)
+# The User-Agent sent with every request: a neutral product token, not a
+# library default and not a browser string. An operator running this code
+# under their own identity can install a different value for a scope with
+# user_agent_scope().
+UA = "gpu-index/1.0"
 _USER_AGENT_OVERRIDE: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "gpu_index_user_agent_override", default=None
 )

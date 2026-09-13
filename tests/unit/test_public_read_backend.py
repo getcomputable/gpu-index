@@ -72,7 +72,7 @@ def test_from_env_without_public_url_keeps_local_default(tmp_path):
 # ------------------------------------------------------- get-object reads
 
 
-def test_get_bytes_returns_body_with_cgi_user_agent():
+def test_get_bytes_returns_body_with_collector_user_agent():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -87,10 +87,7 @@ def test_get_bytes_returns_body_with_cgi_user_agent():
         f"{BASE_URL}/index/basket/composites/m1/2026-08-16.json"
     )
     assert seen["ua"] == UA
-    assert "CGI-Collector/" in seen["ua"]
-    # No browser prefix: the UA is a public identity, and the bot
-    # protection on the collected hosts screens an unidentified client,
-    # not the absence of a browser string.
+    # The token claims no browser.
     assert not seen["ua"].lower().startswith("mozilla/")
 
 
