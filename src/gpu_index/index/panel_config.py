@@ -129,7 +129,7 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       dynamic_weights.history_days per-source history;
                       requires median_ci_votes, and dw_history requires
                       the dynamic_weights block),
-                      pre_smoothing_half_life_hours? (COM-1582 EWMA vote
+                      pre_smoothing_half_life_hours? (EWMA vote
                       pre-smoothing, number in (0, 2] hours -- the 2h
                       ceiling is the upstream engine's checkpoint-
                       exactness bound; this repo never reruns the EWMA,
@@ -170,7 +170,7 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       no_price_exclusion_hours -- all three or none,
                       validated by
                       gpu_index.index.weights.validate_attendance_params,
-                      plus the OPTIONAL COM-1570 sub-knob
+                      plus the OPTIONAL fence-reject carry sub-knob
                       fence_reject_carry (strict bool, requires
                       attendance_eta > 0: a sigma-fence-rejected seat
                       re-casts its booked vote from the state-2 carry
@@ -397,7 +397,7 @@ _DYNAMIC_WEIGHTS_KEYS = frozenset(
         "attendance_half_life_hours",
         "attendance_eta",
         "no_price_exclusion_hours",
-        # Fence-reject carry (COM-1570; names cross-repo frozen): a
+        # Fence-reject carry (names frozen in the published record): a
         # minted sub-knob of the attendance triple -- strict bool,
         # requires attendance_eta > 0. Validated in
         # _validate_dynamic_weights.
@@ -1102,7 +1102,7 @@ def _validate_calc(
                 f"'median_ci_votes', got {calc.get('composite_statistic')!r}"
             )
     if "pre_smoothing_half_life_hours" in calc:
-        # COM-1582 EWMA vote pre-smoothing (mint 2026-09-14): each admitted
+        # EWMA vote pre-smoothing (2026-09-14 generation): each admitted
         # seat's vote price is the time-based EWMA of its own admitted
         # prints; carried votes re-cast the frozen smoothed state. The 2h
         # CEILING mirrors the upstream engine's exactness bound
@@ -1596,7 +1596,7 @@ def _validate_dynamic_weights(
     except ValueError as exc:
         raise PanelConfigError(str(exc)) from exc
     if "fence_reject_carry" in dw:
-        # COM-1570: a sigma-fence reject is "we don't trust this print"
+        # a sigma-fence reject is "we don't trust this print"
         # exactly like an uncorroborated jump quarantine -- when armed,
         # both unify onto the SAME state-2 carry book/vote (carry_basis
         # "no_price"). The knob only makes sense where that book already

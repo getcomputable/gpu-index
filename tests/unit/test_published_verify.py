@@ -436,7 +436,7 @@ def test_invalid_iqm_alpha_refuses_on_insufficient_no_print():
 
 
 # ---------------------------------------- smoothing-armed generations
-# COM-1582 EWMA vote pre-smoothing + COM-1570 fence_reject_carry (the
+# EWMA vote pre-smoothing + fence_reject_carry (the
 # 2026-09-14 calc_v17/calc_v16 mints). On an armed lane
 # (calc_params.pre_smoothing_half_life_hours present) every voting
 # receipt disclosed smoothed_vote_usd -- the EXACT cast price the engine
@@ -480,7 +480,7 @@ def _armed_receipt(
 
 
 def _fence_reject_receipt(sid, *, cast, price=2.09):
-    """The COM-1570 shape: the REAL rejected print stays on the row as
+    """The fence-reject carry shape: the REAL rejected print stays on the row as
     price, the vote was substituted from the carry book and disclosed."""
     return _armed_receipt(
         sid,
@@ -552,7 +552,7 @@ def test_fence_reject_carried_vote_admits_at_its_disclosed_cast_price():
 
 
 def test_armed_lane_missing_cast_price_refuses_loudly_naming_the_seat():
-    """V4 (the 2026-09-14T0100 sesterce incident shape): a participating
+    """V4 (the 2026-09-14T01:00Z observation shape): a participating
     fence-reject row without smoothed_vote_usd = the engine cast a price
     this artifact does not disclose. REFUSE -- never price the rejected
     2.09 (that derives 7.575/0.275 != published 7.635/0.215, so the

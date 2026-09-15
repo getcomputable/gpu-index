@@ -9,30 +9,13 @@ their own keyspaces. Newest first.
 
 ## 2026-09-14
 
-EWMA vote pre-smoothing (half-life 1 hour) and fence-reject carry armed on
-every public lane (`annex_a_v0_2_calc_v17`, `annex_a2_v0_3_calc_v17`,
-`h100_sxm_v1_calc_v16`, `h200_sxm_v1_calc_v16`), effective at the production
-promotion recorded in latest.json's `versions.succession`. Each voting
-provider's cast price is now the time-based EWMA of its own accepted prints
-(`calc_params.pre_smoothing_half_life_hours`); an outlier-rejected print's
-provider re-casts its booked smoothed vote as a carried vote
-(`calc_params.liveness.fence_reject_carry`). Every voting receipt disclosed its
-exact cast price as `smoothed_vote_usd`; fence-reject carried votes carry a
-`carried_vote_from` marker beside the unchanged rejected print. Carried votes never
-satisfy the minimum passing panel.
-
-`./reproduce` prices each voting seat at its disclosed cast price on these
-generations — it never reruns the smoothing state — and refuses loudly when a
-voting receipt omits the disclosure, never falling back to the raw print.
-Pre-smoothing versions re-derive byte-identically under the frozen raw-vote
-rule. The local producer replay (`--producer`, `--lane`) refuses
-smoothing-armed lanes outright: this mirror carries no EWMA vote state, and
-pricing raw votes under a smoothed methodology_id would be silently wrong.
-Provider-statistic parameters (the population floors of section 6.2 and their
-`calc.statistic_params` overrides) act upstream of the recorded prints — they
-shape each provider's chosen print before it is published — and are outside
-the scope of reproduction from the published record, which starts from the
-disclosed prints.
+New methodology versions on every public lane: `annex_a_v0_2_calc_v17`,
+`annex_a2_v0_3_calc_v17`, `h100_sxm_v1_calc_v16`, `h200_sxm_v1_calc_v16`. Each
+provider's vote is now a one-hour exponentially weighted average of its own
+accepted prints, a provider whose print is rejected by the outlier fence keeps
+voting its last accepted value as a carried vote, and every receipt discloses the
+price it cast (`smoothed_vote_usd`). `./reproduce` verifies these versions from the
+disclosed cast prices.
 
 ## 2026-09-08
 

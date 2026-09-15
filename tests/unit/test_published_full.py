@@ -680,7 +680,7 @@ def test_default_command_reproduces_a_digest_verified_two_version_corpus(tmp_pat
 
 
 # ---------------------------------------- smoothing-armed generations
-# COM-1582 EWMA vote pre-smoothing + COM-1570 fence_reject_carry (the
+# EWMA vote pre-smoothing + fence_reject_carry (the
 # 2026-09-14 calc_v17/calc_v16 mints). Raw-only reproduction does NOT
 # rerun the engine's EWMA: on an armed lane every voting receipt
 # disclosed its exact cast price (smoothed_vote_usd), which prices the

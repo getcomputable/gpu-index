@@ -754,7 +754,7 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
             if "iqm_alpha" in calc
             else {}
         ),
-        # EWMA vote pre-smoothing (COM-1582, mint 2026-09-14): CONDITIONAL
+        # EWMA vote pre-smoothing (2026-09-14 generation): CONDITIONAL
         # like iqm_alpha -- absent means raw vote centers, so every frozen
         # predecessor's artifact bytes stay untouched and the D2 fence owns
         # the flip. NOTE this engine mirror never RUNS the smoothing:
@@ -889,7 +889,7 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
                 if attendance_minted(dw)
                 else {}
             ),
-            # Fence-reject carry (COM-1570): CONDITIONAL sub-knob of the
+            # Fence-reject carry: CONDITIONAL sub-knob of the
             # attendance triple, embedded only as literal True (the
             # upstream emitter rule: absent = fence rejects drop the
             # vote, today's bytes; load validation guarantees the strict
@@ -1507,7 +1507,7 @@ def classify_attendance_source(detail: Dict[str, Any]) -> Optional[str]:
             # a print the provider published that we cannot use.
             return EVENT_NO_PRICE
         if isinstance(detail.get("carried_vote"), dict):
-            # COM-1570: a fence-rejected print whose VOTE was substituted
+            # a fence-rejected print whose VOTE was substituted
             # from the state-2 carry book. status/chosen/filter are the
             # untouched real print (replay and jump-reference reads need
             # them unchanged) -- this disclosure block is the ONLY signal
@@ -1797,7 +1797,7 @@ def compute_observation(
     if "pre_smoothing_half_life_hours" in params or (
         params.get("dynamic_weights") or {}
     ).get("fence_reject_carry"):
-        # COM-1582/COM-1570 fail-closed guard: this mirror carries no
+        # fail-closed guard: this mirror carries no
         # EWMA vote state and no fence-reject carry path, so running an
         # armed lane here would price RAW vote centers (and drop
         # fence-rejected seats' carried votes) under a methodology_id

@@ -119,7 +119,7 @@ def _is_number(value: Any) -> bool:
 
 
 def _smoothing_armed(params: dict, *, observed_at: Any) -> bool:
-    """COM-1582: ``calc_params.pre_smoothing_half_life_hours`` arms the
+    """``calc_params.pre_smoothing_half_life_hours`` arms the
     smoothed seat law for the whole observation. Usability-validated only
     (the (0, 2] mint ceiling is lane law, not a reproduce precondition);
     absent means the pre-smoothing generations replay byte-identically."""
@@ -144,7 +144,7 @@ def _cast_price(receipt: dict, *, observed_at: Any) -> float:
     smoothed booked price), so the vote prices THAT number and the row's
     raw ``price`` stays evidence. A voting row without the disclosure (or
     with an unusable one) is a torn artifact: refuse loudly, never fall
-    back to the raw print (the 2026-09-14T0100 incident posture)."""
+    back to the raw print."""
     source_id = receipt.get("source_id")
     cast = receipt.get("smoothed_vote_usd")
     if cast is None:
@@ -206,7 +206,7 @@ def _project_classifier_row(receipt: dict, *, smoothing_armed: bool) -> dict:
         else:
             detail["filter"] = {}
         if smoothing_armed and _carried_vote_disclosed(receipt):
-            # COM-1570 fence-reject carry: the row keeps the real
+            # Fence-reject carry: the row keeps the real
             # rejected print (status/price/verdict untouched), only the
             # VOTE was substituted from the carry book -- the classifier
             # must read the seat absent, exactly like the engine's own
@@ -261,7 +261,7 @@ def _trusted_receipts(
                 )
             continue
         if smoothing_armed and _carried_vote_disclosed(receipt):
-            # COM-1570 fence-reject carry: the real rejected print stays
+            # Fence-reject carry: the real rejected print stays
             # on the row, but the engine deliberately never advances the
             # weight-series presence record with it (the seat must read
             # attendance-ABSENT) -- so this reproduction must not feed
@@ -531,7 +531,7 @@ def reproduce_full_history(
             and not attendance[str(receipt["source_id"])]["excluded"]
         }
         if smoothing_armed:
-            # COM-1570 fence-reject carried votes ride the SAME D4
+            # Fence-reject carried votes ride the SAME D4
             # fading-weight domain as the state-2 no_price carries: the
             # seat is absent from the presence record this stamp, but its
             # CURRENT (fading) weight prices its booked vote -- never the
@@ -592,7 +592,7 @@ def reproduce_full_history(
             upstream_status = receipt.get("upstream_status")
             carried_voter = False
             if fence_reject_carried and upstream_status == "ok":
-                # COM-1570 fence-reject carry: the rejected verdict judged
+                # Fence-reject carry: the rejected verdict judged
                 # the REAL print the row keeps as evidence; the engine
                 # cast the seat's booked smoothed vote instead, at its
                 # CURRENT fading weight (never the booked weight) with

@@ -590,7 +590,7 @@ def test_minute_keyed_lane_refuses_without_live_lever(
     ]
     base["calc"]["methodology_id"] = "h100_sxm_v1_calc_v99"
     # This test is about the minute-lane LEVER, not the smoothed
-    # generation: strip the COM-1582/COM-1570 knobs the shipping config
+    # generation: strip the smoothing and carry knobs the shipping config
     # carries, or the engine's own does-not-rerun-the-EWMA refusal fires
     # first (pinned separately in test_panel_engine).
     base["calc"].pop("pre_smoothing_half_life_hours")

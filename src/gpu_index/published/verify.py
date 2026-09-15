@@ -19,7 +19,7 @@ design, so the artifact alone recomputes it):
     to the 25th/75th weighted vote percentiles.
 
 On a SMOOTHING-ARMED lane (``calc_params.pre_smoothing_half_life_hours``
-present -- the COM-1582 EWMA vote pre-smoothing generation) the seat law
+present -- the EWMA vote pre-smoothing generation) the seat law
 changes, mirroring the engine's own disclosures rather than rerunning
 its EWMA state:
 
@@ -29,9 +29,9 @@ its EWMA state:
     price). The recompute votes THAT number; ``price`` stays the raw
     print evidence and is never a fallback -- a participating row
     missing the disclosure (or carrying an unusable one) is a torn
-    artifact and refuses loudly (the 2026-09-14T0100 incident posture);
+    artifact and refuses loudly;
   - a status "ok" + filter_verdict "rejected" receipt carrying the
-    ``carried_vote_from`` disclosure (the flattened COM-1570
+    ``carried_vote_from`` disclosure (the flattened fence-reject carry
     fence_reject_carry marker, with ``carry_basis`` beside it) VOTES:
     the sigma fence rejected the fresh print (kept on the row as
     ``price`` for the record) and the engine cast the seat's booked
@@ -194,7 +194,7 @@ def _finite_number(value: Any) -> bool:
 
 
 def _carried_vote_disclosed(receipt: dict) -> bool:
-    """The COM-1570 fence-reject carry presence fence, ONE predicate so
+    """The fence-reject carry presence fence, ONE predicate so
     admission and carried-classification can never disagree about what
     "disclosed" means: the public corpus flattens the engine's carried_vote
     block to the receipt-level ``carried_vote_from`` key (an ISO instant;
@@ -249,7 +249,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             f"observation {sku} {observed_at} "
             f"calc_params.min_sources_to_publish is {min_to_publish!r}"
         )
-    # COM-1582: the calc knob arms the smoothed seat law for this whole
+    # the calc knob arms the smoothed seat law for this whole
     # observation (module docstring). Validated for usability only -- the
     # (0, 2] mint ceiling is lane law, enforced where lanes load, not a
     # reproduce precondition.
@@ -287,7 +287,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             )
         if disclosure == "withheld":
             any_withheld = True
-        # The COM-1570 arm exists ONLY on smoothing-armed observations:
+        # The fence-reject carry arm exists ONLY on smoothing-armed observations:
         # pre-smoothing bytes replay under the frozen predicate below
         # untouched, whatever disclosure fields a row happens to carry.
         carried_vote_disclosed = smoothing_armed and _carried_vote_disclosed(
@@ -321,7 +321,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             cast = receipt.get("smoothed_vote_usd")
             if cast is None:
                 # The engine cast a price this artifact does not
-                # disclose: the exact 2026-09-14T0100 incident shape.
+                # disclose: the 2026-09-14T01:00Z observation shape.
                 # NEVER the raw print instead -- pricing the rejected or
                 # pre-smoothing chosen would derive a silently plausible
                 # wrong index.
@@ -383,7 +383,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
     # The minimum-panel rule, verbatim from the panel engine: a composite
     # exists iff the passing set reaches min_sources_to_publish. On a
     # smoothing-armed lane the count is OBSERVED voters only -- carried
-    # votes (status-carried re-casts and COM-1570 fence-reject carries)
+    # votes (status-carried re-casts and fence-reject carries)
     # may move the median but never keep a dying panel lit (the engine's
     # claim-floor law; carried_voters stays empty pre-smoothing).
     observed_count = len(passing) - len(carried_voters)

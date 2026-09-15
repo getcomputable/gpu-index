@@ -867,7 +867,7 @@ def test_config_vote_sigma_source_validation_and_conditional_embed():
 
 
 def _armed_carry_config():
-    """A valid attendance-armed config carrying the COM-1570 sub-knob."""
+    """A valid attendance-armed config carrying the fence-reject carry sub-knob."""
     cfg = _config()
     cfg["calc"]["carry_forward_window_hours"] = 24
     cfg["calc"]["carry_forward_failure_kinds"] = ["fetch"]
@@ -881,7 +881,7 @@ def _armed_carry_config():
 
 
 def test_config_pre_smoothing_half_life_validation_and_conditional_embed():
-    """COM-1582 EWMA vote pre-smoothing: a number in (0, 2] (the upstream
+    """EWMA vote pre-smoothing: a number in (0, 2] (the upstream
     engine's checkpoint-exactness ceiling, mirrored verbatim), embedded
     CONDITIONALLY like iqm_alpha so knob-less lanes' artifact bytes never
     grow. This repo never reruns the EWMA -- compute_observation refuses
@@ -909,7 +909,7 @@ def test_config_pre_smoothing_half_life_validation_and_conditional_embed():
 
 
 def test_config_fence_reject_carry_validation_and_conditional_embed():
-    """COM-1570: strict bool, requires attendance_eta > 0 (there is no
+    """strict bool, requires attendance_eta > 0 (there is no
     state-2 carry book on an unarmed lane), and the params embed writes
     the key only as literal True -- absent/False lanes' bytes are
     untouched (the D2 dark contract)."""

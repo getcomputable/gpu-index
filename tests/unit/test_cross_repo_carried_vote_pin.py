@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Computable
-"""The COM-1570 carried-vote CROSS-REPO WIRE-SHAPE PIN.
+"""The carried-vote wire-shape pin.
 
 ``tests/fixtures/cross_repo/carried-vote-pin.observation.json`` is the verbatim
 production artifact ``h100_sxm_v1_calc_v16`` 2026-09-14T18:30Z — the first
