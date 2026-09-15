@@ -677,3 +677,187 @@ def test_default_command_reproduces_a_digest_verified_two_version_corpus(tmp_pat
     (root / f"H100/v1/{day_key}").unlink()
     assert run().returncode == 2
     assert run("--receipts").stdout == receipts.stdout
+
+
+# ---------------------------------------- smoothing-armed generations
+# COM-1582 EWMA vote pre-smoothing + COM-1570 fence_reject_carry (the
+# 2026-09-14 calc_v17/calc_v16 mints). Raw-only reproduction does NOT
+# rerun the engine's EWMA: on an armed lane every voting receipt
+# disclosed its exact cast price (smoothed_vote_usd), which prices the
+# vote; the raw print stays evidence (it still feeds the weight-series
+# history, except on fence-reject carries, whose print the engine
+# deliberately keeps out of the presence record).
+
+
+def _armed_observation(*, cast_shift=0.11):
+    observation = _observation()
+    observation["calc_params"]["pre_smoothing_half_life_hours"] = 1
+    observation["calc_params"]["liveness"]["fence_reject_carry"] = True
+    for receipt in observation["receipts"]:
+        receipt["smoothed_vote_usd"] = receipt["price"] + cast_shift
+    return observation
+
+
+def test_full_armed_votes_disclosed_cast_prices_never_raw():
+    """Fresh prints stay 1..5 but every seat cast price+0.11: the
+    derivation prices the casts (3.11/1.1), and a published value equal
+    to the raw ballot's 3.0 MISMATCHES -- the contrapositive pins that
+    the vote centers moved off the raw prints."""
+    observation = _armed_observation()
+    observation["value_usd_gpu_hr"] = 3.11
+    result = reproduce_full_history([observation], target_date="2026-09-01")
+    assert result.checks[0].verdict == VERDICT_MATCH
+    assert result.checks[0].derived_value == 3.11
+    assert result.checks[0].derived_band == 1.1
+
+    raw_published = _armed_observation()
+    result = reproduce_full_history(
+        [raw_published], target_date="2026-09-01"
+    )
+    assert result.checks[0].verdict == "mismatch"
+    assert result.checks[0].derived_value == 3.11
+    assert result.checks[0].published_value == 3.0
+
+
+def _fence_reject_pair(*, min_publish_second=4):
+    """Two armed stamps; on the second, s2's fresh 9.0 print is
+    fence-rejected and its booked smoothed vote (3.0, from the first
+    stamp) is cast instead. The published carry outputs on the row
+    (sd) and its weight-print terms (currency) are corrupted on purpose:
+    a raw-only reconstruction must resolve the vote dispersion from the
+    prior stamp's bytes and must NOT feed the rejected print into the
+    weight history (the engine keeps the seat out of the presence
+    record)."""
+    first = _armed_observation(cast_shift=0.0)
+    second = copy.deepcopy(first)
+    second["observed_at"] = "2026-09-01T00:15:00.000Z"
+    second["calc_params"]["min_sources_to_publish"] = min_publish_second
+    rejected = second["receipts"][2]
+    rejected.update(
+        {
+            "filter_verdict": "rejected",
+            "price": 9.0,
+            "smoothed_vote_usd": 3.0,
+            # The corpus flattens the engine's carried_vote block (the
+            # publisher's projection; the cross-repo pin suite holds the
+            # shape).
+            "carried_vote_from": "2026-09-01T00:00:00.000Z",
+            "carry_basis": "no_price",
+            "sd": 999.0,
+            "currency": None,
+            "fx_rate": None,
+        }
+    )
+    return first, second
+
+
+def test_full_armed_fence_reject_carried_vote_recasts_the_booked_price():
+    first, second = _fence_reject_pair()
+    result = reproduce_full_history(
+        [first, second], target_date="2026-09-01"
+    )
+    assert [check.verdict for check in result.checks] == [
+        VERDICT_MATCH,
+        VERDICT_MATCH,
+    ]
+    # s2 voted its booked 3.0 (never the rejected 9.0, which would move
+    # the IQM), with the BOOKED dispersion (the row's 999.0 is ignored)
+    # and its CURRENT weight; the corrupted currency proves the rejected
+    # print never reached public_weight_print (not a weight-series row).
+    assert result.checks[1].derived_value == 3.0
+    assert result.checks[1].derived_band == 1.1
+
+
+def test_full_armed_carried_votes_never_satisfy_the_observed_floor():
+    """Five seats vote on the second stamp but s2's is a carried vote:
+    4 observed < min_sources_to_publish 5 derives NO composite."""
+    first, second = _fence_reject_pair(min_publish_second=5)
+    result = reproduce_full_history(
+        [first, second], target_date="2026-09-01"
+    )
+    assert result.checks[0].verdict == VERDICT_MATCH
+    assert result.checks[1].verdict == "mismatch"
+    assert result.checks[1].derived_value is None
+
+
+def test_full_armed_status_carried_recasts_the_frozen_smoothed_state():
+    """A status-carried row disclosed its frozen smoothed state (4.5,
+    deliberately != its booked raw 3.0): the vote prices the DISCLOSED
+    cast, with the booked dispersion and the current fading weight --
+    corrupting the row's published price/sd changes nothing else."""
+    first = _armed_observation(cast_shift=0.0)
+    second = copy.deepcopy(first)
+    second["observed_at"] = "2026-09-01T00:15:00.000Z"
+    # The carried voter never satisfies the observed floor (4 observed).
+    second["calc_params"]["min_sources_to_publish"] = 4
+    carried = second["receipts"][2]
+    carried.update(
+        {
+            "upstream_status": "carried",
+            "carry_basis": "no_price",
+            "price": 999.0,
+            "sd": 999.0,
+            "smoothed_vote_usd": 4.5,
+        }
+    )
+    second["value_usd_gpu_hr"] = 3.700018
+    second["stability_band_usd_gpu_hr"] = 1.800018
+    result = reproduce_full_history(
+        [first, second], target_date="2026-09-01"
+    )
+    assert [check.verdict for check in result.checks] == [
+        VERDICT_MATCH,
+        VERDICT_MATCH,
+    ]
+    assert result.checks[1].derived_value == 3.700018
+    assert result.checks[1].derived_band == 1.800018
+
+
+def test_full_armed_missing_cast_price_refuses_naming_stamp_and_seat():
+    observation = _armed_observation()
+    del observation["receipts"][2]["smoothed_vote_usd"]
+    with pytest.raises(FullReproductionRefusal) as caught:
+        reproduce_full_history([observation], target_date="2026-09-01")
+    assert caught.value.code == "missing_cast_price"
+    assert "2026-09-01T00:00:00.000Z" in str(caught.value)
+    assert "s2" in str(caught.value)
+
+
+@pytest.mark.parametrize("unusable", ["3.11", 0, -1, float("inf")])
+def test_full_armed_unusable_cast_price_refuses(unusable):
+    observation = _armed_observation()
+    observation["receipts"][2]["smoothed_vote_usd"] = unusable
+    with pytest.raises(FullReproductionRefusal) as caught:
+        reproduce_full_history([observation], target_date="2026-09-01")
+    assert caught.value.code == "unusable_cast_price"
+    assert "s2" in str(caught.value)
+
+
+@pytest.mark.parametrize("invalid", ["1h", 0, -1, None, True])
+def test_full_invalid_pre_smoothing_half_life_refuses(invalid):
+    observation = _armed_observation()
+    observation["calc_params"]["pre_smoothing_half_life_hours"] = invalid
+    with pytest.raises(FullReproductionRefusal) as caught:
+        reproduce_full_history([observation], target_date="2026-09-01")
+    assert caught.value.code == "invalid_smoothing_params"
+
+
+def test_armed_classifier_reads_a_fence_reject_carried_vote_as_absent():
+    """The engine's carried_vote arm: the row's status/print stay the
+    untouched real print, so the disclosure block is the ONLY absence
+    signal -- and it only exists on armed lanes (the same receipt on a
+    pre-smoothing observation classifies present, byte-identically to
+    today)."""
+    observation = _armed_observation(cast_shift=0.0)
+    observation["receipts"][2].update(
+        {
+            "filter_verdict": "rejected",
+            "carried_vote_from": "2026-09-01T00:00:00.000Z",
+            "carry_basis": "no_price",
+        }
+    )
+    assert public_attendance_events(observation) == {"s2": EVENT_NO_PRICE}
+
+    unarmed = copy.deepcopy(observation)
+    del unarmed["calc_params"]["pre_smoothing_half_life_hours"]
+    assert public_attendance_events(unarmed) == {}

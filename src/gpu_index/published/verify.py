@@ -18,6 +18,38 @@ design, so the artifact alone recomputes it):
     the published stability band is the larger distance from the index
     to the 25th/75th weighted vote percentiles.
 
+On a SMOOTHING-ARMED lane (``calc_params.pre_smoothing_half_life_hours``
+present -- the COM-1582 EWMA vote pre-smoothing generation) the seat law
+changes, mirroring the engine's own disclosures rather than rerunning
+its EWMA state:
+
+  - every voting receipt disclosed ``smoothed_vote_usd``, the EXACT cast
+    price the engine aggregated (fresh rows: the seat's smoothed series
+    advanced by this print; carried flavors: the frozen smoothed booked
+    price). The recompute votes THAT number; ``price`` stays the raw
+    print evidence and is never a fallback -- a participating row
+    missing the disclosure (or carrying an unusable one) is a torn
+    artifact and refuses loudly (the 2026-09-14T0100 incident posture);
+  - a status "ok" + filter_verdict "rejected" receipt carrying the
+    ``carried_vote_from`` disclosure (the flattened COM-1570
+    fence_reject_carry marker, with ``carry_basis`` beside it) VOTES:
+    the sigma fence rejected the fresh print (kept on the row as
+    ``price`` for the record) and the engine cast the seat's booked
+    smoothed vote instead. The row's own rejected verdict judged the
+    PRINT, not the vote, so it does not veto admission; only a
+    non-empty string reads as a disclosure (anything else reads as
+    absent -- one presence fence for admission and classification), and
+    a disclosure only ever admits beside status "ok";
+  - carried voters (``upstream_status`` "carried", or the
+    carried_vote_from arm above) price the composite but never satisfy
+    the observed floor: a composite exists iff passing count MINUS
+    carried voters reaches ``min_sources_to_publish`` (the engine's own
+    claim-floor law).
+
+Pre-smoothing observations keep the frozen law above byte-identically:
+absent the calc knob, ``smoothed_vote_usd``/``carried_vote_from`` are
+ignored exactly like any other unfamiliar disclosure field.
+
 The vote/IQM math is IMPORTED from the panel engine
 (``gpu_index.index.panel.median_stddev_composite``) — the same function
 that priced the observation — never duplicated here, so this check can
@@ -161,6 +193,19 @@ def _finite_number(value: Any) -> bool:
     )
 
 
+def _carried_vote_disclosed(receipt: dict) -> bool:
+    """The COM-1570 fence-reject carry presence fence, ONE predicate so
+    admission and carried-classification can never disagree about what
+    "disclosed" means: the public corpus flattens the engine's carried_vote
+    block to the receipt-level ``carried_vote_from`` key (an ISO instant;
+    ``carry_basis`` rides beside it when the engine stated one). A real
+    disclosure is a non-empty string. Anything else -- number/object/array
+    dressing -- reads as ABSENT, dropping the seat back onto the plain law,
+    which fails closed on the fence-rejected verdict."""
+    carried_vote_from = receipt.get("carried_vote_from")
+    return isinstance(carried_vote_from, str) and bool(carried_vote_from)
+
+
 def recompute_observation(observation: dict) -> ObservationCheck:
     """Recompute one published observation from its own receipts and
     match the published index value and stability band exactly."""
@@ -204,6 +249,19 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             f"observation {sku} {observed_at} "
             f"calc_params.min_sources_to_publish is {min_to_publish!r}"
         )
+    # COM-1582: the calc knob arms the smoothed seat law for this whole
+    # observation (module docstring). Validated for usability only -- the
+    # (0, 2] mint ceiling is lane law, enforced where lanes load, not a
+    # reproduce precondition.
+    smoothing_armed = "pre_smoothing_half_life_hours" in calc_params
+    if smoothing_armed:
+        half_life = calc_params["pre_smoothing_half_life_hours"]
+        if not _finite_number(half_life) or half_life <= 0:
+            raise PublishedRecordError(
+                f"observation {sku} {observed_at} "
+                "calc_params.pre_smoothing_half_life_hours must be a "
+                f"finite number > 0, got {half_life!r}"
+            )
     receipts = observation.get("receipts")
     if not isinstance(receipts, list):
         raise PublishedRecordError(
@@ -212,6 +270,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
 
     passing: List[Tuple[str, float, float]] = []
     vote_stddevs: Dict[str, float] = {}
+    carried_voters: List[str] = []
     withheld_contributing: List[str] = []
     any_withheld = False
     for index, receipt in enumerate(receipts):
@@ -228,17 +287,62 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             )
         if disclosure == "withheld":
             any_withheld = True
-        contributing = (
-            _receipt_field(receipt, "status", index) == "ok"
-            and _receipt_field(receipt, "filter_verdict", index)
-            == "accepted"
+        # The COM-1570 arm exists ONLY on smoothing-armed observations:
+        # pre-smoothing bytes replay under the frozen predicate below
+        # untouched, whatever disclosure fields a row happens to carry.
+        carried_vote_disclosed = smoothing_armed and _carried_vote_disclosed(
+            receipt
+        )
+        contributing = _receipt_field(receipt, "status", index) == "ok" and (
+            _receipt_field(receipt, "filter_verdict", index) == "accepted"
+            # The fence-rejected verdict judged the PRINT the row keeps
+            # for the record, never the booked vote the engine cast
+            # (the shared seat-admission law) -- the disclosure admits.
+            or carried_vote_disclosed
         )
         if not contributing:
             continue
         if disclosure == "withheld":
             withheld_contributing.append(source_id)
             continue
-        price = _receipt_field(receipt, "price", index)
+        if smoothing_armed:
+            # Carried classification rides the SAME predicates the floor
+            # law needs: the carried_vote arm above, or a status-carried
+            # upstream seat re-cast onto this stamp (projected status
+            # "ok" + verdict "accepted", distinguishable only here).
+            # upstream_status is REQUIRED on an armed lane's voting rows
+            # -- without it a carried voter would silently satisfy the
+            # observed floor.
+            if carried_vote_disclosed or (
+                _receipt_field(receipt, "upstream_status", index)
+                == "carried"
+            ):
+                carried_voters.append(source_id)
+            cast = receipt.get("smoothed_vote_usd")
+            if cast is None:
+                # The engine cast a price this artifact does not
+                # disclose: the exact 2026-09-14T0100 incident shape.
+                # NEVER the raw print instead -- pricing the rejected or
+                # pre-smoothing chosen would derive a silently plausible
+                # wrong index.
+                raise PublishedRecordError(
+                    f"observation {sku} {observed_at}: receipt "
+                    f"{source_id} votes on a smoothing-armed lane but "
+                    "does not disclose smoothed_vote_usd -- the cast "
+                    "price is unknowable, refusing to reproduce (no "
+                    "raw-price fallback)"
+                )
+            if not _finite_number(cast) or cast <= 0:
+                raise PublishedRecordError(
+                    f"observation {sku} {observed_at}: receipt "
+                    f"{source_id} discloses unusable smoothed_vote_usd "
+                    f"{cast!r} on a smoothing-armed lane -- torn "
+                    "artifact, refusing to reproduce (no raw-price "
+                    "fallback)"
+                )
+            price = cast
+        else:
+            price = _receipt_field(receipt, "price", index)
         sd = _receipt_field(receipt, "sd", index)
         weight = _receipt_field(receipt, "weight", index)
         if not (
@@ -252,7 +356,8 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             )
         # The exact tuple the panel engine fed the vote aggregate:
         # (source_id, float(weight), price) with the ROUNDED published
-        # sd as the vote stddev (panel.py compute_observation).
+        # sd as the vote stddev (panel.py compute_observation). On an
+        # armed lane price IS the disclosed cast price above.
         passing.append((source_id, float(weight), price))
         vote_stddevs[source_id] = sd
 
@@ -276,14 +381,19 @@ def recompute_observation(observation: dict) -> ObservationCheck:
         )
 
     # The minimum-panel rule, verbatim from the panel engine: a composite
-    # exists iff the passing set reaches min_sources_to_publish.
+    # exists iff the passing set reaches min_sources_to_publish. On a
+    # smoothing-armed lane the count is OBSERVED voters only -- carried
+    # votes (status-carried re-casts and COM-1570 fence-reject carries)
+    # may move the median but never keep a dying panel lit (the engine's
+    # claim-floor law; carried_voters stays empty pre-smoothing).
+    observed_count = len(passing) - len(carried_voters)
     composite = (
         median_stddev_composite(
             passing,
             vote_stddevs,
             iqm_alpha=iqm_alpha,
         )
-        if len(passing) >= min_to_publish
+        if observed_count >= min_to_publish
         else None
     )
 
@@ -299,7 +409,7 @@ def recompute_observation(observation: dict) -> ObservationCheck:
         if composite is not None:
             messages.append(
                 f"published no_print but the receipts rebuild a composite "
-                f"({len(passing)} passing sources >= "
+                f"({observed_count} observed passing sources >= "
                 f"min_sources_to_publish {min_to_publish}): recomputed "
                 f"value {composite['value_usd_gpu_hr']}"
             )
@@ -337,8 +447,8 @@ def recompute_observation(observation: dict) -> ObservationCheck:
             published_value=published_value,
             published_band=published_band,
             messages=(
-                f"published status ok but only {len(passing)} passing "
-                f"disclosed sources (< min_sources_to_publish "
+                f"published status ok but only {observed_count} observed "
+                f"passing disclosed sources (< min_sources_to_publish "
                 f"{min_to_publish}): no composite is recomputable",
             ),
         )

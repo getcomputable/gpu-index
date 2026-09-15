@@ -754,6 +754,22 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
             if "iqm_alpha" in calc
             else {}
         ),
+        # EWMA vote pre-smoothing (COM-1582, mint 2026-09-14): CONDITIONAL
+        # like iqm_alpha -- absent means raw vote centers, so every frozen
+        # predecessor's artifact bytes stay untouched and the D2 fence owns
+        # the flip. NOTE this engine mirror never RUNS the smoothing:
+        # compute_observation refuses an armed params set loudly (the
+        # supported reproduction of a smoothed generation is the published
+        # record's own disclosed cast prices, gpu_index.published).
+        **(
+            {
+                "pre_smoothing_half_life_hours": float(
+                    calc["pre_smoothing_half_life_hours"]
+                )
+            }
+            if "pre_smoothing_half_life_hours" in calc
+            else {}
+        ),
         # Vote-sigma source (ruling 2026-08-27): CONDITIONAL exactly like
         # iqm_alpha and the floor pair -- absent means the legacy
         # filter-window vote tail (what every already-published artifact
@@ -871,6 +887,16 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
                     ),
                 }
                 if attendance_minted(dw)
+                else {}
+            ),
+            # Fence-reject carry (COM-1570): CONDITIONAL sub-knob of the
+            # attendance triple, embedded only as literal True (the
+            # upstream emitter rule: absent = fence rejects drop the
+            # vote, today's bytes; load validation guarantees the strict
+            # bool and the attendance_eta > 0 precondition).
+            **(
+                {"fence_reject_carry": True}
+                if dw.get("fence_reject_carry")
                 else {}
             ),
             "fallback_weights": {
@@ -1480,6 +1506,15 @@ def classify_attendance_source(detail: Dict[str, Any]) -> Optional[str]:
             # Rule D1: chosen exists but no trustworthy filter value --
             # a print the provider published that we cannot use.
             return EVENT_NO_PRICE
+        if isinstance(detail.get("carried_vote"), dict):
+            # COM-1570: a fence-rejected print whose VOTE was substituted
+            # from the state-2 carry book. status/chosen/filter are the
+            # untouched real print (replay and jump-reference reads need
+            # them unchanged) -- this disclosure block is the ONLY signal
+            # that the seat's vote, not its presence, was carried; reads
+            # absent exactly like the other carry_basis "no_price"
+            # shapes.
+            return EVENT_NO_PRICE
         # Trusted print: accepted, sigma-FENCED, and
         # currency-mismatch-pending all count PRESENT (the fence holds a
         # print out of the INDEX, never out of the presence record).
@@ -1759,6 +1794,28 @@ def compute_observation(
                 f"be the same law"
             )
         params = calc_params
+    if "pre_smoothing_half_life_hours" in params or (
+        params.get("dynamic_weights") or {}
+    ).get("fence_reject_carry"):
+        # COM-1582/COM-1570 fail-closed guard: this mirror carries no
+        # EWMA vote state and no fence-reject carry path, so running an
+        # armed lane here would price RAW vote centers (and drop
+        # fence-rejected seats' carried votes) under a methodology_id
+        # whose law says otherwise -- a silently plausible wrong index,
+        # the exact class this engine refuses everywhere else. Smoothed
+        # generations reproduce from the published record instead: every
+        # voting receipt disclosed its exact cast price
+        # (smoothed_vote_usd), which gpu_index.published.verify /
+        # gpu_index.published.full consume (./reproduce <sku>).
+        raise ValueError(
+            f"calc_params for {params.get('methodology_id')!r} carry "
+            "pre_smoothing_half_life_hours / dynamic_weights."
+            "fence_reject_carry: this producer mirror does not rerun the "
+            "EWMA vote pre-smoothing or the fence-reject carry, so it "
+            "cannot price an armed lane from the raw record -- reproduce "
+            "smoothed generations from the published record's disclosed "
+            "cast prices instead (./reproduce <sku>, gpu_index.published)"
+        )
     if schedule is None:
         from gpu_index.index.panel_config import panel_schedule
 

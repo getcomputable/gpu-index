@@ -866,6 +866,106 @@ def test_config_vote_sigma_source_validation_and_conditional_embed():
     assert "vote_sigma_source" not in legacy
 
 
+def _armed_carry_config():
+    """A valid attendance-armed config carrying the COM-1570 sub-knob."""
+    cfg = _config()
+    cfg["calc"]["carry_forward_window_hours"] = 24
+    cfg["calc"]["carry_forward_failure_kinds"] = ["fetch"]
+    cfg["calc"]["dynamic_weights"].update(
+        attendance_half_life_hours=6,
+        attendance_eta=0.5,
+        no_price_exclusion_hours=12,
+        fence_reject_carry=True,
+    )
+    return cfg
+
+
+def test_config_pre_smoothing_half_life_validation_and_conditional_embed():
+    """COM-1582 EWMA vote pre-smoothing: a number in (0, 2] (the upstream
+    engine's checkpoint-exactness ceiling, mirrored verbatim), embedded
+    CONDITIONALLY like iqm_alpha so knob-less lanes' artifact bytes never
+    grow. This repo never reruns the EWMA -- compute_observation refuses
+    an armed params set (pinned below)."""
+    for bad in (0, -1, 2.5, True, "1", None, float("nan")):
+        _reject(
+            "pre_smoothing_half_life_hours",
+            lambda c, bad=bad: c["calc"].update(
+                pre_smoothing_half_life_hours=bad
+            ),
+        )
+    # The unknown-key fence stays armed AROUND the new key (typo class).
+    _reject(
+        "unrecognized key",
+        lambda c: c["calc"].update(pre_smoothing_half_life_hrs=1),
+    )
+    for good in (0.25, 1, 2):
+        cfg = _config()
+        cfg["calc"]["pre_smoothing_half_life_hours"] = good
+        validate_panel_config(cfg)
+        assert panel_calc_params(cfg)[
+            "pre_smoothing_half_life_hours"
+        ] == float(good)
+    assert "pre_smoothing_half_life_hours" not in panel_calc_params(_config())
+
+
+def test_config_fence_reject_carry_validation_and_conditional_embed():
+    """COM-1570: strict bool, requires attendance_eta > 0 (there is no
+    state-2 carry book on an unarmed lane), and the params embed writes
+    the key only as literal True -- absent/False lanes' bytes are
+    untouched (the D2 dark contract)."""
+    _reject(
+        "fence_reject_carry must be a\\s+boolean",
+        lambda c: c["calc"]["dynamic_weights"].update(fence_reject_carry=1),
+    )
+    _reject(
+        "fence_reject_carry requires",
+        lambda c: c["calc"]["dynamic_weights"].update(
+            fence_reject_carry=True
+        ),
+    )
+    # The unknown-key fence stays armed AROUND the new key (typo class).
+    _reject(
+        "unrecognized key",
+        lambda c: c["calc"]["dynamic_weights"].update(fence_carry=True),
+    )
+    armed = _armed_carry_config()
+    validate_panel_config(armed)
+    assert (
+        panel_calc_params(armed)["dynamic_weights"]["fence_reject_carry"]
+        is True
+    )
+    dark = _armed_carry_config()
+    dark["calc"]["dynamic_weights"]["fence_reject_carry"] = False
+    validate_panel_config(dark)
+    assert (
+        "fence_reject_carry" not in panel_calc_params(dark)["dynamic_weights"]
+    )
+    assert (
+        "fence_reject_carry"
+        not in panel_calc_params(_config())["dynamic_weights"]
+    )
+
+
+def test_compute_observation_refuses_smoothing_armed_lanes_loudly():
+    """The producer mirror carries no EWMA vote state and no fence-reject
+    carry path: pricing an armed lane from the raw record would publish
+    RAW vote centers under a methodology_id whose law says otherwise --
+    the silently-inert class this engine refuses everywhere else. The
+    supported reproduction of a smoothed generation is the published
+    record's own disclosed cast prices (gpu_index.published)."""
+    smoothed = _config()
+    smoothed["calc"]["pre_smoothing_half_life_hours"] = 1
+    with pytest.raises(ValueError, match="does not rerun the EWMA"):
+        _compute(smoothed, _snapshot([]), _state())
+    with pytest.raises(ValueError, match="does not rerun the EWMA"):
+        _compute(_armed_carry_config(), _snapshot([]), _state())
+    # The refusal is knob-scoped: the same lane without the knobs runs.
+    dark = _armed_carry_config()
+    dark["calc"]["dynamic_weights"]["fence_reject_carry"] = False
+    payload = _compute(dark, _snapshot([]), _state())
+    assert payload["kind"] == "index_panel_composite"
+
+
 def test_dw_vote_tail_slice_rules():
     """The dw_history vote tail (ruling 2026-08-27), every slice rule on a
     hand-built prices series: the span is [obs_stamp - window_minutes,

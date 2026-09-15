@@ -332,7 +332,9 @@ Where a recorded price is known wrong by rule and the true price was never captu
 
 The index is not a weighted average. It is an interquantile mean over votes: the weighted mean of the central third of the vote mass.
 
-Each passing provider casts its full liveness weight three times: at its price and at its price plus and minus its own standard deviation.
+Each passing provider casts its full liveness weight three times: at its cast price and at its cast price plus and minus its own standard deviation.
+
+Since the versioned change effective 2026-09-14, a provider's cast price is the time-based exponentially weighted average of its own accepted prints (half-life 1 hour, `calc_params.pre_smoothing_half_life_hours`), not the raw print itself; carried votes (section 8.6) re-cast the provider's frozen smoothed price. Everything else published for the provider — the chosen print, the outlier-check window, the price history — stays raw: smoothing moves vote centers only. Every voting receipt disclosed its exact cast price as `smoothed_vote_usd`, so any published value remains recomputable from its own receipts without rerunning the smoothing state.
 
 ```javascript
 for each passing provider i:
@@ -480,7 +482,7 @@ Q_i     = mean of q_{i,h} over the three forwards
 
 ### 8.6 Attendance
 
-A provider's weight also reflects whether it shows up. Each scheduled observation marks every provider: 1 if it was read successfully and produced a price (a price held out by the outlier check of section 6.4 still counts as present, since the fence keeps a print out of the index, not out of the attendance record), 0 if it was read successfully and produced none, and unchanged if our own collection or parsing failed, since a provider is never penalized for our failure.
+A provider's weight also reflects whether it shows up. Each scheduled observation marks every provider: 1 if it was read successfully and produced a price (a price held out by the outlier check of section 6.4 still counts as present when the provider's own vote priced the index, since the fence keeps a print out of the index, not out of the attendance record; when the fence-reject carry below substituted the vote instead, the provider counts absent — its receipt carries a `carried_vote_from` marker), 0 if it was read successfully and produced none, and unchanged if our own collection or parsing failed, since a provider is never penalized for our failure.
 
 The attendance factor `A_i` is the exponentially weighted average of this series over the 90-day regression window, with its own attendance half-life, normalized so a provider present throughout has `A_i` = 1. A newly seated provider's scheduled observations before it joined count as 0, so its first print starts near zero; at the 6-hour half-life, sustained printing reaches full attendance in about two days.
 
@@ -488,6 +490,7 @@ The missing print itself is handled by cause:
 
 - Our own collection or parsing failure: the provider's last accepted vote (price, vote sigma, and weight) is carried forward verbatim, and attendance is unchanged. The carried weight is the one recorded at the observation it came from, so it sits outside the weights newly allocated at the current observation, and the published weights of that observation sum to more than one by that amount. A carried price never advances the provider's own price series, so it enters neither the liveness regression nor the vote sigma, and it never counts toward the minimum passing panel.
 - Provider read, no usable price: attendance falls and the consecutive no-price count advances. The provider's last usable price is carried forward and fades as attendance falls.
+- Provider read, price rejected by the outlier check (fence-reject carry, effective 2026-09-14, `calc_params.liveness.fence_reject_carry`): the rejected print publishes unchanged as the provider's record, but the vote cast is the provider's booked smoothed price at its current fading weight, the receipt disclosing `carried_vote_from` (the carried-from observation, with `carry_basis`) beside `smoothed_vote_usd` (the cast price). The carried vote never advances the provider's price series, never counts as attendance, and never counts toward the minimum passing panel.
 - Hard cutoff: past 96 consecutive observations without a usable price (24 hours), the provider receives no weight and casts no vote until a fresh print advances its state. Exclusion is decided from the pre-observation history, so the first accepted recovery price remains visible as receipt evidence but still carries no weight or vote; it re-admits the provider at the next scheduled observation. Our own failures never advance the count.
 
 > **Why attendance?** A new provider should not receive full weight from its first print, and a provider that stops publishing should fade rather than vanish instantly or linger stale. The half-life sets the smooth fade during a temporary absence; the hard cutoff removes persistently absent sources. Entry, fade-out, and recovery all happen without per-provider judgment.
@@ -711,6 +714,7 @@ Values identical across the live SKUs. SKU-bound parameters (minimum panel, FX s
 | Minimum variability | 3% of price | Floor under both sigmas; a frozen price otherwise has sd 0 |
 | Warm-up | 10 | Observations before the test applies |
 | Vote sigma window | 90 days | Window for the sigma used in votes and the stability band (section 7.1) |
+| Vote pre-smoothing half-life | 1 hour | Each provider's cast price is the time-based EWMA of its own accepted prints (section 7.1); disclosed per receipt as `smoothed_vote_usd`. Effective 2026-09-14 |
 | Test currency | as quoted | Prevents FX moves ejecting a provider |
 | Review flag | 15% | Distance from panel average flagging review |
 | Currency-change confirmation | 3 | Consecutive observations confirming a switch |
@@ -734,6 +738,7 @@ Identical on all panels. No per-provider values.
 | Attendance half-life | 6 hours | How quickly provider-side missing prints lose influence, and returning providers regain it (section 8.6) |
 | Attendance sensitivity (η) | 0.5 | Strength of attendance in allocation; at 0 the softmax is unchanged. Armed at 0.5 by the versioned change effective 2026-09-01 |
 | Consecutive no-price limit | 96 observations (24 h) | Hard exclusion after sustained provider-side absence; our own collection failures never count (section 8.6) |
+| Fence-reject carry | armed | An outlier-rejected print's provider re-casts its booked smoothed vote, classified carried (section 8.6); disclosed as `calc_params.liveness.fence_reject_carry`. Armed by the versioned change effective 2026-09-14 |
 | Minimum observations | 10 | Per provider, per window: observations needed before that provider can be scored. Below it the score is undefined |
 | Minimum variation | 1e-12 | The panel must have moved for prediction to be a meaningful question. Below this variance in what is predicted, the score is undefined rather than computed from nothing. Set above price-rounding noise (roughly 1e-14), below any real movement |
 | Minimum panel for transition | 5 | Whole-panel, one time: providers that must report at the observation where the index permanently switches to derived weights. Distinct from minimum observations: that asks "does this provider have enough history?", this asks "is this observation broad enough to change the methodology?" |
