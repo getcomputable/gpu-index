@@ -75,10 +75,17 @@ are labeled `back-calculated`.
 
 The raw inputs are disclosed prices and dispersions, recorded currency and FX,
 upstream status, carry basis, filter verdicts, timing, top-level flags, and
-`calc_params`. Published attendance factors, liveness scores, and weights are
-comparison outputs, never derivation inputs. Every artifact read is digest
-verified. Missing required history or withheld raw inputs cause a full-reproduction
-refusal. If `history_path` is absent, the command prints a notice and uses
+`calc_params`. On vote-pre-smoothing generations
+(`calc_params.pre_smoothing_half_life_hours`, effective 2026-09-14) each voting
+receipt also disclosed `smoothed_vote_usd` — the exact cast price the engine
+aggregated — and a fence-rejected row that still voted its booked price carries
+a `carried_vote_from` marker; the reproduction votes those disclosed cast prices
+rather than rerunning the engine's smoothing state, keeps the raw print as
+evidence, and refuses loudly if a voting row omits the disclosure (never a
+raw-price fallback). Published attendance factors, liveness scores, and
+weights are comparison outputs, never derivation inputs. Every artifact read
+is digest verified. Missing required history or withheld raw inputs cause a
+full-reproduction refusal. If `history_path` is absent, the command prints a notice and uses
 `current_version` (or the legacy flat record when no version pointer exists).
 
 Exit 0: every verifiable value matched. Exit 1 means a mismatch, invalid artifact,

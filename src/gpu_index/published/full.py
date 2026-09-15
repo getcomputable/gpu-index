@@ -22,7 +22,11 @@ from gpu_index.index.weights import (
     new_weight_state,
 )
 from gpu_index.published.artifacts import PublishedRecordError
-from gpu_index.published.verify import MIN_DISCLOSURE_WINDOW_DAYS, _history_bound_days
+from gpu_index.published.verify import (
+    MIN_DISCLOSURE_WINDOW_DAYS,
+    _carried_vote_disclosed,
+    _history_bound_days,
+)
 
 VERDICT_MATCH = "match"
 VERDICT_MISMATCH = "mismatch"
@@ -114,6 +118,53 @@ def _is_number(value: Any) -> bool:
     )
 
 
+def _smoothing_armed(params: dict, *, observed_at: Any) -> bool:
+    """``calc_params.pre_smoothing_half_life_hours`` arms the
+    smoothed seat law for the whole observation. Usability-validated only
+    (the (0, 2] mint ceiling is lane law, not a reproduce precondition);
+    absent means the pre-smoothing generations replay byte-identically."""
+    if "pre_smoothing_half_life_hours" not in params:
+        return False
+    half_life = params["pre_smoothing_half_life_hours"]
+    if not _is_number(half_life) or half_life <= 0:
+        raise FullReproductionRefusal(
+            "invalid_smoothing_params",
+            f"{observed_at}: calc_params.pre_smoothing_half_life_hours "
+            f"must be a finite number > 0, got {half_life!r}",
+        )
+    return True
+
+
+def _cast_price(receipt: dict, *, observed_at: Any) -> float:
+    """The disclosed cast price on a smoothing-armed lane's voting row.
+
+    This reproduction never reruns the engine's EWMA: ``smoothed_vote_usd``
+    is the EXACT price the engine aggregated (fresh rows: the seat's
+    smoothed series advanced by this print; carried flavors: the frozen
+    smoothed booked price), so the vote prices THAT number and the row's
+    raw ``price`` stays evidence. A voting row without the disclosure (or
+    with an unusable one) is a torn artifact: refuse loudly, never fall
+    back to the raw print."""
+    source_id = receipt.get("source_id")
+    cast = receipt.get("smoothed_vote_usd")
+    if cast is None:
+        raise FullReproductionRefusal(
+            "missing_cast_price",
+            f"{observed_at} {source_id}: the seat votes on a "
+            "smoothing-armed lane but discloses no smoothed_vote_usd -- "
+            "the cast price is unknowable, refusing to reproduce (no "
+            "raw-price fallback)",
+        )
+    if not _is_number(cast) or cast <= 0:
+        raise FullReproductionRefusal(
+            "unusable_cast_price",
+            f"{observed_at} {source_id}: smoothed_vote_usd {cast!r} is "
+            "not a finite positive number -- torn artifact, refusing to "
+            "reproduce (no raw-price fallback)",
+        )
+    return float(cast)
+
+
 def _dynamic_params(observation: dict) -> tuple[dict, Dict[str, float]]:
     params = observation.get("calc_params")
     if not isinstance(params, dict) or not isinstance(params.get("liveness"), dict):
@@ -137,7 +188,7 @@ def _dynamic_params(observation: dict) -> tuple[dict, Dict[str, float]]:
     return dynamic, fallback
 
 
-def _project_classifier_row(receipt: dict) -> dict:
+def _project_classifier_row(receipt: dict, *, smoothing_armed: bool) -> dict:
     if "upstream_status" not in receipt:
         raise FullReproductionRefusal(
             "missing_upstream_status",
@@ -154,6 +205,18 @@ def _project_classifier_row(receipt: dict) -> dict:
             detail["filter"] = {"untrusted_currency": True}
         else:
             detail["filter"] = {}
+        if smoothing_armed and _carried_vote_disclosed(receipt):
+            # Fence-reject carry: the row keeps the real
+            # rejected print (status/price/verdict untouched), only the
+            # VOTE was substituted from the carry book -- the classifier
+            # must read the seat absent, exactly like the engine's own
+            # carried_vote arm. Armed lanes only: pre-smoothing bytes
+            # classify unchanged whatever a row happens to carry. The
+            # corpus flattens the engine block; rebuild the engine shape
+            # the ported classifier expects.
+            detail["carried_vote"] = {"from": receipt["carried_vote_from"]}
+            if isinstance(receipt.get("carry_basis"), str):
+                detail["carried_vote"]["carry_basis"] = receipt["carry_basis"]
     if upstream_status == "carried":
         detail["carried"] = {"carry_basis": receipt.get("carry_basis")}
     return detail
@@ -161,7 +224,14 @@ def _project_classifier_row(receipt: dict) -> dict:
 
 def public_attendance_events(observation: dict) -> Dict[str, str]:
     """Port the engine classifier onto the public receipt vocabulary."""
-    rows = [_project_classifier_row(receipt) for receipt in observation["receipts"]]
+    smoothing_armed = _smoothing_armed(
+        observation.get("calc_params") or {},
+        observed_at=observation.get("observed_at"),
+    )
+    rows = [
+        _project_classifier_row(receipt, smoothing_armed=smoothing_armed)
+        for receipt in observation["receipts"]
+    ]
     reason = observation.get("reason")
     return attendance_events_for_stamp(
         rows,
@@ -176,7 +246,9 @@ def public_attendance_events(observation: dict) -> Dict[str, str]:
     )
 
 
-def _trusted_receipts(observation: dict, manual: set[str]) -> Dict[str, dict]:
+def _trusted_receipts(
+    observation: dict, manual: set[str], *, smoothing_armed: bool = False
+) -> Dict[str, dict]:
     trusted: Dict[str, dict] = {}
     for receipt in observation["receipts"]:
         source_id = str(receipt["source_id"])
@@ -187,6 +259,16 @@ def _trusted_receipts(observation: dict, manual: set[str]) -> Dict[str, dict]:
                     f"{observation['observed_at']} {source_id}: the raw price "
                     "history is withheld",
                 )
+            continue
+        if smoothing_armed and _carried_vote_disclosed(receipt):
+            # Fence-reject carry: the real rejected print stays
+            # on the row, but the engine deliberately never advances the
+            # weight-series presence record with it (the seat must read
+            # attendance-ABSENT) -- so this reproduction must not feed
+            # the weight prints or the carry book from it either. A
+            # plain fence reject (no disclosure) keeps today's rule: the
+            # fence holds a print out of the INDEX, never out of the
+            # presence record.
             continue
         if (
             receipt.get("upstream_status") == "ok"
@@ -414,6 +496,9 @@ def reproduce_full_history(
             )
         events = public_attendance_events(observation)
         params = observation["calc_params"]
+        smoothing_armed = _smoothing_armed(
+            params, observed_at=observation["observed_at"]
+        )
         dynamic, fallback = _dynamic_params(observation)
         observation_date = str(observation["observed_at"])[:10]
         manual = {
@@ -421,7 +506,9 @@ def reproduce_full_history(
             for row in params.get("manual_exclusions", [])
             if row.get("date") == observation_date
         }
-        trusted = _trusted_receipts(observation, manual)
+        trusted = _trusted_receipts(
+            observation, manual, smoothing_armed=smoothing_armed
+        )
         obs_stamp = _stamp(observation)
         attendance = compute_attendance_view(
             state,
@@ -435,14 +522,28 @@ def reproduce_full_history(
             for source_id in sorted(trusted)
             if not attendance[source_id]["excluded"]
         ]
-        carrying = sorted(
+        carrying_ids = {
             str(receipt["source_id"])
             for receipt in receipts
             if receipt.get("upstream_status") == "carried"
             and receipt.get("carry_basis") == "no_price"
             and str(receipt["source_id"]) not in manual
             and not attendance[str(receipt["source_id"])]["excluded"]
-        )
+        }
+        if smoothing_armed:
+            # Fence-reject carried votes ride the SAME D4
+            # fading-weight domain as the state-2 no_price carries: the
+            # seat is absent from the presence record this stamp, but its
+            # CURRENT (fading) weight prices its booked vote -- never the
+            # booked weight (that is the state-3 machinery's rule).
+            carrying_ids |= {
+                str(receipt["source_id"])
+                for receipt in receipts
+                if _carried_vote_disclosed(receipt)
+                and str(receipt["source_id"]) not in manual
+                and not attendance[str(receipt["source_id"])]["excluded"]
+            }
+        carrying = sorted(carrying_ids)
         block = compute_panel_weights(
             state,
             obs_stamp=obs_stamp,
@@ -477,24 +578,78 @@ def reproduce_full_history(
 
         passing = []
         stddevs = {}
+        carried_vote_count = 0
         for receipt in receipts:
             source_id = str(receipt["source_id"])
-            if receipt.get("filter_verdict") != "accepted":
+            fence_reject_carried = smoothing_armed and _carried_vote_disclosed(
+                receipt
+            )
+            if (
+                receipt.get("filter_verdict") != "accepted"
+                and not fence_reject_carried
+            ):
                 continue
             upstream_status = receipt.get("upstream_status")
-            if upstream_status == "carried":
+            carried_voter = False
+            if fence_reject_carried and upstream_status == "ok":
+                # Fence-reject carry: the rejected verdict judged
+                # the REAL print the row keeps as evidence; the engine
+                # cast the seat's booked smoothed vote instead, at its
+                # CURRENT fading weight (never the booked weight) with
+                # the BOOKED vote dispersion.
+                carried = carry_book.get(source_id)
+                if carried is None:
+                    raise FullReproductionRefusal(
+                        "insufficient_carry_history",
+                        f"{observation['observed_at']} {source_id}: the public "
+                        "history has no prior accepted raw vote for this "
+                        "fence-reject carry",
+                    )
+                weight = derived_weights.get(source_id)
+                if weight is None:
+                    continue
+                price = _cast_price(
+                    receipt, observed_at=observation["observed_at"]
+                )
+                sd = carried["sd"]
+                carried_voter = True
+            elif upstream_status == "carried":
                 carried = carry_book.get(source_id)
                 assert carried is not None
-                price = carried["price"]
-                sd = carried["sd"]
                 weight = derived_weights.get(source_id)
+                if weight is None:
+                    continue
+                # Smoothing-armed carried rows re-cast the FROZEN smoothed
+                # state, disclosed on the row itself; pre-smoothing rows
+                # re-cast the booked raw vote resolved from prior bytes.
+                price = (
+                    _cast_price(
+                        receipt, observed_at=observation["observed_at"]
+                    )
+                    if smoothing_armed
+                    else carried["price"]
+                )
+                sd = carried["sd"]
+                carried_voter = True
             elif upstream_status == "ok":
-                price = receipt.get("price")
-                sd = receipt.get("sd")
                 weight = block["weights"].get(source_id)
+                if weight is None:
+                    # A voteless fresh print (e.g. the K_A recovery
+                    # print) never voted upstream and discloses no cast
+                    # price -- the weight gate must run BEFORE any
+                    # cast-price demand.
+                    continue
+                price = (
+                    _cast_price(
+                        receipt, observed_at=observation["observed_at"]
+                    )
+                    if smoothing_armed
+                    else receipt.get("price")
+                )
+                sd = receipt.get("sd")
             else:
                 continue
-            if weight is None or not _is_number(price):
+            if not _is_number(price):
                 continue
             if not _is_number(sd):
                 raise FullReproductionRefusal(
@@ -504,13 +659,25 @@ def reproduce_full_history(
                 )
             passing.append((source_id, float(weight), float(price)))
             stddevs[source_id] = float(sd)
+            if carried_voter:
+                carried_vote_count += 1
+        # The claim-floor law: carried votes (status-carried re-casts AND
+        # fence-reject carried votes) may move the median but never keep
+        # a dying panel lit -- the floor counts OBSERVED voters only on
+        # the smoothing-armed generations; pre-smoothing bytes keep the
+        # frozen count untouched.
+        observed_count = (
+            len(passing) - carried_vote_count
+            if smoothing_armed
+            else len(passing)
+        )
         composite = (
             median_stddev_composite(
                 passing,
                 stddevs,
                 iqm_alpha=float(params.get("iqm_alpha", 0.0)),
             )
-            if len(passing) >= int(params["min_sources_to_publish"])
+            if observed_count >= int(params["min_sources_to_publish"])
             else None
         )
         derived_value = None if composite is None else composite["value_usd_gpu_hr"]

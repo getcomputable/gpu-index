@@ -51,7 +51,7 @@ NEUTRAL_EXCLUSION_REASON = (
 LANES = {
     "config/index_panel_b300.json": {
         "panel_id": "b300",
-        "methodology_id": "annex_a_v0_2_calc_v14",
+        "methodology_id": "annex_a_v0_2_calc_v17",
         "prefix": "index/b300_basket",
         "genesis": "2026-08-10",
         "claim_floor": 5,
@@ -63,7 +63,7 @@ LANES = {
     },
     "config/index_panel_b200.json": {
         "panel_id": "b200",
-        "methodology_id": "annex_a2_v0_3_calc_v14",
+        "methodology_id": "annex_a2_v0_3_calc_v17",
         "prefix": "index/b200_basket",
         "genesis": "2026-08-16",
         "claim_floor": 5,
@@ -75,7 +75,7 @@ LANES = {
     },
     "config/index_panel_h100_sxm.json": {
         "panel_id": "h100_sxm",
-        "methodology_id": "h100_sxm_v1_calc_v10",
+        "methodology_id": "h100_sxm_v1_calc_v16",
         "prefix": "index/h100_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
@@ -87,7 +87,7 @@ LANES = {
     },
     "config/index_panel_h200_sxm.json": {
         "panel_id": "h200_sxm",
-        "methodology_id": "h200_sxm_v1_calc_v10",
+        "methodology_id": "h200_sxm_v1_calc_v16",
         "prefix": "index/h200_sxm",
         "genesis": "2026-08-23",
         "claim_floor": 5,
@@ -264,10 +264,18 @@ def test_public_lane_configs_match_the_live_era3_calculation(configs):
         assert calc["vote_sigma_floor_pct"] == 3.0, rel
         assert calc["carry_forward_window_hours"] == 72, rel
         assert calc["carry_forward_failure_kinds"] == ["fetch", "parse"], rel
+        # EWMA vote pre-smoothing + fence-reject carry (the 2026-09-14
+        # generation: calc_v17 / calc_v16 mints). The half-life is CALC
+        # law this repo never reruns (compute_observation refuses an
+        # armed lane; smoothed generations reproduce from the published
+        # record's disclosed cast prices) -- pinned here so the shipped
+        # configs track the live mints byte-exactly.
+        assert calc["pre_smoothing_half_life_hours"] == 1, rel
         dynamic = calc["dynamic_weights"]
         assert dynamic["attendance_half_life_hours"] == 6, rel
         assert dynamic["attendance_eta"] == 0.5, rel
         assert dynamic["no_price_exclusion_hours"] == 24, rel
+        assert dynamic["fence_reject_carry"] is True, rel
 
 
 def test_migrated_lanes_carry_daily_manual_exclusion_pairs_neutral_reasons(

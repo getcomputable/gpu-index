@@ -15,7 +15,10 @@ and stability band.
 Era note: the b300/b200 lanes ran a 4-slot grid before 2026-08-24,
 hourly next, and all four public lanes moved to 15 minutes from
 2026-08-29. Historical hourly and slot densities are fixture-covered;
-the projected era3 case carries the declared IQM alpha explicitly.
+the projected era3 case carries the declared IQM alpha explicitly. The
+2026-09-14 smoothing-armed generations (EWMA vote pre-smoothing +
+fence_reject_carry; disclosed cast prices) are covered in the final
+section of this file.
 """
 
 from __future__ import annotations
@@ -430,3 +433,296 @@ def test_invalid_iqm_alpha_refuses_on_insufficient_no_print():
     observation["calc_params"]["iqm_alpha"] = 0.75
     with pytest.raises(PublishedRecordError, match="calc_params.iqm_alpha"):
         recompute_observation(observation)
+
+
+# ---------------------------------------- smoothing-armed generations
+# EWMA vote pre-smoothing + fence_reject_carry (the
+# 2026-09-14 calc_v17/calc_v16 mints). On an armed lane
+# (calc_params.pre_smoothing_half_life_hours present) every voting
+# receipt disclosed smoothed_vote_usd -- the EXACT cast price the engine
+# aggregated -- and the recompute votes that number, never the raw print.
+# The expected values below are the upstream extraction pass's pinned
+# vectors (oracle: the engine's own median_stddev_composite).
+
+
+def _armed_receipt(
+    sid,
+    *,
+    price,
+    cast,
+    sd=0.15,
+    weight=0.15,
+    verdict="accepted",
+    upstream="ok",
+    carried_vote=None,
+    disclosure="published",
+):
+    receipt = {
+        "source_id": sid,
+        "price_disclosure": disclosure,
+        "status": "ok",
+        "upstream_status": upstream,
+        "filter_verdict": verdict,
+        "price": price,
+        "sd": sd,
+        "weight": weight,
+    }
+    if cast is not None:
+        receipt["smoothed_vote_usd"] = cast
+    if carried_vote is not None:
+        # The corpus flattens the engine's carried_vote block to receipt-level
+        # keys (the publisher's projection; the cross-repo pin suite holds
+        # the shape).
+        receipt["carried_vote_from"] = carried_vote["from"]
+        if "carry_basis" in carried_vote:
+            receipt["carry_basis"] = carried_vote["carry_basis"]
+    return receipt
+
+
+def _fence_reject_receipt(sid, *, cast, price=2.09):
+    """The fence-reject carry shape: the REAL rejected print stays on the row as
+    price, the vote was substituted from the carry book and disclosed."""
+    return _armed_receipt(
+        sid,
+        price=price,
+        cast=cast,
+        verdict="rejected",
+        carried_vote={
+            "from": "2026-09-14T00:45:00.000Z",
+            "carry_basis": "no_price",
+        },
+    )
+
+
+def _armed_observation(receipts, *, min_publish=5, value=None, band=None):
+    return {
+        "kind": "gpu_price_index_observation",
+        "sku": "H100",
+        "observed_at": "2026-09-14T01:00:00.000Z",
+        "status": "ok",
+        "reason": None,
+        "calc_params": {
+            "aggregation": "median_ci_votes",
+            "iqm_alpha": 0,
+            "pre_smoothing_half_life_hours": 1,
+            "min_sources_to_publish": min_publish,
+        },
+        "value_usd_gpu_hr": value,
+        "stability_band_usd_gpu_hr": band,
+        "receipts": receipts,
+    }
+
+
+def test_armed_lane_votes_disclosed_cast_prices_never_raw():
+    """V2: six fresh seats print 7.5 but each cast its EWMA-smoothed
+    7.61 -- the recompute must price the disclosed casts exactly, and
+    voting the raw prints instead reproduces 7.5 != published 7.61 (the
+    contrapositive proves the vote centers moved)."""
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.61) for sid in "abcdef"
+    ]
+    check = recompute_observation(
+        _armed_observation(receipts, value=7.61, band=0.15)
+    )
+    assert check.verdict == VERDICT_MATCH
+    assert check.recomputed_value == 7.61
+    assert check.recomputed_band == 0.15
+
+    raw_published = recompute_observation(
+        _armed_observation(receipts, value=7.5, band=0.15)
+    )
+    assert raw_published.verdict == VERDICT_MISMATCH
+    assert raw_published.recomputed_value == 7.61
+
+
+def test_fence_reject_carried_vote_admits_at_its_disclosed_cast_price():
+    """V3: seat f's fresh 2.09 print was fence-rejected but the engine
+    cast its booked smoothed 7.62 -- the row votes 7.62 (never 2.09,
+    never nothing), is classified carried, and the five observed seats
+    alone satisfy min_sources_to_publish 5."""
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcde"
+    ] + [_fence_reject_receipt("f", cast=7.62)]
+    check = recompute_observation(
+        _armed_observation(receipts, value=7.5, band=0.15)
+    )
+    assert check.verdict == VERDICT_MATCH
+    assert check.recomputed_value == 7.5
+    assert check.recomputed_band == 0.15
+
+
+def test_armed_lane_missing_cast_price_refuses_loudly_naming_the_seat():
+    """V4 (the 2026-09-14T01:00Z observation shape): a participating
+    fence-reject row without smoothed_vote_usd = the engine cast a price
+    this artifact does not disclose. REFUSE -- never price the rejected
+    2.09 (that derives 7.575/0.275 != published 7.635/0.215, so the
+    fallback would be a non-vacuous wrong answer) and never drop the
+    seat (a different ballot)."""
+    receipts = [
+        _armed_receipt(sid, price=price, cast=price)
+        for sid, price in zip("abcde", (7.4, 7.5, 7.6, 7.85, 8.0))
+    ] + [_fence_reject_receipt("sesterce", cast=None)]
+    observation = _armed_observation(receipts, value=7.635, band=0.215)
+    with pytest.raises(PublishedRecordError) as caught:
+        recompute_observation(observation)
+    message = str(caught.value)
+    assert "sesterce" in message
+    assert "2026-09-14T01:00:00.000Z" in message
+    assert "smoothed_vote_usd" in message
+
+
+@pytest.mark.parametrize(
+    "unusable", ["7.62", float("nan"), 0, -1, float("inf")]
+)
+def test_armed_lane_unusable_cast_price_refuses_loudly(unusable):
+    """V4's present-but-unusable arm: a malformed disclosure is a torn
+    artifact, never a silent chosen fall-back."""
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcde"
+    ] + [_fence_reject_receipt("sesterce", cast=unusable)]
+    with pytest.raises(PublishedRecordError, match="sesterce"):
+        recompute_observation(
+            _armed_observation(receipts, value=7.635, band=0.215)
+        )
+
+
+def test_armed_lane_missing_cast_price_on_a_fresh_seat_refuses_too():
+    """The disclosure law covers EVERY voting flavor: an ok+accepted row
+    on an armed lane without smoothed_vote_usd refuses identically."""
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcde"
+    ] + [_armed_receipt("f", price=7.5, cast=None)]
+    with pytest.raises(PublishedRecordError, match="f"):
+        recompute_observation(
+            _armed_observation(receipts, value=7.5, band=0.15)
+        )
+
+
+def test_status_carried_seat_recasts_its_frozen_smoothed_state():
+    """V5: a carried seat's row keeps the booked raw print (7.9) as
+    price but disclosed its frozen smoothed state (7.58) -- the vote is
+    7.58, classified carried, and the five observed seats satisfy the
+    floor."""
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcde"
+    ] + [_armed_receipt("f", price=7.9, cast=7.58, upstream="carried")]
+    check = recompute_observation(
+        _armed_observation(receipts, value=7.5, band=0.15)
+    )
+    assert check.verdict == VERDICT_MATCH
+    assert check.recomputed_value == 7.5
+    assert check.recomputed_band == 0.15
+
+
+def test_carried_votes_never_satisfy_the_observed_floor():
+    """V6: six seats vote but two are fence-reject carries -- only 4
+    observed. min_sources_to_publish 5 rebuilds NO composite (a
+    published ok value mismatches; a published no_print is consistent);
+    min 4 rebuilds value 7.5 over all six votes."""
+    def receipts():
+        return [
+            _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcd"
+        ] + [
+            _fence_reject_receipt(sid, cast=7.5) for sid in ("e", "f")
+        ]
+
+    over_floor = recompute_observation(
+        _armed_observation(receipts(), min_publish=5, value=7.5, band=0.15)
+    )
+    assert over_floor.verdict == VERDICT_MISMATCH
+    assert any("4 observed" in m for m in over_floor.messages)
+
+    dark = _armed_observation(receipts(), min_publish=5)
+    dark["status"] = "no_print"
+    dark["reason"] = "insufficient_coverage"
+    assert recompute_observation(dark).verdict == VERDICT_MATCH
+
+    lower_floor = recompute_observation(
+        _armed_observation(receipts(), min_publish=4, value=7.5, band=0.15)
+    )
+    assert lower_floor.verdict == VERDICT_MATCH
+    assert lower_floor.recomputed_value == 7.5
+
+
+def test_pre_smoothing_observations_keep_the_frozen_law_byte_identically():
+    """The pin the task demands: WITHOUT the calc knob the disclosures
+    are ignored like any unfamiliar receipt field -- fresh seats vote
+    their raw prints, a fence-reject row never votes, and the floor
+    counts every passer."""
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.61) for sid in "abcde"
+    ] + [_fence_reject_receipt("f", cast=7.62)]
+    observation = _armed_observation(receipts, value=7.5, band=0.15)
+    del observation["calc_params"]["pre_smoothing_half_life_hours"]
+    check = recompute_observation(observation)
+    assert check.verdict == VERDICT_MATCH  # raw 7.5 votes, f dropped
+    assert check.recomputed_value == 7.5
+
+    smoothed_published = _armed_observation(receipts, value=7.61, band=0.15)
+    del smoothed_published["calc_params"]["pre_smoothing_half_life_hours"]
+    assert recompute_observation(smoothed_published).verdict == (
+        VERDICT_MISMATCH
+    )
+
+
+def test_armed_lane_requires_upstream_status_on_voting_rows():
+    """Carried classification (the floor law) reads upstream_status --
+    a voting row without it on an armed lane is a torn artifact."""
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcdef"
+    ]
+    del receipts[2]["upstream_status"]
+    with pytest.raises(PublishedRecordError, match="upstream_status"):
+        recompute_observation(
+            _armed_observation(receipts, value=7.5, band=0.15)
+        )
+
+
+@pytest.mark.parametrize("invalid", ["1h", -1, 0, None, True, float("nan")])
+def test_invalid_pre_smoothing_half_life_refuses(invalid):
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcdef"
+    ]
+    observation = _armed_observation(receipts, value=7.5, band=0.15)
+    observation["calc_params"]["pre_smoothing_half_life_hours"] = invalid
+    with pytest.raises(
+        PublishedRecordError, match="pre_smoothing_half_life_hours"
+    ):
+        recompute_observation(observation)
+
+
+def test_withheld_carried_voter_degrades_before_any_cast_price_demand():
+    """The disclosure pass nulls a withheld row's prices; a withheld
+    VOTING row (here a fence-reject carry) degrades the observation to
+    digest-only exactly like any withheld contributor -- never a
+    spurious missing-cast-price refusal."""
+    withheld = _fence_reject_receipt("f", cast=None)
+    withheld.update(price_disclosure="withheld", price=None, sd=None)
+    receipts = [
+        _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcde"
+    ] + [withheld]
+    check = recompute_observation(
+        _armed_observation(receipts, value=7.5, band=0.15)
+    )
+    assert check.verdict == VERDICT_DEGRADED
+    assert check.withheld_sources == ("f",)
+
+
+def test_non_string_carried_vote_from_dressing_reads_as_absent():
+    """The shared presence fence: number/object/array/empty dressing on the
+    flat carried_vote_from key is NOT a disclosure -- the row falls back
+    onto the plain law and, being fence-rejected, does not vote (fail
+    closed). A nested carried_vote object is one of the dressings, pinned
+    refused."""
+    for dressing in ({"from": "2026-09-14T00:45:00.000Z"}, 1, ["no_price"], True, ""):
+        row = _armed_receipt(
+            "f", price=2.09, cast=7.62, verdict="rejected"
+        )
+        row["carried_vote_from"] = dressing
+        receipts = [
+            _armed_receipt(sid, price=7.5, cast=7.5) for sid in "abcde"
+        ] + [row]
+        check = recompute_observation(
+            _armed_observation(receipts, value=7.5, band=0.15)
+        )
+        assert check.verdict == VERDICT_MATCH  # five observed seats only

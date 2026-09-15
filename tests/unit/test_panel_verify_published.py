@@ -111,6 +111,7 @@ def _frozen_v6_config(tmp_path: Path) -> Path:
     for key in (
         "filter_sigma_floor_pct",
         "iqm_alpha",
+        "pre_smoothing_half_life_hours",
         "vote_sigma_source",
         "vote_sigma_floor_pct",
         "carry_forward_window_hours",
@@ -121,6 +122,7 @@ def _frozen_v6_config(tmp_path: Path) -> Path:
         "attendance_half_life_hours",
         "attendance_eta",
         "no_price_exclusion_hours",
+        "fence_reject_carry",
     ):
         calc["dynamic_weights"].pop(key)
     calc["filter_sigma_floor"] = 0.05

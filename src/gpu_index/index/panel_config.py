@@ -129,6 +129,11 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       dynamic_weights.history_days per-source history;
                       requires median_ci_votes, and dw_history requires
                       the dynamic_weights block),
+                      pre_smoothing_half_life_hours? (EWMA vote
+                      pre-smoothing, number in (0, 2] hours -- the 2h
+                      ceiling is the upstream engine's checkpoint-
+                      exactness bound; this repo never reruns the EWMA,
+                      see the validator comment),
                       carry_forward_window_hours? +
                       carry_forward_failure_kinds? (CONDITIONAL pair,
                       both or neither: a member whose raw capture entry
@@ -164,7 +169,12 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       attendance_half_life_hours + attendance_eta +
                       no_price_exclusion_hours -- all three or none,
                       validated by
-                      gpu_index.index.weights.validate_attendance_params;
+                      gpu_index.index.weights.validate_attendance_params,
+                      plus the OPTIONAL fence-reject carry sub-knob
+                      fence_reject_carry (strict bool, requires
+                      attendance_eta > 0: a sigma-fence-rejected seat
+                      re-casts its booked vote from the state-2 carry
+                      book);
                       attendance_eta > 0 additionally REQUIRES the carry
                       pair above with no_price_exclusion_hours <=
                       carry_forward_window_hours, METHODOLOGY.md
@@ -330,6 +340,7 @@ _CALC_KEYS = frozenset(
         "filter_terms",
         "composite_statistic",
         "iqm_alpha",
+        "pre_smoothing_half_life_hours",
         "vote_sigma_source",
         "manual_verify_pct",
         "fx_lane",
@@ -386,6 +397,11 @@ _DYNAMIC_WEIGHTS_KEYS = frozenset(
         "attendance_half_life_hours",
         "attendance_eta",
         "no_price_exclusion_hours",
+        # Fence-reject carry (names frozen in the published record): a
+        # minted sub-knob of the attendance triple -- strict bool,
+        # requires attendance_eta > 0. Validated in
+        # _validate_dynamic_weights.
+        "fence_reject_carry",
     }
 )
 _JUMP_SCREEN_KEYS = frozenset(
@@ -1085,6 +1101,32 @@ def _validate_calc(
                 "calc.iqm_alpha requires calc.composite_statistic "
                 f"'median_ci_votes', got {calc.get('composite_statistic')!r}"
             )
+    if "pre_smoothing_half_life_hours" in calc:
+        # EWMA vote pre-smoothing (2026-09-14 generation): each admitted
+        # seat's vote price is the time-based EWMA of its own admitted
+        # prints; carried votes re-cast the frozen smoothed state. The 2h
+        # CEILING mirrors the upstream engine's exactness bound
+        # (cross-window EWMA memory must underflow to exact float zero
+        # inside the lane's 90-day state window, which only holds at
+        # half_life <= 2h) -- raising it upstream means re-deriving that
+        # bound, so this mirror pins the same number. No statistic
+        # coupling: both composite arms consume vote prices. This repo
+        # does NOT rerun the EWMA: smoothed generations reproduce from
+        # the published record's disclosed cast prices (smoothed_vote_usd
+        # -- gpu_index.published.verify / gpu_index.published.full), and
+        # gpu_index.index.panel.compute_observation refuses an armed lane
+        # loudly rather than silently price raw votes under it.
+        half_life = calc["pre_smoothing_half_life_hours"]
+        if not (
+            isinstance(half_life, (int, float))
+            and not isinstance(half_life, bool)
+            and math.isfinite(half_life)
+            and 0 < half_life <= 2
+        ):
+            raise PanelConfigError(
+                "calc.pre_smoothing_half_life_hours must be a number in "
+                f"(0, 2], got {half_life!r}"
+            )
     if "vote_sigma_source" in calc:
         # Ruling 2026-08-27: WHICH per-source history prices a vote's
         # stddev. Enum-valued, one home for the vocabulary (gpu_index.index.panel,
@@ -1553,6 +1595,30 @@ def _validate_dynamic_weights(
         validate_attendance_params(dw)
     except ValueError as exc:
         raise PanelConfigError(str(exc)) from exc
+    if "fence_reject_carry" in dw:
+        # a sigma-fence reject is "we don't trust this print"
+        # exactly like an uncorroborated jump quarantine -- when armed,
+        # both unify onto the SAME state-2 carry book/vote (carry_basis
+        # "no_price"). The knob only makes sense where that book already
+        # exists, so it inherits the exact attendance-arming
+        # precondition rather than duplicating it. Strict bool (the
+        # upstream rule): truthiness would let "false"/1 silently arm
+        # and 0/null silently disarm.
+        fence_reject_carry = dw["fence_reject_carry"]
+        if not isinstance(fence_reject_carry, bool):
+            raise PanelConfigError(
+                "calc.dynamic_weights.fence_reject_carry must be a "
+                f"boolean, got {fence_reject_carry!r}"
+            )
+        if fence_reject_carry and not (
+            "attendance_eta" in dw and dw["attendance_eta"] > 0
+        ):
+            raise PanelConfigError(
+                "calc.dynamic_weights.fence_reject_carry requires "
+                "calc.dynamic_weights.attendance_eta > 0 -- there is no "
+                "state-2 carry book to serve a fence-rejected seat's vote "
+                "on an unarmed lane"
+            )
     min_span_minutes = (
         (
             max(dw["lookback_horizons_hours"])

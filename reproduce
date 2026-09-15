@@ -29,9 +29,15 @@
 # that version's own history. --version <n> selects one version throughout.
 # The calculation uses raw disclosed inputs:
 # per-source prices and dispersions, status/timing facts, filter verdicts,
-# carried basis, and published calculation parameters. It derives the
+# carried basis, and published calculation parameters — plus, on
+# vote-pre-smoothing generations (calc_params.
+# pre_smoothing_half_life_hours), each voting receipt's disclosed cast
+# price smoothed_vote_usd and the carried_vote_from marker on fence-rejected
+# rows: votes price the engine's own disclosed casts, never a rerun of
+# its smoothing state, and a voting row missing the disclosure is a
+# typed refusal (no raw-price fallback). It derives the
 # attendance events and factors, liveness scores, weight vector, votes,
-# IQM, and final value without consuming any published derived
+# IQM, and final value without consuming any other published derived
 # intermediate. Insufficient observable history is a typed refusal.
 #
 # Under --producer, the run replays a local collection record instead

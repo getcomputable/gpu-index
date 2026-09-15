@@ -7,6 +7,16 @@ that produced it; any parameter change touching a published day mints a
 new methodology_id, and prior versions stay frozen and readable under
 their own keyspaces. Newest first.
 
+## 2026-09-14
+
+New methodology versions on every public lane: `annex_a_v0_2_calc_v17`,
+`annex_a2_v0_3_calc_v17`, `h100_sxm_v1_calc_v16`, `h200_sxm_v1_calc_v16`. Each
+provider's vote is now a one-hour exponentially weighted average of its own
+accepted prints, a provider whose print is rejected by the outlier fence keeps
+voting its last accepted value as a carried vote, and every receipt discloses the
+price it cast (`smoothed_vote_usd`). `./reproduce` verifies these versions from the
+disclosed cast prices.
+
 ## 2026-09-08
 
 `./reproduce` now re-derives the as-published history end to end under the version
