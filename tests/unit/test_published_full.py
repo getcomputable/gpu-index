@@ -538,7 +538,7 @@ def test_pre_launch_history_selects_launch_version_and_labels_rows(monkeypatch, 
 
 @pytest.mark.parametrize("field", ["value_usd_gpu_hr", "stability_band_usd_gpu_hr",
                                    "weight", "liveness_score", "attendance_factor"])
-def test_full_compares_against_as_published_outputs(field):
+def test_full_compares_as_published_final_outputs_and_versioned_intermediates(field):
     reader = _two_version_reader()
     reader.published = copy.deepcopy(reader.published)
     if field in reader.published[1]:
@@ -547,7 +547,8 @@ def test_full_compares_against_as_published_outputs(field):
         reader.published[1]["receipts"][0][field] = 999.0
     result = reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
     assert result.checks[0].verdict == VERDICT_MATCH
-    assert result.checks[1].verdict == "mismatch"
+    expected = "mismatch" if field in reader.published[1] else VERDICT_MATCH
+    assert result.checks[1].verdict == expected
     assert result.checks[1].derived_value == 6.0
 
 
@@ -918,13 +919,15 @@ def test_full_fractional_attendance_uses_own_print_and_ignores_carried_scale(car
 
 @pytest.mark.parametrize("field,quantity", [("weight", "weight"),
                                             ("attendance_factor", "attendance")])
-def test_full_cli_compares_versioned_receipts_when_published_receipts_empty(
-    monkeypatch, capsys, field, quantity,
+@pytest.mark.parametrize("strip_published_receipts", [True, False])
+def test_full_cli_compares_versioned_receipts_when_published_receipts_empty_or_stale(
+    monkeypatch, capsys, field, quantity, strip_published_receipts,
 ):
     reader = _two_version_reader()
     reader.published = copy.deepcopy(reader.published)
-    for row in reader.published:
-        row["receipts"] = []
+    if strip_published_receipts:
+        for row in reader.published:
+            row["receipts"] = []
     reader.histories[2][1]["receipts"][0][field] = 999.0
     spec = importlib.util.spec_from_file_location(
         "receipt_divergence_cli", REPO_ROOT / "scripts" / "verify_published_record.py",

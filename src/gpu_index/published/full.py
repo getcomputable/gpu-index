@@ -483,7 +483,7 @@ def reproduce_full_history(
 ) -> FullReproduction:
     """Derive target-day weights, votes, IQM, and index from raw public rows.
 
-    Optional comparison rows supply published outputs only; every derivation
+    Optional comparison rows supply published final outputs only; every derivation
     input and state transition still comes from the version history.
     """
     history = sorted(list(observations), key=_stamp)
@@ -697,10 +697,10 @@ def reproduce_full_history(
             published_value = comparison.get("value_usd_gpu_hr")
             published_band = comparison.get("stability_band_usd_gpu_hr")
             divergence = _first_divergence(
-                # As-published rows may omit all receipts; their immutable
-                # values remain the target, while the versioned rows expose
-                # the intermediate outputs needed to locate a divergence.
-                comparison.get("receipts") or receipts,
+                # Versioned receipts describe this replay's intermediate
+                # outputs. As-published receipt copies can be absent or stale;
+                # only their immutable final values remain the target.
+                receipts,
                 block,
                 derived_weights,
                 derived_value=derived_value,
