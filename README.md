@@ -73,7 +73,8 @@ Before public launch, it selects the launch version. Each result reports the
 version and `methodology_id`; observations before that version's effective time
 are labeled `back-calculated`.
 
-The raw inputs are disclosed prices and dispersions, recorded currency and FX,
+The raw inputs include a trusted print's disclosed `population_scale` attendance
+credit (exactly 1 when absent), alongside prices and dispersions, recorded currency and FX,
 upstream status, carry basis, filter verdicts, timing, top-level flags, and
 `calc_params`. On vote-pre-smoothing generations
 (`calc_params.pre_smoothing_half_life_hours`, effective 2026-09-14) each voting

@@ -380,7 +380,7 @@ def test_full_cli_prints_derived_vector_and_value_match(monkeypatch, capsys, ver
     assert cli.main() == 1
     output = capsys.readouterr().out
     assert (
-        "FIRST DIVERGENCE: 2026-09-01T00:00:00.000Z s1 weight "
+        "FIRST DIVERGENCE: 2026-09-01T00:00:00.000Z weight s1 "
         "derived 0.2 published 999.0"
     ) in output
 
@@ -538,7 +538,7 @@ def test_pre_launch_history_selects_launch_version_and_labels_rows(monkeypatch, 
 
 @pytest.mark.parametrize("field", ["value_usd_gpu_hr", "stability_band_usd_gpu_hr",
                                    "weight", "liveness_score", "attendance_factor"])
-def test_full_compares_against_as_published_outputs(field):
+def test_full_compares_as_published_final_outputs_and_versioned_intermediates(field):
     reader = _two_version_reader()
     reader.published = copy.deepcopy(reader.published)
     if field in reader.published[1]:
@@ -547,7 +547,8 @@ def test_full_compares_against_as_published_outputs(field):
         reader.published[1]["receipts"][0][field] = 999.0
     result = reproduce_published_history(reader, sku="H100", target_date="2026-09-03")
     assert result.checks[0].verdict == VERDICT_MATCH
-    assert result.checks[1].verdict == "mismatch"
+    expected = "mismatch" if field in reader.published[1] else VERDICT_MATCH
+    assert result.checks[1].verdict == expected
     assert result.checks[1].derived_value == 6.0
 
 
@@ -861,3 +862,80 @@ def test_armed_classifier_reads_a_fence_reject_carried_vote_as_absent():
     unarmed = copy.deepcopy(observation)
     del unarmed["calc_params"]["pre_smoothing_half_life_hours"]
     assert public_attendance_events(unarmed) == {}
+
+
+@pytest.mark.parametrize("credit", [0.25, 1.0])
+def test_public_weight_print_preserves_disclosed_attendance_credit(credit):
+    receipt = {"source_id": "vast", "price": 2.0, "currency": "USD",
+               "population_scale": credit, "population_machines": 2,
+               "population_hosts": 1}
+    assert public_weight_print(receipt, observed_at="2026-09-17T00:00Z") == {
+        "usd": 2.0, "native": 2.0, "currency": "USD", "credit": credit,
+    }
+
+
+@pytest.mark.parametrize("credit", [None, True, 0, -0.1, 1.1, "0.5", float("nan"),
+                                    float("inf")])
+def test_public_weight_print_refuses_invalid_disclosed_credit(credit):
+    with pytest.raises(FullReproductionRefusal, match="population_scale"):
+        public_weight_print(
+            {"source_id": "vast", "price": 2.0, "currency": "USD",
+             "population_scale": credit}, observed_at="2026-09-17T00:00Z",
+        )
+
+
+@pytest.mark.parametrize("carry_kind", ["status", "fence"])
+def test_full_fractional_attendance_uses_own_print_and_ignores_carried_scale(carry_kind):
+    rows = [_observation() for _ in range(4)]
+    for hour, row in enumerate(rows):
+        row["observed_at"] = f"2026-09-01T0{hour}:00:00.000Z"
+        row["calc_params"]["pre_smoothing_half_life_hours"] = 1
+        row["calc_params"]["min_sources_to_publish"] = 4
+        for receipt in row["receipts"]:
+            receipt["smoothed_vote_usd"] = receipt["price"]
+    rows[0]["receipts"][2]["population_scale"] = 0.25
+    carried = rows[1]["receipts"][2]
+    carried.update(population_scale=0.1, carry_basis="no_price")
+    if carry_kind == "status":
+        carried["upstream_status"] = "carried"
+    else:
+        carried.update(filter_verdict="rejected", carried_vote_from=rows[0]["observed_at"])
+    rows[1]["receipts"][2]["attendance_factor"] = 0.25
+    w_old, w_recent = 2 ** (-2 / 6), 2 ** (-1 / 6)
+    rows[2]["receipts"][2]["attendance_factor"] = round(0.25 * w_old / (w_old + w_recent), 9)
+    weights = [2 ** (-age / 6) for age in (3, 2, 1)]
+    rows[3]["receipts"][2]["attendance_factor"] = round(
+        (weights[0] * 0.25 + weights[2]) / sum(weights), 9,
+    )
+    result = reproduce_full_history(rows, target_date="2026-09-01")
+    assert [check.verdict for check in result.checks] == [VERDICT_MATCH] * 4
+    # Removing the own-print disclosure changes attendance, not prices.
+    del rows[0]["receipts"][2]["population_scale"]
+    divergent = reproduce_full_history(rows, target_date="2026-09-01").checks[1]
+    assert divergent.first_divergence.quantity == "attendance"
+    assert divergent.first_divergence.source_id == "s2"
+    assert divergent.first_divergence.derived == 1.0
+
+
+@pytest.mark.parametrize("field,quantity", [("weight", "weight"),
+                                            ("attendance_factor", "attendance")])
+@pytest.mark.parametrize("strip_published_receipts", [True, False])
+def test_full_cli_compares_versioned_receipts_when_published_receipts_empty_or_stale(
+    monkeypatch, capsys, field, quantity, strip_published_receipts,
+):
+    reader = _two_version_reader()
+    reader.published = copy.deepcopy(reader.published)
+    if strip_published_receipts:
+        for row in reader.published:
+            row["receipts"] = []
+    reader.histories[2][1]["receipts"][0][field] = 999.0
+    spec = importlib.util.spec_from_file_location(
+        "receipt_divergence_cli", REPO_ROOT / "scripts" / "verify_published_record.py",
+    )
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    monkeypatch.setattr(cli, "PublishedRecordReader", lambda: reader)
+    assert cli.main(["--sku", "H100", "--date", "2026-09-03", "--full"]) == 1
+    output = capsys.readouterr().out
+    assert f"FIRST DIVERGENCE: 2026-09-03T19:00:00.000Z {quantity} s0 derived" in output
+    assert "published 999.0" in output

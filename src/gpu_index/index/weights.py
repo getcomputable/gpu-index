@@ -146,15 +146,23 @@ def new_weight_state() -> Dict[str, Any]:
     }
 
 
-def series_print(usd: Any, observation: Tuple[float, str]) -> Dict[str, Any]:
+def series_print(
+    usd: Any, observation: Tuple[float, str], *, credit: Optional[float] = None
+) -> Dict[str, Any]:
     """The ONE constructor for a weight-series price entry: a slot's
     resolved USD print plus the trusted filter_observation value/currency
     (native terms, the recorded-currency posture). resolve_slot_prints builds every
     entry through here and the artifact pins the result verbatim
     (weight_calc.slot_prints), so the series shape is structurally — not
-    just test-enforced — identical between the live path and replay."""
+    just test-enforced — identical between the live path and replay.
+
+    A thin book's disclosed population scale is fractional attendance credit.
+    Absent credit means exactly 1.0 and leaves legacy entries unchanged."""
     native_price, native_currency = observation
-    return {"usd": usd, "native": native_price, "currency": native_currency}
+    entry = {"usd": usd, "native": native_price, "currency": native_currency}
+    if credit is not None:
+        entry["credit"] = float(credit)
+    return entry
 
 
 def _ordinal(day: str) -> int:
@@ -1356,7 +1364,8 @@ def compute_attendance_view(
 
         A_i = sum_{s not skip} w(s)*present_i(s) / sum_{s not skip} w(s)
 
-    where present_i(s) = 1 exactly when s sits in the source's
+    where present_i(s) is the print's credit (exactly 1 when absent)
+    when s sits in the source's
     weight-state PRICES series (the trusted-print presence record --
     accepted, sigma-fenced, and mismatch-pending prints alike), state-3
     stamps (events code "sk") drop from numerator AND denominator (the
@@ -1459,7 +1468,7 @@ def compute_attendance_view(
                 continue
             denominator += w
             if s in series:
-                numerator += w
+                numerator += w * float(series[s].get("credit", 1.0))
         factor = 1.0 if denominator == 0.0 else numerator / denominator
         # The backward walk (docstring): skips consume nothing; the
         # verdict LATCHES where the law resolves it, and the walk then
@@ -2071,11 +2080,14 @@ def advance_panel_weight_state(
     prices = weight_state.setdefault("prices", {})
     for sid in sorted(prints or {}):
         entry = prints[sid]
-        prices.setdefault(sid, {})[obs_stamp] = {
+        stored = {
             "usd": entry["usd"],
             "native": entry["native"],
             "currency": entry["currency"],
         }
+        if "credit" in entry:
+            stored["credit"] = float(entry["credit"])
+        prices.setdefault(sid, {})[obs_stamp] = stored
     vectors = weight_state.setdefault("vectors", {})
     if vector:
         vectors[obs_stamp] = dict(vector)
