@@ -380,3 +380,16 @@ def test_unknown_kind_refuses():
 def test_invalid_utf8_refuses():
     with pytest.raises(PublishedRecordError, match="UTF-8"):
         decode_and_verify_artifact(b'{"a": "\xff"}')
+
+
+def test_population_receipt_additions_remain_digest_verified():
+    document = json.loads(_load("observations/2026/08/25.json"))
+    receipt = document["data"]["observations"][0]["receipts"][0]
+    receipt.update(population_scale=0.333333, population_machines=2, population_hosts=1)
+    document["artifact_sha256"] = payload_digest(
+        {key: document[key] for key in ("data", "meta", "license")}
+    )
+    assert decode_and_verify_artifact(json.dumps(document).encode()) == document
+    receipt["population_scale"] = 0.5
+    with pytest.raises(ArtifactDigestError):
+        decode_and_verify_artifact(json.dumps(document).encode())

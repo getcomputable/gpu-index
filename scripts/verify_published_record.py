@@ -215,8 +215,8 @@ def _run_full(
                 else ""
             )
             print(
-                f"  FIRST DIVERGENCE: {check.observed_at}{source} "
-                f"{divergence.quantity} derived {divergence.derived!r} "
+                f"  FIRST DIVERGENCE: {check.observed_at} "
+                f"{divergence.quantity}{source} derived {divergence.derived!r} "
                 f"published {divergence.published!r}"
             )
     # Same summary shape as the receipts path below: the full re-derivation

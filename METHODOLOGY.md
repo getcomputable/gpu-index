@@ -484,7 +484,9 @@ Q_i     = mean of q_{i,h} over the three forwards
 
 A provider's weight also reflects whether it shows up. Each scheduled observation marks every provider: 1 if it was read successfully and produced a price (a price held out by the outlier check of section 6.4 still counts as present when the provider's own vote priced the index, since the fence keeps a print out of the index, not out of the attendance record; when the fence-reject carry below substituted the vote instead, the provider counts absent — its receipt carries a `carried_vote_from` marker), 0 if it was read successfully and produced none, and unchanged if our own collection or parsing failed, since a provider is never penalized for our failure.
 
-The attendance factor `A_i` is the exponentially weighted average of this series over the 90-day regression window, with its own attendance half-life, normalized so a provider present throughout has `A_i` = 1. A newly seated provider's scheduled observations before it joined count as 0, so its first print starts near zero; at the 6-hour half-life, sustained printing reaches full attendance in about two days.
+On population-scaled marketplace lanes, a trusted thin-book print contributes its disclosed `population_scale` instead of 1. The scale is `min(machines/min_machines, hosts/min_hosts, 1)`, strictly positive and at most 1; `population_machines` and `population_hosts` describe that print's book. An absent scale means exactly 1. Carried re-casts never borrow the booked print's scale or create a new attendance credit.
+
+The attendance factor `A_i` is the exponentially weighted average of this series over the 90-day regression window, with its own attendance half-life, normalized so a provider present at full credit throughout has `A_i` = 1. A newly seated provider's scheduled observations before it joined count as 0, so its first print starts near zero; at the 6-hour half-life, sustained printing reaches full attendance in about two days.
 
 The missing print itself is handled by cause:
 

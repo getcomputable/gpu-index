@@ -20,6 +20,7 @@ from gpu_index.index.weights import (
     compute_attendance_view,
     compute_panel_weights,
     new_weight_state,
+    series_print,
 )
 from gpu_index.published.artifacts import PublishedRecordError
 from gpu_index.published.verify import (
@@ -309,11 +310,15 @@ def public_weight_print(receipt: dict, *, observed_at: str) -> dict:
             f"{observed_at} {source_id}: the public FX rate is not a "
             "positive finite number",
         )
-    return {
-        "usd": float(price),
-        "native": native,
-        "currency": currency,
-    }
+    credit = receipt.get("population_scale")
+    if "population_scale" in receipt and (
+        not _is_number(credit) or not 0 < credit <= 1
+    ):
+        raise FullReproductionRefusal(
+            "invalid_population_scale",
+            f"{observed_at} {source_id}: population_scale must be finite in (0, 1]",
+        )
+    return series_print(float(price), (native, currency), credit=credit)
 
 
 def _first_divergence(
@@ -692,7 +697,10 @@ def reproduce_full_history(
             published_value = comparison.get("value_usd_gpu_hr")
             published_band = comparison.get("stability_band_usd_gpu_hr")
             divergence = _first_divergence(
-                comparison["receipts"],
+                # As-published rows may omit all receipts; their immutable
+                # values remain the target, while the versioned rows expose
+                # the intermediate outputs needed to locate a divergence.
+                comparison.get("receipts") or receipts,
                 block,
                 derived_weights,
                 derived_value=derived_value,
