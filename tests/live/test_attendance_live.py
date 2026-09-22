@@ -133,7 +133,11 @@ def test_published_weights_re_derive_from_the_published_inputs(sku, live_days):
     """The port's acceptance check: softmax(gamma*Q + eta*ln A) with
     attendance-scaled ceilings and collapsing floors, run over the
     published Q and A under the published liveness params, must
-    reproduce every published weight EXACTLY at the published 6dp.
+    reproduce every published weight to within one unit of the published
+    6dp. The inputs are themselves published rounded (Q and A at 9dp)
+    while the producer rounded its own unrounded result, so a re-derived
+    weight can land a hair across a 6dp boundary; a formula or input
+    error shows up orders of magnitude larger than that.
 
     The domain is the producer's CURRENT allocation set: ordinary rows
     plus provider-side no-price carries. A collection-failure carry
@@ -175,7 +179,7 @@ def test_published_weights_re_derive_from_the_published_inputs(sku, live_days):
             attendance_eta=float(liveness["attendance_eta"]),
         )
         for sid, receipt in domain.items():
-            assert round(weights[sid], 6) == receipt["weight"], (
+            assert abs(weights[sid] - receipt["weight"]) <= 1e-6 + 1e-9, (
                 f"{sku} {observation['observed_at']} {sid}: published weight "
                 f"{receipt['weight']} but re-derived {round(weights[sid], 6)} "
                 f"from Q={scores[sid]} A={factors[sid]} under "
