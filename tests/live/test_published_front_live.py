@@ -145,11 +145,13 @@ def test_live_day_file_satisfies_the_envelope_contract(sku, live_days):
     assert envelope["data"]["observations"], "day file carries no rows"
 
 
-@pytest.mark.parametrize("sku", PUBLIC_SKUS)
-def test_live_reproduce_verifies_the_published_record(sku, live_days, tmp_path):
+def test_live_reproduce_verifies_the_published_record(live_days, tmp_path):
     # The whole clean-clone path: the launch command, no local copy, no
     # front configured, against the live record. Exit 0 only when every
-    # observation recomputed and matched.
+    # observation recomputed and matched. One SKU is enough here: the
+    # in-process tests above re-derive every SKU, and this check exists to
+    # prove the launch command itself, not to repeat that work four times.
+    sku = "h100"
     date, _ = live_days[sku]
     empty_data_dir = tmp_path / "no-local-record"
     empty_data_dir.mkdir()
@@ -169,7 +171,10 @@ def test_live_reproduce_verifies_the_published_record(sku, live_days, tmp_path):
         env=env,
         capture_output=True,
         text=True,
-        timeout=300,
+        # The full re-derivation reads the whole retained history window
+        # first, so its runtime grows with retention and runs well past five
+        # minutes on a hosted runner. Half an hour is headroom, not a target.
+        timeout=1800,
     )
     report = (
         f"./reproduce {sku} {date} exited {result.returncode}\n"
