@@ -98,7 +98,8 @@ hour. A full day takes a few minutes.
 `--full` explicitly selects the default. `--receipts` is the fast opt-in: it
 recomputes each value and band from that observation's own published receipts,
 without re-deriving attendance or weights. In receipts mode only, withheld
-contributing receipts degrade to digest-only verification with a notice.
+contributing receipts degrade to digest-only verification with a notice, and an
+`ok` observation that carries no receipts is reported as unverifiable (exit 2).
 
 To verify one version's re-derivation throughout, pass `--version <n>`:
 

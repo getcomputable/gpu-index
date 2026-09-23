@@ -437,6 +437,25 @@ def test_cli_withheld_degrades_with_distinct_message_and_exit_zero(
     assert " MISMATCH digest OK" not in out
 
 
+def test_cli_ok_observation_without_receipts_exits_two_not_mismatch(
+    tmp_path, monkeypatch, cli, capsys
+):
+    def mutate(document):
+        document["data"]["observations"][0]["receipts"] = []
+
+    root = _tampered_record(tmp_path, "observations/2026/08/25.json", mutate)
+    monkeypatch.setenv("GPU_INDEX_DATA_DIR", str(root))
+    monkeypatch.delenv("GPU_INDEX_PUBLIC_BASE_URL", raising=False)
+    assert _run(monkeypatch, cli, "--sku", "H100", "--date", "2026-08-25") == 2
+    captured = capsys.readouterr()
+    assert "UNVERIFIABLE" in captured.out
+    assert "observation carries no receipts" in captured.out
+    assert " MISMATCH digest OK" not in captured.out
+    assert "1 MATCH, 0 MISMATCH, 0 degraded, 1 unverifiable" in captured.out
+    assert "could not verify" in captured.err
+    assert "--version <n>" in captured.err
+
+
 def test_cli_unreachable_front_exits_two_with_one_actionable_line(
     record_env, monkeypatch, cli, capsys
 ):
