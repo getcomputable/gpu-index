@@ -30,8 +30,9 @@ weights, liveness scores, attendance factors, and votes are never inputs.
 Exit codes: 0 every checked observation matched (digest OK; degraded
 observations are reported but do not fail), 1 any MISMATCH or digest
 FAIL, 2 could not verify (the record source is unreachable, no published
-day file for the date, or no observation for the SKU/stamp) or usage
-error. Never 0 without verifying something.
+day file for the date, no observation for the SKU/stamp, or an "ok"
+observation that carries no receipts) or usage error. Never 0 without
+verifying something.
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ from gpu_index.published.verify import (  # noqa: E402
     MIN_DISCLOSURE_WINDOW_DAYS,
     VERDICT_DEGRADED,
     VERDICT_MATCH,
+    VERDICT_UNVERIFIABLE,
     disclosure_window_warning,
     recompute_observation,
     select_observations,
@@ -341,7 +343,7 @@ def main(argv=None) -> int:
         )
         return 2
 
-    matched = mismatched = degraded = 0
+    matched = mismatched = degraded = unverifiable = 0
     for observation in observations:
         try:
             check = recompute_observation(observation)
@@ -355,6 +357,15 @@ def main(argv=None) -> int:
             print(
                 f"{check.sku} {stamp_label} DEGRADED digest-only "
                 f"(withheld: {', '.join(check.withheld_sources)}) digest OK {identity}"
+            )
+        elif check.verdict == VERDICT_UNVERIFIABLE:
+            unverifiable += 1
+            published = _value_label(
+                check.published_value, check.published_band
+            )
+            print(
+                f"{check.sku} {stamp_label} UNVERIFIABLE "
+                f"published {published} digest OK {identity}"
             )
         else:
             verdict = (
@@ -386,10 +397,11 @@ def main(argv=None) -> int:
         for message in check.messages:
             print(f"  {message}")
 
-    total = matched + mismatched + degraded
+    total = matched + mismatched + degraded + unverifiable
     print(
         f"summary: {total} observation(s): {matched} MATCH, "
         f"{mismatched} MISMATCH, {degraded} degraded"
+        + (f", {unverifiable} unverifiable" if unverifiable else "")
     )
     if stamp is None:
         window_note = _window_warning(reader, sku, date, version)
@@ -404,6 +416,21 @@ def main(argv=None) -> int:
             "published disclosure policy, so the vote recompute cannot "
             "run for them (the file digest still verifies)"
         )
+    if unverifiable:
+        print(
+            f"could not verify: {unverifiable} observation(s) carry no "
+            "receipts, so their published value and band cannot be "
+            "recomputed from the published record",
+            file=sys.stderr,
+        )
+        if args.version is None:
+            print(
+                "the as-published history may omit receipts that the "
+                "versioned record keeps: rerun with --version <n> using the "
+                "version shown on each line",
+                file=sys.stderr,
+            )
+        return 2
     return 0
 
 

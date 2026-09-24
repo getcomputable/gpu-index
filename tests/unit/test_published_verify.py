@@ -37,6 +37,7 @@ from gpu_index.published.verify import (
     VERDICT_DEGRADED,
     VERDICT_MATCH,
     VERDICT_MISMATCH,
+    VERDICT_UNVERIFIABLE,
     UnsupportedStatisticError,
     recompute_observation,
     select_observations,
@@ -338,6 +339,22 @@ def test_withheld_contributing_source_degrades_to_digest_only():
     assert check.recomputed_value is None  # nothing was recomputed
     assert any("withheld" in m for m in check.messages)
     assert any("digest" in m for m in check.messages)
+
+
+def test_ok_observation_without_receipts_is_unverifiable_not_mismatch():
+    def mutate(document):
+        document["data"]["observations"][0]["receipts"] = []
+
+    envelope = _tampered("observations/2026/08/25.json", mutate)
+    observation = select_observations(envelope, sku="H100")[0]
+    check = recompute_observation(observation)
+    assert check.verdict == VERDICT_UNVERIFIABLE
+    assert check.published_value == observation["value_usd_gpu_hr"]
+    assert check.recomputed_value is None
+    assert check.messages == (
+        "observation carries no receipts: the published value and band "
+        "cannot be recomputed from this artifact",
+    )
 
 
 def test_withheld_non_contributing_source_does_not_degrade():

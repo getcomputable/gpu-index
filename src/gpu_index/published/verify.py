@@ -78,6 +78,9 @@ digest-verification only, saying which sources are withheld. A withheld
 non-contributing receipt (rejected/excluded/never priced into the
 composite) does not impair the recompute and full verification proceeds.
 
+An "ok" observation whose receipts array is empty discloses no votes at
+all, so it is reported as unverifiable rather than as a mismatch.
+
 No-print observations (value null) are checked for consistency instead:
 the passing set must be below ``calc_params.min_sources_to_publish``
 (the same minimum-panel rule the panel applies), and — when every receipt is
@@ -98,6 +101,7 @@ from gpu_index.published.artifacts import PublishedRecordError
 VERDICT_MATCH = "match"
 VERDICT_MISMATCH = "mismatch"
 VERDICT_DEGRADED = "degraded"
+VERDICT_UNVERIFIABLE = "unverifiable"
 
 _SUPPORTED_AGGREGATIONS = frozenset(
     {"median_stddev_votes", "median_ci_votes"}
@@ -167,7 +171,7 @@ class ObservationCheck:
     sku: str
     observed_at: str
     status: str  # published status: "ok" | "no_print"
-    verdict: str  # VERDICT_MATCH | VERDICT_MISMATCH | VERDICT_DEGRADED
+    verdict: str  # VERDICT_MATCH | VERDICT_MISMATCH | VERDICT_DEGRADED | VERDICT_UNVERIFIABLE
     published_value: Optional[float] = None
     published_band: Optional[float] = None
     recomputed_value: Optional[float] = None
@@ -266,6 +270,23 @@ def recompute_observation(observation: dict) -> ObservationCheck:
     if not isinstance(receipts, list):
         raise PublishedRecordError(
             f"observation {sku} {observed_at} has no receipts array"
+        )
+    if status == "ok" and not receipts:
+        # A printed value with an empty receipts array discloses nothing
+        # to rebuild the votes from. That is not evidence the value is
+        # wrong, so it is never a MISMATCH: the observation could not be
+        # verified from this artifact at all.
+        return ObservationCheck(
+            sku=sku,
+            observed_at=observed_at,
+            status=status,
+            verdict=VERDICT_UNVERIFIABLE,
+            published_value=observation.get("value_usd_gpu_hr"),
+            published_band=observation.get("stability_band_usd_gpu_hr"),
+            messages=(
+                "observation carries no receipts: the published value and "
+                "band cannot be recomputed from this artifact",
+            ),
         )
 
     passing: List[Tuple[str, float, float]] = []
