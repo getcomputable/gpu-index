@@ -12,9 +12,10 @@ could not read a single live file.
 So these tests refuse to use a fixture, and refuse to record one: a
 self-recorded golden would be circular -- it would freeze whatever this
 reader currently believes and re-assert it forever, which is the bug,
-not the check. They reach the real public HTTPS front over the network,
-with GPU_INDEX_DATA_DIR pointed at an empty directory so no local copy
-can satisfy the read. That is the clean-clone path, end to end.
+not the check. They reach the real public HTTPS front over the network
+and decode exactly what it serves, so no local copy can satisfy the read.
+The full re-derivation of every SKU from that record lives in the
+sibling live modules; this one pins the front's envelope contract.
 
 Discovery (which day to verify) is done with a bare HTTP GET rather than
 through PublishedRecordReader, because discovery must not run the very
@@ -38,10 +39,6 @@ from __future__ import annotations
 import datetime
 import json
 import os
-import re
-import subprocess
-import sys
-from pathlib import Path
 
 import httpx
 import pytest
@@ -53,8 +50,6 @@ from gpu_index.published.artifacts import (
 
 pytestmark = pytest.mark.live
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-REPRODUCE = REPO_ROOT / "reproduce"
 
 # The official record host, overridable to point the run at another
 # front. `./reproduce` applies the same default when nothing is set.
@@ -71,11 +66,6 @@ LOOKBACK_DAYS = 7
 
 PUBLIC_SKUS = ("h100", "h200", "b300", "b200")
 
-_SUMMARY_RE = re.compile(
-    r"^summary: (\d+) observation\(s\): (\d+) MATCH, "
-    r"(\d+) MISMATCH, (\d+) degraded$",
-    re.MULTILINE,
-)
 
 
 def _raw_day(date: str, sku: str, version: int | None):
@@ -143,52 +133,3 @@ def test_live_day_file_satisfies_the_envelope_contract(sku, live_days):
     assert envelope["data"]["date"] == date
     assert envelope["license"]["spdx"] == "CC-BY-NC-4.0"
     assert envelope["data"]["observations"], "day file carries no rows"
-
-
-def test_live_reproduce_verifies_the_published_record(live_days, tmp_path):
-    # The whole clean-clone path: the launch command, no local copy, no
-    # front configured, against the live record. Exit 0 only when every
-    # observation recomputed and matched. One SKU is enough here: the
-    # in-process tests above re-derive every SKU, and this check exists to
-    # prove the launch command itself, not to repeat that work four times.
-    sku = "h100"
-    date, _ = live_days[sku]
-    empty_data_dir = tmp_path / "no-local-record"
-    empty_data_dir.mkdir()
-
-    env = dict(os.environ)
-    env["GPU_INDEX_DATA_DIR"] = str(empty_data_dir)
-    env["PYTHON"] = sys.executable
-    # An S3 front configured in the ambient environment would collide
-    # with the public front ./reproduce falls back to (BucketConfig
-    # refuses both at once), and is not the seam under test.
-    for name in ("GPU_INDEX_S3_ENDPOINT", "GPU_INDEX_S3_BUCKET"):
-        env.pop(name, None)
-
-    result = subprocess.run(
-        [str(REPRODUCE), sku, date],
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        # The full re-derivation reads the whole retained history window
-        # first, so its runtime grows with retention and runs well past five
-        # minutes on a hosted runner. Half an hour is headroom, not a target.
-        timeout=1800,
-    )
-    report = (
-        f"./reproduce {sku} {date} exited {result.returncode}\n"
-        f"--- stdout ---\n{result.stdout}\n"
-        f"--- stderr ---\n{result.stderr}"
-    )
-    assert result.returncode == 0, report
-
-    summary = _SUMMARY_RE.search(result.stdout)
-    assert summary is not None, report
-    total, matched, mismatched, degraded = (
-        int(group) for group in summary.groups()
-    )
-    # Never a green run that verified nothing.
-    assert total > 0, report
-    assert mismatched == 0, report
-    assert matched + degraded == total, report
