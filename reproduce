@@ -193,7 +193,7 @@ else
     h200) LANE="h200_sxm" ;;
     b300) LANE="b300" ;;
     b200) LANE="b200" ;;
-    h100_broad|h200_broad)
+    h100_broad|h200_broad|l40s|rtxpro6000_server|a100_80gb_broad)
       echo "'$1' is a configured lane but not a public SKU; run it explicitly with: ./reproduce --lane $ARG $DATE" >&2
       exit 2 ;;
     *) echo "unknown sku '$1' (expected h100, h200, b300, or b200; other lanes run via --lane <panel_id>)" >&2; exit 2 ;;

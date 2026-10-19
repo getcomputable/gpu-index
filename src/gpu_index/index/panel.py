@@ -222,21 +222,26 @@ VALID_VOTE_SIGMA_SOURCES = (
 
 def _finite_number(value: Any) -> bool:
     """A real, finite number -- the row-eligibility price fence (F9):
-    bools are numbers to isinstance but never prices, and json.loads
-    happily admits NaN/Infinity literals."""
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )
+    bools are numbers to isinstance but never prices, json.loads happily
+    admits NaN/Infinity literals, AND it admits arbitrary-precision ints
+    (a 400-digit literal parses) whose float() raises OverflowError --
+    such a value is not a finite number either (adversarial review of
+    the memory rule: one absurd row must be counted, never abort the
+    firing)."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
 
 
 # ------------------------------------------------- statistics (section 4)
 #
 # Panel statistics take (rows, source_entry, statistic, params) where
 # ``rows`` is the member's PRE-SCREENED eligible row set (sku-set +
-# tier-allow-list + implausible + identity + variant + extra_require
-# screens already applied) -- the daily
+# tier-allow-list + implausible + identity + variant + extra_require +
+# require_memory_gb screens already applied) -- the daily
 # registry's (source_entry, statistic, sku, interruptible_tiers) contract
 # cannot express a sku SET or statistic params, and changing it would
 # touch the frozen ``vast_vwm_verified_us_ca`` series' call sites. The two
@@ -262,12 +267,56 @@ PANEL_STATISTIC_PARAM_DEFAULTS: Dict[str, Dict[str, int]] = {
     "vast_vwm_verified_us_ca_floor": {
         "min_population_machines": 5,
         "min_population_hosts": 3,
+        # COM-1582 (ruling 2026-09-11): int flag (this dict's existing
+        # convention -- every value here embeds via panel_calc_params'
+        # unconditional int() cast, so a proper bool would silently
+        # truthy-coerce; 0/1 matches every sibling key instead of
+        # special-casing the embed). 0 (absent/default) = the hard
+        # held_out, byte-identical. 1 = a thin-but-NONZERO population
+        # prices normally (see vast_vwm_verified_us_ca_floor) with a
+        # disclosed population_scale the engine reads as the stamp's
+        # fractional ATTENDANCE credit (2026-09-12 rework: the discount
+        # rides the attendance EWMA, never a per-vote multiplier),
+        # instead of dropping the seat to zero outright.
+        "scale_by_population_floor": 0,
     },
     "lium_vwm_book_floor": {
         "min_population_machines": 5,
         "min_population_miners": 3,
+        # COM-1582: same knob, same semantics, lium's own floor pair
+        # (machines + miners in place of vast's machines + hosts).
+        "scale_by_population_floor": 0,
     },
 }
+
+
+# COM-1582: statistic_params keys listed here are embedded ONLY when the
+# config's calc.statistic_params[stat] explicitly sets them -- unlike every
+# other key in PANEL_STATISTIC_PARAM_DEFAULTS, which panel_calc_params
+# embeds unconditionally (int-cast, default-filled) for every config using
+# that statistic. Adding a new key straight to PANEL_STATISTIC_PARAM_DEFAULTS
+# would have retroactively appended it to the embedded calc_params bytes of
+# every ALREADY-PUBLISHED artifact on that statistic, even with the knob at
+# its default -- exactly the byte-identity violation the public record's
+# reproduce claim forbids (caught by the golden/byte-identity tests).
+PANEL_STATISTIC_CONDITIONAL_PARAMS: Dict[str, Sequence[str]] = {
+    "vast_vwm_verified_us_ca_floor": ("scale_by_population_floor",),
+    "lium_vwm_book_floor": ("scale_by_population_floor",),
+}
+
+
+def _population_scale(*ratios: Tuple[int, int]) -> float:
+    """COM-1582: the continuous stand-in for a floor statistic's binary
+    held_out/priced switch -- min(population / min_population, 1.0) over
+    EVERY floor the statistic enforces (never just one: a seat clearing
+    the host floor on one starving machine is exactly the "one host's
+    price wearing a statistic's clothing" defect the floor exists to
+    catch, so scaling by a single dimension while ignoring the other
+    would silently unenforce it once population is merely nonzero).
+    Callers only reach here after confirming every population is > 0 --
+    a genuinely empty dimension stays a real hold-out (there is nothing
+    to partially credit), so this never sees a 0 numerator."""
+    return min(1.0, min(population / minimum for population, minimum in ratios))
 
 
 def _statistic_floor(params: Dict[str, Any], statistic: str, name: str) -> int:
@@ -397,7 +446,21 @@ def vast_vwm_verified_us_ca_floor(
     over that is one host's price wearing a statistic's clothing. Rows
     without an identity field cannot prove a distinct machine/host and do
     not count toward the floors (fail closed) but still price once the
-    floors pass."""
+    floors pass.
+
+    COM-1582 (ruling 2026-09-11, minted sub-knob scale_by_population_floor):
+    the hard held_out/priced switch produced a visible index level-jump
+    on every crossing of the floor. When armed AND both populations are
+    NONZERO (never when either is truly empty -- that stays a hard
+    hold-out, there is nothing to partially price), a thin book prices
+    normally and discloses population_scale = min(machines/min_machines,
+    hosts/min_hosts, 1.0), which the engine reads as the stamp's
+    fractional ATTENDANCE credit (ruling 2026-09-12 rework: the discount
+    manifests through the attendance EWMA -- series_print's credit field,
+    compute_attendance_view -- so it phases in over the half-life; it is
+    never a per-stamp multiplier on the cast vote's weight, and
+    carry-forward ignores it entirely). Absent/0 = the byte-identical
+    hard hold-out."""
     if not rows:
         return None
     holdout = _accounting_holdout(rows, source_entry, statistic)
@@ -414,7 +477,17 @@ def vast_vwm_verified_us_ca_floor(
     min_hosts = _statistic_floor(
         params, "vast_vwm_verified_us_ca_floor", "min_population_hosts"
     )
-    if len(machines) < min_machines or len(hosts) < min_hosts:
+    thin = len(machines) < min_machines or len(hosts) < min_hosts
+    scale_armed = bool(
+        _statistic_floor(
+            params, "vast_vwm_verified_us_ca_floor", "scale_by_population_floor"
+        )
+    )
+    # COM-1582: a thin-but-NONZERO population still prices (below), scaled
+    # by _population_scale, when armed -- but a genuinely empty dimension
+    # (0 machines or 0 hosts) always hard-holds-out regardless of the
+    # knob: there is no book to partially price, scaling 0 is 0.
+    if thin and not (scale_armed and machines and hosts):
         return {
             "held_out": {
                 "reason": "thin_book",
@@ -429,7 +502,7 @@ def vast_vwm_verified_us_ca_floor(
         (float(row["price_usd_gpu_hr"]), row.get("gpu_count_basis") or 1)
         for row in screened
     ]
-    return {
+    result = {
         "usd_per_gpu_hr": round(_weighted_median(book), 6),
         "statistic": statistic,
         "currency": "USD",
@@ -438,6 +511,14 @@ def vast_vwm_verified_us_ca_floor(
         "population_machines": len(machines),
         "population_hosts": len(hosts),
     }
+    if thin:
+        result["population_scale"] = round(
+            _population_scale(
+                (len(machines), min_machines), (len(hosts), min_hosts)
+            ),
+            6,
+        )
+    return result
 
 
 def lium_vwm_book_floor(
@@ -457,7 +538,12 @@ def lium_vwm_book_floor(
     min_population_miners distinct truthy ``extra.miner_hotkey``, else
     held out ``thin_book`` with counts. NO verified screen exists on lium
     (probe 2026-08-23: no such field) and no geo screen is applied -- both
-    recorded open methodology calls."""
+    recorded open methodology calls.
+
+    COM-1582: same scale_by_population_floor knob as
+    vast_vwm_verified_us_ca_floor, same shape and same all-populations-
+    nonzero precondition -- population_scale = min(machines/min_machines,
+    miners/min_miners, 1.0) in place of vast's machines/hosts pair."""
     if not rows:
         return None
     skipped = {"non_usd": 0, "bad_volume": 0, "no_machine_id": 0}
@@ -492,7 +578,13 @@ def lium_vwm_book_floor(
     min_miners = _statistic_floor(
         params, "lium_vwm_book_floor", "min_population_miners"
     )
-    if len(best) < min_machines or len(miners) < min_miners:
+    thin = len(best) < min_machines or len(miners) < min_miners
+    scale_armed = bool(
+        _statistic_floor(params, "lium_vwm_book_floor", "scale_by_population_floor")
+    )
+    # COM-1582: see vast_vwm_verified_us_ca_floor's identical comment --
+    # nonzero-but-thin scales when armed, genuinely-empty always holds out.
+    if thin and not (scale_armed and best and miners):
         return {
             "held_out": {
                 "reason": "thin_book",
@@ -505,7 +597,7 @@ def lium_vwm_book_floor(
             }
         }
     book = [(usd, volume) for usd, volume, _ in best.values()]
-    return {
+    result = {
         "usd_per_gpu_hr": round(_weighted_median(book), 6),
         "statistic": statistic,
         "currency": "USD",
@@ -515,6 +607,12 @@ def lium_vwm_book_floor(
         "population_miners": len(miners),
         **skip_counts,
     }
+    if thin:
+        result["population_scale"] = round(
+            _population_scale((len(best), min_machines), (len(miners), min_miners)),
+            6,
+        )
+    return result
 
 
 def book_median(
@@ -622,20 +720,33 @@ def panel_calc_params(config: Dict[str, Any]) -> Dict[str, Any]:
             entry["extra_require"] = {
                 str(k): str(v) for k, v in sorted(extra_require.items())
             }
+        if member.get("require_memory_gb") is not None:
+            # Print-shaping like the rules above, so it rides the artifact
+            # under the D2 fence. Embedded ONLY when set: a null key here
+            # would move the calc_params bytes of every live lane that
+            # never names it and trip refuse-to-extend on all of them.
+            entry["require_memory_gb"] = int(member["require_memory_gb"])
         member_params.append(entry)
     used_statistics = sorted(
         {m["statistic"] for m in member_params if "statistic" in m}
     )
     statistic_overrides = calc.get("statistic_params") or {}
-    statistic_params = {
-        stat: {
-            name: int((statistic_overrides.get(stat) or {}).get(name, default))
-            for name, default in sorted(
-                PANEL_STATISTIC_PARAM_DEFAULTS[stat].items()
-            )
+    statistic_params = {}
+    for stat in used_statistics:
+        override = statistic_overrides.get(stat) or {}
+        conditional = PANEL_STATISTIC_CONDITIONAL_PARAMS.get(stat, ())
+        resolved = {
+            name: int(override.get(name, default))
+            for name, default in sorted(PANEL_STATISTIC_PARAM_DEFAULTS[stat].items())
+            if name not in conditional
         }
-        for stat in used_statistics
-    }
+        # Conditional like iqm_alpha/fence_reject_carry: absent from the
+        # embedded bytes unless the config explicitly sets it, so every
+        # config that never touches this knob stays byte-identical.
+        for name in conditional:
+            if name in override:
+                resolved[name] = int(override[name])
+        statistic_params[stat] = resolved
     exclusions = []
     for entry in calc.get("manual_exclusions") or []:
         pinned = {
@@ -1025,6 +1136,7 @@ def compile_screens(params: Dict[str, Any]) -> Dict[str, Any]:
             "require": require,
             "declared": declared,
             "extra_require": member.get("extra_require"),
+            "require_memory_gb": member.get("require_memory_gb"),
             "statistic": member.get("statistic"),
             "weight": member["weight"],
         }
@@ -1040,6 +1152,7 @@ def member_eligible_rows(
     eligible_tiers: Sequence[str],
     extra_require: Optional[Dict[str, str]] = None,
     screen_counts: Optional[Dict[str, int]] = None,
+    require_memory_gb: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Design section 3 steps 1-4 for one member: entry status ok; row sku
     in the member's sku set, tier in the ALLOW-LIST ``eligible_tiers``
@@ -1076,10 +1189,26 @@ def member_eligible_rows(
     and poison the lowest-eligible min. The statistics inherit this
     screen (they run over the returned rows only).
 
+    MEMORY RULE (``require_memory_gb``, the FAIL-CLOSED sibling of
+    extra_require): when the seat names a memory size, the row's
+    top-level ``memory_gb_label`` (the collector-derived figure, a
+    sanctioned snapshot passthrough) must be a finite non-bool number
+    numerically equal to it. Absent or non-numeric -> ineligible, counted
+    ``memory_label_absent``; present but different -> ineligible, counted
+    ``memory_label_mismatch``. Fail-closed on absence is deliberate and
+    is the whole point: the seat exists for providers whose label reads
+    the same for two memory sizes (e2e's bare "NVIDIA A100" at 40GB and
+    80GB), where a fail-open screen would print the cheaper 40GB row;
+    a collector that does not label memory simply cannot hold such a
+    seat (visible as memory_label_absent on a dead seat, never a wrong
+    print). Memory is an axis orthogonal to the variant and
+    extra_require rules and composes with both.
+
     ``screen_counts`` (when passed) tallies EVERY elimination of a
     sku-matched row by screen: ``tier_ineligible``, ``implausible``,
     ``non_finite_price``, ``identity_rejected``, ``variant_unmatched``,
-    ``extra_require_mismatch`` -- the dead-seat visibility record
+    ``extra_require_mismatch``, ``memory_label_absent``,
+    ``memory_label_mismatch`` -- the dead-seat visibility record
 : a seat whose
     rows ALL screen out must be
     distinguishable in the artifact from a seat with no rows at all."""
@@ -1135,6 +1264,14 @@ def member_eligible_rows(
                 for key, value in extra_require.items()
             ):
                 _count("extra_require_mismatch")
+                continue
+        if require_memory_gb is not None:
+            memory = obs.get("memory_gb_label")
+            if not _finite_number(memory):
+                _count("memory_label_absent")
+                continue
+            if float(memory) != float(require_memory_gb):
+                _count("memory_label_mismatch")
                 continue
         rows.append(obs)
     return rows
@@ -2024,6 +2161,7 @@ def compute_observation(
                 eligible_tiers=params["eligible_tiers"],
                 extra_require=member_screen["extra_require"],
                 screen_counts=screen_counts,
+                require_memory_gb=member_screen["require_memory_gb"],
             )
             resolved["rows"] = rows
             resolved["screen_counts"] = screen_counts
@@ -2031,6 +2169,11 @@ def compute_observation(
                 resolved["extra_require_mismatches"] = screen_counts[
                     "extra_require_mismatch"
                 ]
+            memory_rejections = screen_counts.get(
+                "memory_label_absent", 0
+            ) + screen_counts.get("memory_label_mismatch", 0)
+            if memory_rejections:
+                resolved["memory_label_rejections"] = memory_rejections
             chosen = resolve_member_print(
                 rows,
                 source_entry=entry,
@@ -2235,6 +2378,12 @@ def compute_observation(
             # silently.
             detail["extra_require_mismatches"] = resolved[
                 "extra_require_mismatches"
+            ]
+        if resolved.get("memory_label_rejections"):
+            # Same doctrine for the memory rule: a seat that printed its
+            # 80GB row while dropping a 40GB one must show the drop.
+            detail["memory_label_rejections"] = resolved[
+                "memory_label_rejections"
             ]
         excluded_reason = resolved.get("excluded_reason")
         if excluded_reason is not None:
@@ -2482,7 +2631,18 @@ def compute_observation(
             # The weight series holds every real TRUSTED print -- accepted
             # AND sigma-fenced (the fence holds a print out of the INDEX,
             # never out of the weight series; R-winsor bounds it).
-            trusted_prints[source_id] = series_print(price, observation)
+            # COM-1582 (attendance-credit rework, ruling 2026-09-12): a
+            # thin-but-scaled floor-statistic print rides its
+            # population_scale into the series as the stamp's attendance
+            # CREDIT -- the ruled manifestation of book thinness is the
+            # attendance EWMA (compute_attendance_view phases the
+            # discount in over the half-life), never a per-stamp
+            # multiplier on the cast vote's weight. None on every
+            # full-book print -- series_print emits no key, the
+            # pre-change bytes.
+            trusted_prints[source_id] = series_print(
+                price, observation, credit=chosen.get("population_scale")
+            )
         # A K_A-excluded seat (armed lanes only; empty set otherwise)
         # casts NO vote this observation even on a fresh accepted print:
         # the exclusion verdict is pre-advance, the print above still

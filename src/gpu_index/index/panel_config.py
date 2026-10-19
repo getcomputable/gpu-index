@@ -78,8 +78,9 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       tokens (gpu_index.observatory.catalog normalization) rejected
                       on sku_identifier. Broad panels omit it.
   members             [{source_id, weight, skus, statistic?, variant?,
-                      extra_require?, notes?}]. Weights positive, exact at 6dp (the
-                      pinned-vector precision), sum 1.0. skus
+                      extra_require?, require_memory_gb?, notes?}]. Weights
+                      positive, exact at 6dp (the pinned-vector
+                      precision), sum 1.0. skus
                       is the member's non-empty stored-sku selection set.
                       statistic must name a PANEL statistic
                       (gpu_index.index.panel.PANEL_STATISTIC_FNS). variant is
@@ -95,6 +96,17 @@ Shape (see gpu_index.index.panel.panel_calc_params for what rides the artifact):
                       screen); a row without the key
                       PASSES -- the one deliberate fail-open, documented
                       at gpu_index.index.panel.member_eligible_rows.
+                      require_memory_gb is an optional positive int: the
+                      FAIL-CLOSED sibling of extra_require, matched
+                      numerically against the observation's top-level
+                      memory_gb_label (the collector-derived memory
+                      figure) -- a row whose memory is absent, non-numeric
+                      or different is ineligible (counted
+                      memory_label_absent / memory_label_mismatch). It
+                      may coexist with variant and extra_require (memory
+                      is an axis orthogonal to form factor and cloud
+                      tier); e.g. the A100 80GB seat on a provider whose
+                      label reads bare "A100" for both memory sizes.
   calc                methodology_id (a single clean key segment
                       [A-Za-z0-9._-]+ -- it becomes the composites
                       keyspace segment -- and, under a shared daily-lane
@@ -226,6 +238,9 @@ KNOWN_LANE_PREFIXES = (
     "index/h200_sxm",
     "index/h100_broad",
     "index/h200_broad",
+    "index/l40s",
+    "index/rtxpro6000_server",
+    "index/a100_80gb_broad",
 )
 
 VALID_RECORD_KINDS = ("basket", "observatory")
@@ -370,6 +385,7 @@ _MEMBER_KEYS = frozenset(
         "statistic",
         "variant",
         "extra_require",
+        "require_memory_gb",
         "notes",
     }
 )
@@ -873,6 +889,22 @@ def _validate_members(members: Any) -> List[str]:
                         f"non-empty string keys to non-empty string "
                         f"values, got {key!r}: {value!r}"
                     )
+        require_memory_gb = member.get("require_memory_gb")
+        if require_memory_gb is not None:
+            # Fail-closed numeric screen on the row's memory_gb_label: a
+            # bool is an int to isinstance but never a memory size, and
+            # 0 / negatives would screen every row (silently-inert /
+            # silently-dead config, refused like the rest).
+            if (
+                not isinstance(require_memory_gb, int)
+                or isinstance(require_memory_gb, bool)
+                or require_memory_gb < 1
+            ):
+                raise PanelConfigError(
+                    f"member {sid!r} require_memory_gb must be a positive "
+                    f"integer (GB, matched against the observation's "
+                    f"memory_gb_label), got {require_memory_gb!r}"
+                )
     if abs(sum(weights) - 1.0) > 1e-9:
         raise PanelConfigError(
             f"member weights must sum to 1.0, got {sum(weights)}"
@@ -1462,6 +1494,19 @@ def _validate_statistic_params(
                     f"calc.statistic_params[{stat_id!r}] unknown param "
                     f"{name!r} (known: {sorted(defaults[stat_id])})"
                 )
+            if name == "scale_by_population_floor":
+                # COM-1582: a 0/1 flag riding this int-typed dict (its
+                # existing convention -- see panel.py's comment on why
+                # this isn't a bool), not a floor -- 0 is its meaningful
+                # OFF state, so the other params' lo=1 numeric-floor rule
+                # would wrongly refuse the default value written out
+                # explicitly.
+                if value not in (0, 1) or isinstance(value, bool):
+                    raise PanelConfigError(
+                        f"calc.statistic_params[{stat_id!r}].{name} must "
+                        f"be 0 or 1, got {value!r}"
+                    )
+                continue
             _require_int(
                 value, f"calc.statistic_params[{stat_id!r}].{name}", lo=1
             )
