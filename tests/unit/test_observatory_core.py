@@ -287,6 +287,9 @@ def test_reserved_prefixes_cover_the_real_basket_lanes(real_config):
         "index_panel_h200_sxm.json",
         "index_panel_h100_broad.json",
         "index_panel_h200_broad.json",
+        "index_panel_l40s.json",
+        "index_panel_rtxpro6000_server.json",
+        "index_panel_a100_80gb_broad.json",
     ):
         cfg = json.loads((REPO_ROOT / "config" / name).read_text())
         lane_prefixes.add(cfg["bucket_prefix"])

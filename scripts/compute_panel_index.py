@@ -600,6 +600,7 @@ def detect_drift(
             require_patterns=member_screen["require"],
             eligible_tiers=params["eligible_tiers"],
             extra_require=member_screen["extra_require"],
+            require_memory_gb=member_screen["require_memory_gb"],
         )
         current = resolve_member_print(
             rows,

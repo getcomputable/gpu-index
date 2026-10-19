@@ -121,6 +121,48 @@ LANES = {
         "stitched": False,
         "quarter_hour": False,
     },
+    # The three 2026-10 SKU-expansion lanes (fcp #143/#144): observatory-only
+    # from the first day of the quarter-hour record, so their minute era
+    # starts one day earlier than the migrated lanes' 2026-08-29 cutover.
+    "config/index_panel_l40s.json": {
+        "panel_id": "l40s",
+        "methodology_id": "l40s_v1_calc_v1",
+        "prefix": "index/l40s",
+        "genesis": "2026-08-27",
+        "claim_floor": 8,
+        "w_min": 0.0125,
+        "fx_lane": "ecb",  # scaleway + ovh (FR subsidiary) bill EUR
+        "members": 16,
+        "stitched": False,
+        "quarter_hour": True,
+        "quarter_hour_cutover": "2026-08-28",
+    },
+    "config/index_panel_rtxpro6000_server.json": {
+        "panel_id": "rtxpro6000_server",
+        "methodology_id": "rtxpro6000_server_v1_calc_v1",
+        "prefix": "index/rtxpro6000_server",
+        "genesis": "2026-08-27",
+        "claim_floor": 8,
+        "w_min": 0.0125,
+        "fx_lane": "ecb",
+        "members": 12,
+        "stitched": False,
+        "quarter_hour": True,
+        "quarter_hour_cutover": "2026-08-28",
+    },
+    "config/index_panel_a100_80gb_broad.json": {
+        "panel_id": "a100_80gb_broad",
+        "methodology_id": "a100_80gb_broad_v1_calc_v1",
+        "prefix": "index/a100_80gb_broad",
+        "genesis": "2026-08-27",
+        "claim_floor": 8,
+        "w_min": 0.0125,
+        "fx_lane": "ecb",  # ovh (FR subsidiary) bills EUR
+        "members": 14,
+        "stitched": False,
+        "quarter_hour": True,
+        "quarter_hour_cutover": "2026-08-28",
+    },
 }
 
 OBS_PREFIX = "index/raw_observatory"
@@ -181,10 +223,13 @@ def test_all_six_load_and_match_the_lane_table(configs):
         # forever -- the validator accepts absence by design). vast on
         # all six lanes; lium on the four H panels only (not seated on
         # B300/B200). Sorted: calc_params embeds the list canonically.
-        expected_verified = (
-            ["vast"]
-            if cfg["panel_id"] in ("b300", "b200")
-            else ["lium", "vast"]
+        # Derived from the marketplace seats the lane actually carries
+        # (vast and lium are the two availability-verified marketplaces;
+        # the SKU-expansion A100 lane seats lium only until vast arrives
+        # by a later mint), so the per-lane pin follows membership rather
+        # than a fixed two-element literal.
+        expected_verified = sorted(
+            m["source_id"] for m in cfg["members"] if m["source_id"] in ("vast", "lium")
         )
         assert calc["availability_verified_sources"] == expected_verified, rel
 
@@ -197,12 +242,26 @@ def test_runpod_seats_are_secure_cloud_only(configs):
     lowest-eligible rule prices the cheaper community row. No other
     seat carries an extra_require today (a new one is a reviewed
     membership decision, not drift)."""
+    # The one reviewed non-runpod extra_require: Oracle's A100 80GB seat
+    # keys on the OCI price-list part number (B95907 = the 80GB
+    # BM.GPU.A100-v2.8 shape; the 40GB rental is a chip-less row that never
+    # maps to the A100 sku), because OCI's label carries no memory and the
+    # collector emits no memory field.
+    allowed_other = {
+        ("config/index_panel_a100_80gb_broad.json", "oracle"): {
+            "part_number": "B95907"
+        },
+    }
     for rel, cfg in configs.items():
         members = {m["source_id"]: m for m in cfg["members"]}
         assert members["runpod"]["extra_require"] == {"cloud": "secure"}, rel
         for sid, member in members.items():
-            if sid != "runpod":
-                assert "extra_require" not in member, (rel, sid)
+            if sid == "runpod":
+                continue
+            if (rel, sid) in allowed_other:
+                assert member["extra_require"] == allowed_other[(rel, sid)], (rel, sid)
+                continue
+            assert "extra_require" not in member, (rel, sid)
 
 
 def test_prefixes_are_pairwise_disjoint(configs):
@@ -241,7 +300,9 @@ def test_record_stitching_matches_the_design_table(configs):
             grids = cfg["slot_grids"]
             assert grids[0]["slot_hours_utc"] == list(range(24)), rel
         if expected["quarter_hour"]:
-            assert grids[-1]["from_date"] == QUARTER_HOUR_CUTOVER, rel
+            assert grids[-1]["from_date"] == expected.get(
+                "quarter_hour_cutover", QUARTER_HOUR_CUTOVER
+            ), rel
             assert grids[-1]["slot_minutes_utc"] == list(
                 range(0, 1440, 15)
             ), rel
@@ -361,3 +422,37 @@ def test_broad_panels_have_no_identity_screen(configs):
             assert "variant" not in member, (rel, member["source_id"])
             assert set(member["skus"]) == sku_set, (rel, member["source_id"])
         assert "H100T" not in sku_set
+
+
+def test_no_shipped_lane_names_require_memory_gb_and_calc_params_stay_byte_identical(
+    configs,
+):
+    """The require_memory_gb seat rule (2026-10-13, A100 80GB panel) is
+    embedded in calc_params ONLY when a member sets it. Exactly one
+    shipped lane (A100 80GB BROAD) names it, on its ten memory-emitting
+    seats; every other lane's calc_params must carry no trace of the key
+    -- the refuse-to-extend fence compares those bytes on every publish,
+    and a stray null key would force a mint on every lane."""
+    from gpu_index.index.panel import panel_calc_params
+
+    memory_lane = "config/index_panel_a100_80gb_broad.json"
+    for rel, cfg in configs.items():
+        if rel == memory_lane:
+            named = sorted(
+                m["source_id"] for m in cfg["members"] if "require_memory_gb" in m
+            )
+            assert named == [
+                "civo", "coreweave", "crusoe", "deepinfra", "e2e",
+                "hyperstack", "lambda", "ovh", "runpod", "verda",
+            ], rel
+            assert all(
+                m["require_memory_gb"] == 80
+                for m in cfg["members"]
+                if "require_memory_gb" in m
+            ), rel
+            embedded = json.dumps(panel_calc_params(cfg))
+            assert embedded.count('"require_memory_gb": 80') == 10, rel
+            continue
+        for member in cfg["members"]:
+            assert "require_memory_gb" not in member, (rel, member["source_id"])
+        assert "require_memory_gb" not in json.dumps(panel_calc_params(cfg)), rel

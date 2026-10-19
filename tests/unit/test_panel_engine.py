@@ -3359,3 +3359,274 @@ def test_availability_verified_share_zero_is_float_and_dark_absent():
     # Missed hour -> no index -> no share anywhere in the artifact.
     missed = _compute(_config(), None, _state())
     assert missed["index"] is None
+
+
+# ------------------------------------------- require_memory_gb (A100 80GB)
+
+
+def test_config_require_memory_gb_validation():
+    """The memory rule is a positive int (GB) or absent; bools, zero,
+    negatives, floats and strings are refused (a zero/negative would
+    screen every row -- the silently-dead-config class)."""
+
+    def alpha(c):
+        return c["members"][0]
+
+    cfg = _config()
+    alpha(cfg)["require_memory_gb"] = 80  # composes with the SXM variant
+    validate_panel_config(cfg)
+    cfg = _config()
+    alpha(cfg)["require_memory_gb"] = 80
+    alpha(cfg)["extra_require"] = {"cloud": "secure"}  # and with extra_require
+    validate_panel_config(cfg)
+    for bad in (0, -1, True, False, "80", 80.0, [80]):
+        _reject(
+            "require_memory_gb must be a positive integer",
+            lambda c, bad=bad: alpha(c).update(require_memory_gb=bad),
+        )
+    # An explicit null is UNSET, not a rule: the validator passes, the
+    # compiled screen carries None and calc_params omits the key (byte-
+    # identical to never naming it).
+    cfg = _config()
+    alpha(cfg)["require_memory_gb"] = None
+    validate_panel_config(cfg)
+    cp = panel_calc_params(cfg)
+    assert "require_memory_gb" not in json.dumps(cp)
+    assert compile_screens(cp)["members"]["alpha"]["require_memory_gb"] is None
+
+
+def _mem_obs(usd, memory, identifier="NVIDIA A100"):
+    row = _obs("A100", identifier, usd)
+    if memory != "ABSENT":
+        row["memory_gb_label"] = memory
+    return row
+
+
+def test_require_memory_gb_screens_on_the_top_level_memory_label():
+    """FAIL-CLOSED sibling of extra_require: absent / non-numeric / bool /
+    NaN memory -> memory_label_absent; a different finite memory ->
+    memory_label_mismatch; a numerically-equal float passes."""
+    rows = [
+        _mem_obs(2.10, 80),
+        _mem_obs(1.98, 40),
+        _mem_obs(1.50, "ABSENT"),
+        _mem_obs(1.40, "80"),
+        _mem_obs(1.30, True),
+        _mem_obs(1.20, float("nan")),
+        _mem_obs(2.20, 80.0),
+    ]
+    counts: dict = {}
+    kept = member_eligible_rows(
+        _entry("e2e", rows),
+        skus={"A100"},
+        reject_patterns=[],
+        require_patterns=None,
+        eligible_tiers=("on-demand",),
+        screen_counts=counts,
+        require_memory_gb=80,
+    )
+    assert [r["price_usd_gpu_hr"] for r in kept] == [2.10, 2.20]
+    assert counts == {"memory_label_absent": 4, "memory_label_mismatch": 1}
+    # Lowest-eligible over the screened rows prints the 80GB row, never
+    # the cheaper 40GB one -- the e2e case the rule exists for.
+    chosen = lowest_eligible_print(kept, obs_date=GENESIS, fx_records=FX)
+    assert chosen["usd_per_gpu_hr"] == 2.10
+    # Without the rule the same rows print 1.20 (nothing else screens).
+    kept_unruled = member_eligible_rows(
+        _entry("e2e", rows),
+        skus={"A100"},
+        reject_patterns=[],
+        require_patterns=None,
+        eligible_tiers=("on-demand",),
+    )
+    assert len(kept_unruled) == 7
+
+
+def test_require_memory_gb_member_prints_80_not_40_and_rides_calc_params():
+    """End to end: the seat prints its 80GB row, the dropped 40GB row is
+    counted on the artifact (memory_label_rejections), the rule rides
+    calc_params ONLY on the member that names it, and compile_screens
+    carries it per member."""
+    cfg = _config()
+    cfg["members"][0]["variant"] = {"mode": "declared", "evidence": "probe"}
+    cfg["members"][0]["require_memory_gb"] = 80
+    validate_panel_config(cfg)
+    snapshot = _snapshot(
+        [
+            _entry(
+                "alpha",
+                [
+                    _obs("H100", "H100", 2.10, extra={"k": "v"}),
+                    _obs("H100", "H100", 1.98),
+                ],
+            ),
+            _entry("bravo", [_obs("H100", "H100", 2.5)]),
+        ]
+    )
+    snapshot["sources"][0]["observations"][0]["memory_gb_label"] = 80
+    snapshot["sources"][0]["observations"][1]["memory_gb_label"] = 40
+    payload = _compute(cfg, snapshot, _state())
+    by_sid = {s["source_id"]: s for s in payload["sources"]}
+    assert by_sid["alpha"]["status"] == "ok"
+    assert by_sid["alpha"]["chosen"]["usd_per_gpu_hr"] == 2.10
+    assert by_sid["alpha"]["chosen"]["n_eligible_prints"] == 1
+    assert by_sid["alpha"]["memory_label_rejections"] == 1
+    assert "memory_label_rejections" not in by_sid["bravo"]
+    cp = payload["calc_params"]
+    assert cp["members"][0]["source_id"] == "alpha"
+    assert cp["members"][0]["require_memory_gb"] == 80
+    assert all("require_memory_gb" not in m for m in cp["members"][1:])
+    screens = compile_screens(cp)
+    assert screens["members"]["alpha"]["require_memory_gb"] == 80
+    assert screens["members"]["bravo"]["require_memory_gb"] is None
+    json.dumps(payload)
+
+
+def test_require_memory_gb_absent_memory_darks_the_seat_visibly():
+    """A collector that does not label memory cannot hold a memory-ruled
+    seat: every row screens out as memory_label_absent (F1 dead-seat
+    shape: status ok, eligible_rows 0, screen_counts pinned) -- never a
+    wrong print."""
+    cfg = _config()
+    cfg["members"][0]["variant"] = {"mode": "declared", "evidence": "probe"}
+    cfg["members"][0]["require_memory_gb"] = 80
+    snapshot = _snapshot(
+        [
+            _entry("alpha", [_obs("H100", "H100", 1.0), _obs("H100", "H100", 1.1)]),
+            _entry("bravo", [_obs("H100", "H100", 2.5)]),
+            _entry("delta", [_obs("H100", "H100 SXM", 2.6)]),
+        ]
+    )
+    payload = _compute(cfg, snapshot, _state())
+    alpha = {s["source_id"]: s for s in payload["sources"]}["alpha"]
+    assert alpha["status"] == "ok"
+    assert "chosen" not in alpha
+    assert alpha["eligible_rows"] == 0
+    assert alpha["screen_counts"] == {"memory_label_absent": 2}
+    assert alpha["memory_label_rejections"] == 2
+
+
+def test_calc_params_omit_require_memory_gb_when_no_member_names_it():
+    """Byte-parity for every lane that never names the rule: the key is
+    embedded only when set (a null key would move the calc_params bytes
+    of the six live lanes and trip the D2 refuse-to-extend fence)."""
+    cp = panel_calc_params(_config())
+    assert all("require_memory_gb" not in m for m in cp["members"])
+    assert "require_memory_gb" not in json.dumps(cp)
+
+
+def test_absurd_int_memory_or_price_is_counted_not_a_crash():
+    """json admits 400-digit ints and the snapshot passthrough copies
+    memory_gb_label verbatim; float() of such an int raises OverflowError.
+    One absurd row is counted (memory_label_absent / non_finite_price),
+    never an exception that aborts the whole firing."""
+    huge = 10**400
+    rows = [_mem_obs(2.10, 80), _mem_obs(1.00, huge)]
+    counts: dict = {}
+    kept = member_eligible_rows(
+        _entry("e2e", rows),
+        skus={"A100"},
+        reject_patterns=[],
+        require_patterns=None,
+        eligible_tiers=("on-demand",),
+        screen_counts=counts,
+        require_memory_gb=80,
+    )
+    assert [r["price_usd_gpu_hr"] for r in kept] == [2.10]
+    assert counts == {"memory_label_absent": 1}
+    # Same class on the price path (the existing F9 fence hardens too).
+    price_rows = [
+        _obs("H100", "H100 SXM", usd=None, native=huge, currency="EUR"),
+        _obs("H100", "H100 SXM", 2.4),
+    ]
+    counts = {}
+    kept = _screen_rows(price_rows, skus={"H100"}, counts=counts)
+    assert [r["price_usd_gpu_hr"] for r in kept] == [2.4]
+    assert counts == {"non_finite_price": 1}
+
+
+def test_require_memory_gb_composes_with_the_label_variant_in_screen_order():
+    """Variant rule BEFORE memory rule on the same seat: a PCIe 40GB row
+    is variant_unmatched only (never reaches the memory screen), an SXM
+    40GB row is memory_label_mismatch, and the SXM 80GB row prints."""
+    rows = [
+        _mem_obs(1.50, 40, identifier="NVIDIA A100 PCIe"),
+        _mem_obs(1.98, 40, identifier="NVIDIA A100 SXM"),
+        _mem_obs(2.79, 80, identifier="NVIDIA A100 SXM"),
+    ]
+    counts: dict = {}
+    kept = member_eligible_rows(
+        _entry("lambda", rows),
+        skus={"A100"},
+        reject_patterns=[],
+        require_patterns=[p for p in _token_patterns("SXM")],
+        eligible_tiers=("on-demand",),
+        screen_counts=counts,
+        require_memory_gb=80,
+    )
+    assert [r["price_usd_gpu_hr"] for r in kept] == [2.79]
+    assert counts == {"variant_unmatched": 1, "memory_label_mismatch": 1}
+    chosen = lowest_eligible_print(kept, obs_date=GENESIS, fx_records=FX)
+    assert chosen["usd_per_gpu_hr"] == 2.79
+
+
+def _vast_mem_rows(n, memory, usd0, hosts, start=0):
+    rows = []
+    for i in range(n):
+        row = _obs(
+            "H100", "H100 SXM", round(usd0 + i * 0.1, 2), basis=8,
+            machine_id=f"m{memory}-{start + i}",
+            host_id=f"h{memory}-{(start + i) % hosts}",
+            verification="verified", region="Oregon, US",
+        )
+        row["memory_gb_label"] = memory
+        rows.append(row)
+    return rows
+
+
+def test_statistic_seat_prices_and_floors_only_the_memory_ruled_machines():
+    """The memory screen runs BEFORE the statistic through the single
+    member_eligible_rows call site: a vast_vwm_verified_us_ca_floor seat
+    ruled require_memory_gb 80 over a book mixing cheap 40GB and dearer
+    80GB machines prices ONLY the 80GB machines (n_eligible_prints,
+    gpu_volume and the weighted median all over the six 80GB rows), and
+    its population floor counts only them (a book with 3 80GB machines on
+    2 hosts holds out thin_book even though 40GB machines would pass)."""
+    cfg = _config()
+    vast = [m for m in cfg["members"] if m["source_id"] == "vast"][0]
+    vast["require_memory_gb"] = 80
+    validate_panel_config(cfg)
+    book_stats = {"H100 SXM": {"verified_us_ca_machines": 12}}
+    deep = _vast_mem_rows(6, 80, 2.0, hosts=3) + _vast_mem_rows(6, 40, 0.5, hosts=3)
+    snapshot = _snapshot(
+        [
+            _entry("alpha", [_obs("H100", "H100 SXM", 2.4)]),
+            _entry("bravo", [_obs("H100", "H100", 2.5)]),
+            _entry("vast", deep, book_stats=book_stats),
+        ]
+    )
+    payload = _compute(cfg, snapshot, _state())
+    vast_detail = {s["source_id"]: s for s in payload["sources"]}["vast"]
+    assert vast_detail["status"] == "ok"
+    chosen = vast_detail["chosen"]
+    assert chosen["n_eligible_prints"] == 6
+    assert chosen["gpu_volume"] == 48
+    assert chosen["usd_per_gpu_hr"] == 2.25  # weighted median of 2.0..2.5 (even count)
+    assert vast_detail["memory_label_rejections"] == 6
+    # Floors over the ruled machines only: 3 x 80GB on 2 hosts is thin
+    # although the 6 x 40GB machines would clear 5 machines / 3 hosts.
+    thin = _vast_mem_rows(3, 80, 2.0, hosts=2) + _vast_mem_rows(6, 40, 0.5, hosts=3)
+    snapshot = _snapshot(
+        [
+            _entry("alpha", [_obs("H100", "H100 SXM", 2.4)]),
+            _entry("bravo", [_obs("H100", "H100", 2.5)]),
+            _entry("vast", thin, book_stats=book_stats),
+        ]
+    )
+    payload = _compute(cfg, snapshot, _state())
+    vast_detail = {s["source_id"]: s for s in payload["sources"]}["vast"]
+    assert vast_detail["status"] == "held_out"
+    assert vast_detail["held_out"]["reason"] == "thin_book"
+    assert vast_detail["held_out"]["population_machines"] == 3
+    assert vast_detail["held_out"]["population_hosts"] == 2
+    assert vast_detail["memory_label_rejections"] == 6

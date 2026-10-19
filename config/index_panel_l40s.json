@@ -1,0 +1,377 @@
+{
+  "bucket_prefix": "index/l40s",
+  "calc": {
+    "availability_verified_sources": [
+      "lium",
+      "vast"
+    ],
+    "carry_forward_failure_kinds": [
+      "fetch",
+      "parse",
+      "timeout"
+    ],
+    "carry_forward_window_hours": 72,
+    "composite_statistic": "median_ci_votes",
+    "description": "calc_v1 (panel genesis mint 2026-10-13): parameter block copied VERBATIM from the served h100_broad_v1_calc_v13 registry doc (iqm_alpha 0.16666, 15-min slot grid from 2026-08-28, carry-forward 72h, pre-smoothing 1h, attendance eta 0.5, population-floor scaling) so this lane is the same engine generation as the six live lanes; METHODOLOGY.md is the binding contract. RECORD: raw-observatory snapshots from the 2026-08-27 genesis (first day of the 15-min record). TIER SCREEN: allow-list on-demand only. NO parity leg: no predecessor series. SKU SET: {L40S}. MARKETPLACE STATISTICS: vast via vast_vwm_verified_us_ca_floor (accounting gate + >= 5 machines / >= 3 hosts floors, population scaling armed); lium via lium_vwm_book_floor (>= 5 machines / >= 3 miners). VAST SEAT TIMING: the engine's population-accounting gate needs book_stats.verified_us_ca_machines, which the vast collector emits only for chips in raw_observatory.json options.population_gpu_names; that list gains this lane's vast chip name(s) with fcp #142 (the vast capture change). Until that deploy the seat is held out no_population_accounting on EVERY observation, including the whole replayed record 2026-08-27 -> deploy, which is NOT backfillable (the record was captured without the accounting); the seat prices from the deploy forward. RECORD FACTS (47-day persistence scan 2026-10-12, canonical slot): direct seats printed on 44-47 of 47 days (nebius 44, sesterce console 46), tensorpool 47, lium 21 of 47 (thin -- expect thin_book hold-outs), vast dark until fcp #142. MEMBER EXTRA SCREEN: runpod Secure-only via extra.cloud. CURRENCIES: scaleway and ovh (FR subsidiary) bill EUR -> ECB lane; e2e's INR JSON-LD row never converts (only EUR is ruled) and is held out per row; the USD table row prints. LIVE-PROBE FIGURES at mint (2026-10-13 capture, NOT lane prints): direct seats 1.20 to 3.50 (oracle the ceiling); the vast book's cheapest ask was 0.43 but the lane cannot print vast yet (see VAST SEAT TIMING).",
+    "dynamic_weights": {
+      "attendance_eta": 0.5,
+      "attendance_floor": 0.5,
+      "attendance_half_life_hours": 6,
+      "forward_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "gamma": 4,
+      "half_life_days": 30,
+      "history_days": 90,
+      "lookback_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "max_abs_log_return": 0.5,
+      "min_train_samples": 10,
+      "no_price_exclusion_hours": 24,
+      "ridge_lambda": 1,
+      "scheme": "predictive_v1",
+      "switch_min_eligible": 5,
+      "target_variance_floor": 1e-12,
+      "weight_max": 0.3,
+      "weight_min": 0.0125
+    },
+    "eligible_tiers": [
+      "on-demand"
+    ],
+    "filter_sigma": 3,
+    "filter_sigma_floor_pct": 3,
+    "filter_terms": "recorded_currency",
+    "filter_warmup": 10,
+    "filter_window": 20,
+    "fx_lane": "ecb",
+    "fx_max_staleness_days": 7,
+    "iqm_alpha": 0.16666,
+    "jump_screen": {
+      "corroborate_pct": 10,
+      "min_corroborators": 2,
+      "quarantine_pct": 25,
+      "reference_max_lookback": 24
+    },
+    "manual_exclusions": [],
+    "manual_verify_pct": 15,
+    "methodology_id": "l40s_v1_calc_v1",
+    "min_sources_to_claim": 8,
+    "pre_smoothing_half_life_hours": 1,
+    "statistic_params": {
+      "lium_vwm_book_floor": {
+        "min_population_machines": 5,
+        "min_population_miners": 3,
+        "scale_by_population_floor": 1
+      },
+      "vast_vwm_verified_us_ca_floor": {
+        "min_population_hosts": 3,
+        "min_population_machines": 5,
+        "scale_by_population_floor": 1
+      }
+    },
+    "vote_sigma_floor_pct": 3,
+    "vote_sigma_source": "dw_history"
+  },
+  "description": "L40S hourly panel (the SKU-expansion scoping record (fcp METHODOLOGY.md)). Underlying: NVIDIA L40S 48GB PCIe as each provider sells it on-demand -- one part, one memory size, no form-factor variants, so NO identity screen and NO variant rules exist here; the sku set {L40S} is the screen (the catalog token is boundary-aware, the L40 part files separately). 16 members (14 direct + vast + lium statistic seats), weight floor 1.25%, claim floor 8. The vast seat prices only once fcp #142 adds 'L40S' to the capture's population_gpu_names (held out no_population_accounting before that deploy, replayed record included). gpuai deliberately NOT seated (ruling 2026-10-12). Selection over the raw-observatory record; captures nothing.",
+  "design_doc": "METHODOLOGY.md",
+  "drift_scan_observations": 48,
+  "genesis_date": "2026-08-27",
+  "members": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "weight": 0.075,
+      "notes": "label '1x L40S 48GB on-demand' $1.662 (probe 2026-10-13); spot + serverless rows tier-screened",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "weight": 0.075,
+      "notes": "labels 'NVIDIA L40S with Intel CPU' / 'with AMD CPU' on-demand 1.55-1.82 (prod record 44 of 47 days); preemptible rows tier-screened",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "coreweave",
+      "display_name": "CoreWeave",
+      "weight": 0.075,
+      "notes": "label 'NVIDIA L40S' $2.25 both region tables; spot row tier-screened",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "crusoe",
+      "display_name": "Crusoe",
+      "weight": 0.075,
+      "notes": "label 'NVIDIA L40S 48GB' $1.50",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "tensorpool",
+      "display_name": "TensorPool",
+      "weight": 0.075,
+      "notes": "label 'L40S' $1.49 on-demand (prod record 47 of 47 days; the surface 404'd in one dry-run capture only)",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "scaleway",
+      "display_name": "Scaleway",
+      "weight": 0.075,
+      "notes": "label 'L40S' EUR 1.4699; ECB lane converts at calc",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "civo",
+      "display_name": "Civo",
+      "weight": 0.075,
+      "notes": "label 'NVIDIA L40S 48GB' $1.29; four reserved/commitment rows tier-screened",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "ovh",
+      "display_name": "OVHcloud",
+      "weight": 0.075,
+      "notes": "label 'L40S' EUR 1.40 (FR subsidiary) / USD 1.80; monthly-commit rows tier-screened",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "digitalocean",
+      "display_name": "DigitalOcean",
+      "weight": 0.075,
+      "notes": "label 'NVIDIA L40s' $1.57",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "e2e",
+      "display_name": "E2E Networks",
+      "weight": 0.075,
+      "notes": "USD table row 'NVIDIA L40S' $1.20 prints; INR JSON-LD row held out mechanically (no INR FX ruling)",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "oracle",
+      "display_name": "Oracle Cloud Infrastructure",
+      "weight": 0.075,
+      "notes": "label 'Compute - GPU - L40S' $3.50 (price-list part)",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "sesterce_console",
+      "display_name": "Sesterce (console)",
+      "weight": 0.075,
+      "notes": "console book label 'L40S' $0.968 / $1.65 -- real asks, not the pricing page's 'From' floors (the sesterce pricing-page source is deliberately not seated here)",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod (Secure)",
+      "weight": 0.03,
+      "extra_require": {
+        "cloud": "secure"
+      },
+      "notes": "label 'NVIDIA L40S' secure $1.09 (community $0.79 screened by extra.cloud)",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "weight": 0.03,
+      "notes": "label 'L40S (48GB)' $0.97",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "weight": 0.02,
+      "statistic": "vast_vwm_verified_us_ca_floor",
+      "notes": "vast gpu_name 'L40S' (query name = sku_identifier); statistic seat over verified US/CA hosts with population floors. PRICES ONLY FROM THE fcp #142 CAPTURE DEPLOY FORWARD: 'L40S' must be in raw_observatory.json population_gpu_names for the accounting gate to pass; every earlier observation (the whole replayed record) holds the seat out no_population_accounting, not backfillable. Live probe 2026-10-13: 28 offers / 17 machines.",
+      "skus": [
+        "L40S"
+      ]
+    },
+    {
+      "source_id": "lium",
+      "display_name": "Lium",
+      "weight": 0.02,
+      "statistic": "lium_vwm_book_floor",
+      "notes": "machine_name 'NVIDIA L40S'; statistic seat with book floors; printed 21 of 47 record days (thin)",
+      "skus": [
+        "L40S"
+      ]
+    }
+  ],
+  "methodology_doc": "METHODOLOGY.md",
+  "panel_id": "l40s",
+  "record_sources": [
+    {
+      "kind": "observatory",
+      "prefix": "index/raw_observatory",
+      "from_date": "2026-08-27"
+    }
+  ],
+  "schema_version": 1,
+  "slot_grids": [
+    {
+      "from_date": "2026-08-27",
+      "slot_hours_utc": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    },
+    {
+      "from_date": "2026-08-28",
+      "slot_minutes_utc": [
+        0,
+        15,
+        30,
+        45,
+        60,
+        75,
+        90,
+        105,
+        120,
+        135,
+        150,
+        165,
+        180,
+        195,
+        210,
+        225,
+        240,
+        255,
+        270,
+        285,
+        300,
+        315,
+        330,
+        345,
+        360,
+        375,
+        390,
+        405,
+        420,
+        435,
+        450,
+        465,
+        480,
+        495,
+        510,
+        525,
+        540,
+        555,
+        570,
+        585,
+        600,
+        615,
+        630,
+        645,
+        660,
+        675,
+        690,
+        705,
+        720,
+        735,
+        750,
+        765,
+        780,
+        795,
+        810,
+        825,
+        840,
+        855,
+        870,
+        885,
+        900,
+        915,
+        930,
+        945,
+        960,
+        975,
+        990,
+        1005,
+        1020,
+        1035,
+        1050,
+        1065,
+        1080,
+        1095,
+        1110,
+        1125,
+        1140,
+        1155,
+        1170,
+        1185,
+        1200,
+        1215,
+        1230,
+        1245,
+        1260,
+        1275,
+        1290,
+        1305,
+        1320,
+        1335,
+        1350,
+        1365,
+        1380,
+        1395,
+        1410,
+        1425
+      ]
+    }
+  ]
+}

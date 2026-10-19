@@ -49,6 +49,9 @@ MINUTE_KEYED_PANEL_STEMS = {
     "index_panel_b300",
     "index_panel_h100_sxm",
     "index_panel_h200_sxm",
+    "index_panel_l40s",
+    "index_panel_rtxpro6000_server",
+    "index_panel_a100_80gb_broad",
 }
 
 

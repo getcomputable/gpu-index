@@ -7,6 +7,23 @@ that produced it; any parameter change touching a published day mints a
 new methodology_id, and prior versions stay frozen and readable under
 their own keyspaces. Newest first.
 
+## Unreleased
+
+Engine parity for three configured lanes that are not public SKUs yet:
+`l40s_v1_calc_v1`, `rtxpro6000_server_v1_calc_v1`, `a100_80gb_broad_v1_calc_v1`
+(configs added; run with `./reproduce --lane <panel_id> <stamp>`). The engine
+now understands three rules those lanes use and the public lanes do not: a
+per-seat `require_memory_gb` screen (fail-closed on the observation's
+collector-derived `memory_gb_label`; counted `memory_label_absent` /
+`memory_label_mismatch`), the `scale_by_population_floor` statistic
+sub-knob (a thin-but-nonzero marketplace book prices and discloses
+`population_scale`, read as the stamp's attendance credit), and the
+panel-level `reject_tokens` identity screen on the RTX PRO 6000 SERVER lane.
+Both new parameters embed only when a config sets them, so every published
+public record reproduces byte-identically. The public SKU list, the daily
+live gate, and the vendored vast collector (no memory field yet) are
+unchanged; those follow once the public record carries the new lanes.
+
 ## 2026-09-14
 
 New methodology versions on every public lane: `annex_a_v0_2_calc_v17`,

@@ -1,0 +1,405 @@
+{
+  "bucket_prefix": "index/rtxpro6000_server",
+  "calc": {
+    "availability_verified_sources": [
+      "lium",
+      "vast"
+    ],
+    "carry_forward_failure_kinds": [
+      "fetch",
+      "parse",
+      "timeout"
+    ],
+    "carry_forward_window_hours": 72,
+    "composite_statistic": "median_ci_votes",
+    "description": "calc_v1 (panel genesis mint 2026-10-13): parameter block copied VERBATIM from the served h100_broad_v1_calc_v13 registry doc (iqm_alpha 0.16666, 15-min slot grid from 2026-08-28, carry-forward 72h, pre-smoothing 1h, attendance eta 0.5, population-floor scaling) so this lane is the same engine generation as the six live lanes; METHODOLOGY.md is the binding contract. RECORD: raw-observatory snapshots from the 2026-08-27 genesis (first day of the 15-min record). TIER SCREEN: allow-list on-demand only. NO parity leg: no predecessor series. SKU SET: {RTX_PRO_6000}. IDENTITY SCREEN: reject_tokens [MIG, MAX Q, WORKSTATION, WS] on sku_identifier (verified 2026-10-13 against the engine's boundary matcher: drops exactly runpod's MIG 1g.24gb / 2g.48gb, Max-Q and Workstation Edition rows and vast's 'RTX PRO 6000 WS' hosts, nothing else). VARIANT RULES: coreweave/lium/runpod require SERVER, hyperstack requires SE, vast requires the standalone S token ('RTX PRO 6000 S' is vast's own chip name); verda, nebius, e2e, latitude, oracle, sesterce_console, massedcompute are declared seats (unqualified labels; each notes field quotes the surface). MARKETPLACE STATISTICS: vast_vwm_verified_us_ca_floor and lium_vwm_book_floor as on the H panels. VAST SEAT TIMING: the engine's population-accounting gate needs book_stats.verified_us_ca_machines, which the vast collector emits only for chips in raw_observatory.json options.population_gpu_names; that list gains this lane's vast chip name(s) with fcp #142 (the vast capture change). Until that deploy the seat is held out no_population_accounting on EVERY observation, including the whole replayed record 2026-08-27 -> deploy, which is NOT backfillable (the record was captured without the accounting); the seat prices from the deploy forward. RECORD FACTS (47-day persistence scan 2026-10-12, canonical slot): direct seats printed on 41-47 of 47 days (nebius 44, sesterce console 41), lium 46, vast dark until fcp #142. LIVE-PROBE FIGURES at mint (2026-10-13 capture, screened, NOT lane prints): direct seats 1.69 to 6.00 (latitude the ceiling -- a real bare-metal rate card, admitted, expect a permanent CI-fence outlier); the vast S book's cheapest ask was 1.17 but the lane cannot print vast yet (see VAST SEAT TIMING).",
+    "dynamic_weights": {
+      "attendance_eta": 0.5,
+      "attendance_floor": 0.5,
+      "attendance_half_life_hours": 6,
+      "forward_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "gamma": 4,
+      "half_life_days": 30,
+      "history_days": 90,
+      "lookback_horizons_hours": [
+        6,
+        24,
+        48
+      ],
+      "max_abs_log_return": 0.5,
+      "min_train_samples": 10,
+      "no_price_exclusion_hours": 24,
+      "ridge_lambda": 1,
+      "scheme": "predictive_v1",
+      "switch_min_eligible": 5,
+      "target_variance_floor": 1e-12,
+      "weight_max": 0.3,
+      "weight_min": 0.0125
+    },
+    "eligible_tiers": [
+      "on-demand"
+    ],
+    "filter_sigma": 3,
+    "filter_sigma_floor_pct": 3,
+    "filter_terms": "recorded_currency",
+    "filter_warmup": 10,
+    "filter_window": 20,
+    "fx_lane": "ecb",
+    "fx_max_staleness_days": 7,
+    "iqm_alpha": 0.16666,
+    "jump_screen": {
+      "corroborate_pct": 10,
+      "min_corroborators": 2,
+      "quarantine_pct": 25,
+      "reference_max_lookback": 24
+    },
+    "manual_exclusions": [],
+    "manual_verify_pct": 15,
+    "methodology_id": "rtxpro6000_server_v1_calc_v1",
+    "min_sources_to_claim": 8,
+    "pre_smoothing_half_life_hours": 1,
+    "statistic_params": {
+      "lium_vwm_book_floor": {
+        "min_population_machines": 5,
+        "min_population_miners": 3,
+        "scale_by_population_floor": 1
+      },
+      "vast_vwm_verified_us_ca_floor": {
+        "min_population_hosts": 3,
+        "min_population_machines": 5,
+        "scale_by_population_floor": 1
+      }
+    },
+    "vote_sigma_floor_pct": 3,
+    "vote_sigma_source": "dw_history"
+  },
+  "description": "RTX PRO 6000 Blackwell SERVER panel (the SKU-expansion scoping record (fcp METHODOLOGY.md)). Underlying: the passive Server Edition 96GB part on-demand. The part ships as Server Edition, Workstation Edition, Max-Q Workstation and MIG slices, priced apart (runpod lists all four under one name; the lowest-eligible rule would print its $0.50 MIG slice unscreened), so this panel carries a panel-level reject list (MIG, MAX Q, WORKSTATION, WS) and per-seat label rules where the provider's own label names the form factor; unqualified datacenter rate cards seat as declared with the provider-surface evidence quoted. 12 members (10 direct + vast + lium statistic seats), weight floor 1.25%, claim floor 8. The vast seat prices only once fcp #142 adds 'RTX PRO 6000 S' to the capture's population_gpu_names (held out no_population_accounting before that deploy, replayed record included). gpuai deliberately NOT seated (ruling 2026-10-12). Selection over the raw-observatory record; captures nothing.",
+  "design_doc": "METHODOLOGY.md",
+  "drift_scan_observations": 48,
+  "genesis_date": "2026-08-27",
+  "members": [
+    {
+      "source_id": "verda",
+      "display_name": "Verda (formerly DataCrunch)",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "declared",
+        "evidence": "verda.com/pricing JSON-LD offer '1x RTX PRO 6000 96GB on-demand' -- datacenter instance of the passive 96GB part; no Workstation/Max-Q/MIG offer exists on the surface (probe 2026-10-13, 47-day record)"
+      },
+      "notes": "label '1x RTX PRO 6000 96GB on-demand' $2.234 (a 'CC' confidential-compute row at 2.279 also prints; lowest-eligible picks the plain row)",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "nebius",
+      "display_name": "Nebius",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "declared",
+        "evidence": "nebius.com/prices GPU table row 'NVIDIA RTX PRO 6000' -- datacenter instance offer; no Workstation/Max-Q/MIG variant on the surface (prod record 2026-08-27..10-12)"
+      },
+      "notes": "label 'NVIDIA RTX PRO 6000' $1.80 on-demand (prod record 44 of 47 days)",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "coreweave",
+      "display_name": "CoreWeave",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SERVER"
+        ]
+      },
+      "notes": "label 'NVIDIA RTX PRO 6000 Blackwell Server Edition (High Memory)' $2.50 both region tables; a 'Standard Memory' row is spot-only (tier-screened)",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "hyperstack",
+      "display_name": "Hyperstack (NexGen Cloud)",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SE"
+        ]
+      },
+      "notes": "label 'NVIDIA RTX Pro 6000 SE' $1.85 (SE = Server Edition on the provider's own label); reserved/spot rows tier-screened",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "e2e",
+      "display_name": "E2E Networks",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "declared",
+        "evidence": "e2enetworks.com GPU table 'NVIDIA RTX PRO 6000' 96GB cloud instance -- datacenter instance of the passive part (probe 2026-10-13)"
+      },
+      "notes": "USD table row 'NVIDIA RTX PRO 6000' $1.90; INR JSON-LD row held out mechanically",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "latitude",
+      "display_name": "Latitude.sh",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "declared",
+        "evidence": "latitude.sh/pricing bare-metal plan 'NVIDIA RTX PRO 6000' 96GB -- server chassis part (probe 2026-10-13)"
+      },
+      "notes": "label 'NVIDIA RTX PRO 6000' bare-metal on-demand $6.00 (NL/US), 6.50 (JP), 8.25 (AU); BRL rows and monthly-commit rows held out / tier-screened; lowest-eligible prints 6.00 -- admitted as a real rate card, expect a permanent CI-fence outlier",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "oracle",
+      "display_name": "Oracle Cloud Infrastructure",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "declared",
+        "evidence": "OCI price list part 'OCI - Compute - GPU - RTX PRO 6000' -- bare-metal/VM shape of the passive Server Edition part (probe 2026-10-13)"
+      },
+      "notes": "label 'OCI - Compute - GPU - RTX PRO 6000' $4.50 price-list part",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "sesterce_console",
+      "display_name": "Sesterce (console)",
+      "weight": 0.1125,
+      "variant": {
+        "mode": "declared",
+        "evidence": "console.sesterce.com compute book entry 'RTXPro6000' 96GB VM/bare-metal offer -- datacenter part (probe 2026-10-13)"
+      },
+      "notes": "console book label 'RTXPro6000' $2.409 (prod record 41 of 47 days)",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "runpod",
+      "display_name": "RunPod (Secure)",
+      "weight": 0.03,
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SERVER"
+        ]
+      },
+      "extra_require": {
+        "cloud": "secure"
+      },
+      "notes": "labels 'Server Edition' $1.69 secure prints; 'Workstation Edition', 'Max-Q Workstation Edition' and 'Server Edition MIG 1g.24gb/2g.48gb' rows rejected by the panel identity screen",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "massedcompute",
+      "display_name": "Massed Compute",
+      "weight": 0.03,
+      "variant": {
+        "mode": "declared",
+        "evidence": "massedcompute.com pricing row 'RTX PRO 6000 Blackwell (96GB)' -- datacenter instance of the passive part; no Workstation/Max-Q row on the surface (probe 2026-10-13, 47-day record)"
+      },
+      "notes": "label 'RTX PRO 6000 Blackwell (96GB)' $2.19 (plus a '[Reduced Storage]' row at the same price)",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "vast",
+      "display_name": "Vast.ai",
+      "weight": 0.02,
+      "statistic": "vast_vwm_verified_us_ca_floor",
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "S"
+        ]
+      },
+      "notes": "vast's own gpu_name taxonomy lists 'RTX PRO 6000 S' and 'RTX PRO 6000 WS' as distinct chips (both queried, sku_identifier = query name); the S token selects the Server book; statistic seat with population floors. PRICES ONLY FROM THE fcp #142 CAPTURE DEPLOY FORWARD: 'RTX PRO 6000 S' must be in raw_observatory.json population_gpu_names for the accounting gate to pass; every earlier observation (the whole replayed record) holds the seat out no_population_accounting, not backfillable. Live probe 2026-10-13: 39 offers / 21 machines.",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    },
+    {
+      "source_id": "lium",
+      "display_name": "Lium",
+      "weight": 0.02,
+      "statistic": "lium_vwm_book_floor",
+      "variant": {
+        "mode": "label",
+        "require_tokens": [
+          "SERVER"
+        ]
+      },
+      "notes": "machine_name 'NVIDIA RTX PRO 6000 Blackwell Server Edition' (the Workstation Edition self-labels in the same book and fails the rule); statistic seat with book floors",
+      "skus": [
+        "RTX_PRO_6000"
+      ]
+    }
+  ],
+  "methodology_doc": "METHODOLOGY.md",
+  "panel_id": "rtxpro6000_server",
+  "record_sources": [
+    {
+      "kind": "observatory",
+      "prefix": "index/raw_observatory",
+      "from_date": "2026-08-27"
+    }
+  ],
+  "schema_version": 1,
+  "slot_grids": [
+    {
+      "from_date": "2026-08-27",
+      "slot_hours_utc": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    },
+    {
+      "from_date": "2026-08-28",
+      "slot_minutes_utc": [
+        0,
+        15,
+        30,
+        45,
+        60,
+        75,
+        90,
+        105,
+        120,
+        135,
+        150,
+        165,
+        180,
+        195,
+        210,
+        225,
+        240,
+        255,
+        270,
+        285,
+        300,
+        315,
+        330,
+        345,
+        360,
+        375,
+        390,
+        405,
+        420,
+        435,
+        450,
+        465,
+        480,
+        495,
+        510,
+        525,
+        540,
+        555,
+        570,
+        585,
+        600,
+        615,
+        630,
+        645,
+        660,
+        675,
+        690,
+        705,
+        720,
+        735,
+        750,
+        765,
+        780,
+        795,
+        810,
+        825,
+        840,
+        855,
+        870,
+        885,
+        900,
+        915,
+        930,
+        945,
+        960,
+        975,
+        990,
+        1005,
+        1020,
+        1035,
+        1050,
+        1065,
+        1080,
+        1095,
+        1110,
+        1125,
+        1140,
+        1155,
+        1170,
+        1185,
+        1200,
+        1215,
+        1230,
+        1245,
+        1260,
+        1275,
+        1290,
+        1305,
+        1320,
+        1335,
+        1350,
+        1365,
+        1380,
+        1395,
+        1410,
+        1425
+      ]
+    }
+  ],
+  "reject_tokens": [
+    "MIG",
+    "MAX Q",
+    "WORKSTATION",
+    "WS"
+  ]
+}

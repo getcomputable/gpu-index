@@ -2305,3 +2305,62 @@ def test_listed_but_missing_artifact_refuses_the_firing(
     out = capsys.readouterr().out
     assert "GET returned nothing twice" in out
     assert "refusing this firing" in out
+
+
+def test_cli_drift_scan_applies_the_memory_rule(monkeypatch, capsys, tmp_path):
+    """The drift scan re-resolves seats through the SAME screens that
+    priced them. With alpha ruled require_memory_gb 80 and a cheaper 40GB
+    row on every slot, a scan that forgot the memory kwarg would re-price
+    alpha at the 40GB row and report false drift on every observation."""
+    cfg = _config()
+    cfg["members"][0]["require_memory_gb"] = 80
+    cfg_path = _write_config(tmp_path, cfg)
+    client = FakeS3()
+
+    def seed(prefix, day, hour):
+        run_id = f"{day.replace('-', '')}T{hour:02d}0500Z-aaaa"
+        eighty = _row(2.4)
+        eighty["memory_gb_label"] = 80
+        forty = _row(2.0)
+        forty["memory_gb_label"] = 40
+        payload = {
+            "sources": [
+                {"source_id": "alpha", "status": "ok", "observations": [eighty, forty]},
+                {"source_id": "bravo", "status": "ok", "observations": [_row(2.5)]},
+                {"source_id": "charlie", "status": "ok", "observations": [_row(2.6)]},
+            ],
+            "run_id": run_id,
+            "late_fill": False,
+        }
+        key = f"{prefix}/snapshots/{day}/slot{hour:02d}-{run_id}.json"
+        client.objects[key] = json.dumps(payload).encode()
+
+    for day in ("2026-08-10", "2026-08-11"):
+        for hour in (4, 10, 16, 22):
+            seed(BASKET_PREFIX, day, hour)
+    for hour in (0, 1, 2, 3, 5, 6):
+        seed(OBS_PREFIX, "2026-08-12", hour)
+
+    cli = _wire_cli(monkeypatch, client, NOW1, ["--config", str(cfg_path), "--sync"])
+    assert cli.main() == 0
+    capsys.readouterr()
+    published = _artifacts(client)
+    assert published
+    alpha_prints = set()
+    for v in published.values():
+        artifact = json.loads(v)
+        if artifact.get("observation_missed"):
+            continue  # hour 4 is deliberately unseeded (observation_missed)
+        alpha = {s["source_id"]: s for s in artifact["sources"]}["alpha"]
+        alpha_prints.add(alpha["chosen"]["usd_per_gpu_hr"])
+        assert alpha["memory_label_rejections"] == 1
+    assert alpha_prints == {2.4}  # never the 40GB row
+
+    cli = _wire_cli(
+        monkeypatch, client, NOW1,
+        ["--config", str(cfg_path), "--sync", "--drift-scan"],
+    )
+    assert cli.main() == 0
+    out = capsys.readouterr().out
+    assert "DRIFT" not in out
+    assert _artifacts(client) == published

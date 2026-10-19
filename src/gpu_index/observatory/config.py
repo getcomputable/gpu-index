@@ -52,6 +52,9 @@ RESERVED_LANE_PREFIXES = (
     "index/h200_sxm",
     "index/h100_broad",
     "index/h200_broad",
+    "index/l40s",
+    "index/rtxpro6000_server",
+    "index/a100_80gb_broad",
 )
 
 
