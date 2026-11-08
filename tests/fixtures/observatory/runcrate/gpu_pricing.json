@@ -1,0 +1,95 @@
+{
+  "gpus": [
+    {
+      "gpu_type": "B300",
+      "name": "B300",
+      "vram": "288GB",
+      "min_price_hr": 17.02,
+      "max_price_hr": 18.12,
+      "avg_price_hr": 17.85,
+      "available_options": 4
+    },
+    {
+      "gpu_type": "MI350X",
+      "name": "MI350X",
+      "vram": "288GB",
+      "min_price_hr": 5.72,
+      "max_price_hr": 5.72,
+      "avg_price_hr": 5.72,
+      "available_options": 0
+    },
+    {
+      "gpu_type": "H200",
+      "name": "H200",
+      "vram": "141GB",
+      "min_price_hr": 5.13,
+      "max_price_hr": 9.36,
+      "avg_price_hr": 7.37,
+      "available_options": 15
+    },
+    {
+      "gpu_type": "H200_nvl",
+      "name": "H200 NVL",
+      "vram": "141GB",
+      "min_price_hr": 4.67,
+      "max_price_hr": 4.67,
+      "avg_price_hr": 4.67,
+      "available_options": 4
+    },
+    {
+      "gpu_type": "H100",
+      "name": "H100",
+      "vram": "80GB",
+      "min_price_hr": 3.58,
+      "max_price_hr": 8.57,
+      "avg_price_hr": 4.82,
+      "available_options": 15
+    },
+    {
+      "gpu_type": "A100_80G",
+      "name": "A100 80GB",
+      "vram": "80GB",
+      "min_price_hr": 1.73,
+      "max_price_hr": 4.7,
+      "avg_price_hr": 2.39,
+      "available_options": 15
+    },
+    {
+      "gpu_type": "L40S",
+      "name": "L40S",
+      "vram": "48GB",
+      "min_price_hr": 0.55,
+      "max_price_hr": 2.44,
+      "avg_price_hr": 1.34,
+      "available_options": 10
+    },
+    {
+      "gpu_type": "RTX5090",
+      "name": "RTX 5090",
+      "vram": "32GB",
+      "min_price_hr": 0.72,
+      "max_price_hr": 1.47,
+      "avg_price_hr": 1.13,
+      "available_options": 24
+    },
+    {
+      "gpu_type": "A6000",
+      "name": "A6000",
+      "vram": "48GB",
+      "min_price_hr": 0.57,
+      "max_price_hr": 2.76,
+      "avg_price_hr": 0.88,
+      "available_options": 47
+    },
+    {
+      "gpu_type": "V100_32G",
+      "name": "V100 32GB",
+      "vram": "32GB",
+      "min_price_hr": 3.35,
+      "max_price_hr": 3.35,
+      "avg_price_hr": 3.35,
+      "available_options": 3
+    }
+  ],
+  "fetched_at": "2026-11-08T06:49:41.653Z"
+}

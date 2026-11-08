@@ -259,6 +259,13 @@
       "source_type": "marketplace",
       "first_party": true,
       "notes": "Public no-auth /v2/alpha/on-demand/rental-options JSON — every on-demand option; costPerHourCents is the whole-option total, divided by required gpuCount (never defaulted) for per-GPU USD; missing totalAvailable stays unknown and availability never gates price; providerCostPerHourCents is deliberately never republished; unknown *PerHourCents keys fail closed."
+    },
+    {
+      "source_id": "runcrate",
+      "display_name": "Runcrate",
+      "source_type": "marketplace",
+      "first_party": true,
+      "notes": "Public no-auth /api/gpu-pricing JSON (the feed behind the pricing page): min_price_hr is the on-demand price per GPU-hour in USD, already per GPU. Identity pin is an explicit allowlist of feed gpu_type ids; H100 and V100 are not recorded (no SXM/PCIe split in the feed, two V100 memory sizes), H200 NVL stays its own sku; available_options below 1 (stale price) and unusable price/count shapes are skipped into partial_errors; a reshaped envelope fails closed."
     }
   ]
 }
